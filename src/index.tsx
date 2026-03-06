@@ -444,7 +444,7 @@ app.get('/api/admin/stats', async (c) => {
        u.first_name || ' ' || u.last_name as agent_name,
        d.name as department_name,
        COALESCE(SUM(ws.duration_minutes), 0) as productive_minutes,
-       GREATEST(0, 480 - COALESCE(SUM(ws.duration_minutes), 0)) as non_productive_minutes
+       CASE WHEN 480 - COALESCE(SUM(ws.duration_minutes), 0) > 0 THEN 480 - COALESCE(SUM(ws.duration_minutes), 0) ELSE 0 END as non_productive_minutes
      FROM users u
      LEFT JOIN departments d ON u.department_id = d.id
      LEFT JOIN work_sessions ws ON ws.user_id = u.id 
@@ -855,7 +855,7 @@ app.get('/api/chef/dashboard', async (c) => {
        u.id,
        u.first_name || ' ' || u.last_name as agent_name,
        COALESCE(SUM(ws.duration_minutes), 0) as productive_minutes_today,
-       GREATEST(0, 480 - COALESCE(SUM(ws.duration_minutes), 0)) as non_productive_minutes_today
+       CASE WHEN 480 - COALESCE(SUM(ws.duration_minutes), 0) > 0 THEN 480 - COALESCE(SUM(ws.duration_minutes), 0) ELSE 0 END as non_productive_minutes_today
      FROM users u
      LEFT JOIN work_sessions ws ON ws.user_id = u.id 
        AND ws.status = 'Validé' 
