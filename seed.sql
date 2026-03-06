@@ -69,7 +69,6 @@ INSERT OR IGNORE INTO tasks (id, name, description, department_id, process_id, o
 (20, 'Analyse des risques crédit', 'Évaluation des risques de crédit', 8, 8, 4, 'Productive', 'Actif'),
 (21, 'Reporting risques', 'Préparation des rapports de risques', 8, 8, 4, 'Productive', 'Actif');
 
--- Utilisateur Admin par défaut (password: Admin@2024)
--- Hash bcrypt de "Admin@2024"
+-- Utilisateur Admin par défaut (password: Admin2024)
 INSERT OR IGNORE INTO users (id, first_name, last_name, email, password_hash, role, department_id, status) VALUES
-(1, 'Fayelle', 'KOBA', 'admin@bgfibank.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Administrateur', NULL, 'Actif');
+(1, 'Fayelle', 'KOBA', 'admin@bgfibank.com', '16387b09507b019016e1fb92dd9bb92d8700abf415d728a64f80094942f6dd5c', 'Administrateur', NULL, 'Actif');
