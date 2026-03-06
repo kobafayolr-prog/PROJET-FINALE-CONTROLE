@@ -209,10 +209,11 @@ async function renderDashboard() {
     </div>
     <!-- Productivité -->
     <div class="chart-card">
-      <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Productivité</div>
+      <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Productivité du Jour (base 8h/agent)</div>
       <div style="display:flex;align-items:center;gap:20px">
         <div style="flex:1"><canvas id="chartProductivity" height="220"></canvas></div>
         <div>
+          <div style="font-size:11px;color:#6b7280;margin-bottom:8px;text-align:center">${stats.productivity.total_agents} agent(s) — Capacité: ${Math.floor(stats.productivity.total_capacity_today/60)}h</div>
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
             <span style="width:12px;height:12px;border-radius:50%;background:#22c55e;display:inline-block"></span>
             <span style="font-size:12px;color:#555">Productives</span>
@@ -221,18 +222,65 @@ async function renderDashboard() {
             <span style="width:12px;height:12px;border-radius:50%;background:#ef4444;display:inline-block"></span>
             <span style="font-size:12px;color:#555">Non productives</span>
           </div>
-          <div style="margin-top:16px;padding:10px;background:#f0fdf4;border-radius:8px;text-align:center">
-            <div style="font-size:16px;font-weight:800;color:#16a34a">${stats.productivity.productive_hours}</div>
-            <div style="font-size:11px;color:#6b7280">Productives</div>
+          <div style="margin-top:12px;padding:10px;background:#f0fdf4;border-radius:8px;text-align:center">
+            <div style="font-size:18px;font-weight:800;color:#16a34a">${stats.productivity.productive_hours_today}</div>
+            <div style="font-size:11px;color:#6b7280">Productives (${stats.productivity.productive_pct}%)</div>
           </div>
           <div style="margin-top:8px;padding:10px;background:#fee2e2;border-radius:8px;text-align:center">
-            <div style="font-size:16px;font-weight:800;color:#dc2626">${stats.productivity.non_productive_hours}</div>
-            <div style="font-size:11px;color:#6b7280">Non productives</div>
+            <div style="font-size:18px;font-weight:800;color:#dc2626">${stats.productivity.non_productive_hours_today}</div>
+            <div style="font-size:11px;color:#6b7280">Non productives (${stats.productivity.non_productive_pct}%)</div>
           </div>
         </div>
       </div>
     </div>
   </div>
+  <!-- Tableau Productivité par Agent (Aujourd'hui) -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-body">
+      <div class="chart-title"><i class="fas fa-user-clock" style="color:#1e3a5f"></i> Productivité par Agent — Aujourd'hui (base 8h)</div>
+      <table style="width:100%">
+        <thead><tr>
+          <th>AGENT</th>
+          <th>DÉPARTEMENT</th>
+          <th>H. PRODUCTIVES</th>
+          <th>H. NON PRODUCTIVES</th>
+          <th>PROGRESSION</th>
+          <th>STATUT</th>
+        </tr></thead>
+        <tbody>
+          ${(stats.productivity.agents_detail || []).map(a => {
+            const pct = a.productive_pct;
+            const color = pct >= 80 ? '#16a34a' : (pct >= 50 ? '#f59e0b' : '#dc2626');
+            const badge = pct >= 80 ? 'badge-active' : (pct >= 50 ? 'badge-warning' : 'badge-inactive');
+            const label = pct >= 80 ? 'Bon' : (pct >= 50 ? 'Moyen' : 'Faible');
+            return `<tr>
+              <td style="font-weight:600">${a.agent_name}</td>
+              <td style="color:#6b7280;font-size:12px">${a.department_name || '—'}</td>
+              <td>
+                <span style="font-weight:700;color:#16a34a">${a.productive_hours}</span>
+                <span style="font-size:11px;color:#6b7280"> (${a.productive_pct}%)</span>
+              </td>
+              <td>
+                <span style="font-weight:700;color:#dc2626">${a.non_productive_hours}</span>
+                <span style="font-size:11px;color:#6b7280"> (${a.non_productive_pct}%)</span>
+              </td>
+              <td style="min-width:140px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="flex:1;height:8px;background:#f3f4f6;border-radius:4px;overflow:hidden">
+                    <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width 0.3s"></div>
+                  </div>
+                  <span style="font-size:12px;font-weight:700;color:${color}">${pct}%</span>
+                </div>
+              </td>
+              <td><span class="badge ${badge}">${label}</span></td>
+            </tr>`;
+          }).join('')}
+          ${(stats.productivity.agents_detail || []).length === 0 ? '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:20px">Aucune donnée pour aujourd\'hui</td></tr>' : ''}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Tableau Objectifs avec % cible vs réel -->
   <div class="card">
     <div class="card-body">
@@ -308,19 +356,34 @@ async function renderDashboard() {
     });
   }
 
-  // Productivity pie
-  const prodMin = stats.productivity.productive_minutes;
-  const nonProdMin = stats.productivity.non_productive_minutes;
-  if (prodMin + nonProdMin > 0) {
-    adminCharts.productivity = new Chart(document.getElementById('chartProductivity'), {
-      type: 'doughnut',
-      data: {
-        labels: ['Productives', 'Non productives'],
-        datasets: [{ data: [prodMin, nonProdMin], backgroundColor: ['#22c55e', '#ef4444'], borderWidth: 2 }]
+  // Productivity pie (heures aujourd'hui)
+  const prodMin = stats.productivity.productive_minutes_today || 0;
+  const nonProdMin = stats.productivity.non_productive_minutes_today || 0;
+  const totalCap = stats.productivity.total_capacity_today || 1;
+  adminCharts.productivity = new Chart(document.getElementById('chartProductivity'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Productives', 'Non productives'],
+      datasets: [{ data: [prodMin, nonProdMin], backgroundColor: ['#22c55e', '#ef4444'], borderWidth: 2 }]
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              const val = ctx.raw;
+              const pct = Math.round((val / totalCap) * 100);
+              const h = Math.floor(val/60);
+              const m = val % 60;
+              return ` ${h}h${m.toString().padStart(2,'0')} (${pct}%)`;
+            }
+          }
+        }
       },
-      options: { plugins: { legend: { display: false } }, cutout: '60%' }
-    });
-  }
+      cutout: '60%'
+    }
+  });
 }
 
 function destroyCharts() {

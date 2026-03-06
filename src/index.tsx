@@ -418,15 +418,47 @@ app.get('/api/admin/stats', async (c) => {
      ORDER BY month DESC LIMIT 6`
   ).all()
 
-  // Stats productivité globale (8h = 480 min par agent/jour)
-  const productivity = await c.env.DB.prepare(
+  // Stats productivité globale par agent/jour (8h = 480 min)
+  // Pour chaque agent et chaque jour, on calcule les heures pointées vs 8h
+  const productivityByAgentDay = await c.env.DB.prepare(
     `SELECT 
-     COALESCE(SUM(CASE WHEN t.task_type = 'Productive' THEN ws.duration_minutes ELSE 0 END), 0) as productive_minutes,
-     COALESCE(SUM(CASE WHEN t.task_type != 'Productive' THEN ws.duration_minutes ELSE 0 END), 0) as non_productive_minutes
-     FROM work_sessions ws
-     JOIN tasks t ON ws.task_id = t.id
-     WHERE ws.status = 'Validé'`
+       u.id as user_id,
+       date(ws.start_time) as work_date,
+       COALESCE(SUM(ws.duration_minutes), 0) as pointed_minutes
+     FROM users u
+     LEFT JOIN work_sessions ws ON ws.user_id = u.id AND ws.status = 'Validé'
+     WHERE u.role = 'Agent' AND u.status = 'Actif'
+     GROUP BY u.id, date(ws.start_time)
+     HAVING work_date IS NOT NULL`
+  ).all() as any
+
+  // Nombre total d'agents actifs
+  const totalAgents = await c.env.DB.prepare(
+    `SELECT COUNT(*) as count FROM users WHERE role = 'Agent' AND status = 'Actif'`
   ).first() as any
+
+  // Heures productives/non productives aujourd'hui par agent
+  const productivityToday = await c.env.DB.prepare(
+    `SELECT 
+       u.id,
+       u.first_name || ' ' || u.last_name as agent_name,
+       d.name as department_name,
+       COALESCE(SUM(ws.duration_minutes), 0) as productive_minutes,
+       GREATEST(0, 480 - COALESCE(SUM(ws.duration_minutes), 0)) as non_productive_minutes
+     FROM users u
+     LEFT JOIN departments d ON u.department_id = d.id
+     LEFT JOIN work_sessions ws ON ws.user_id = u.id 
+       AND ws.status = 'Validé' 
+       AND date(ws.start_time) = date('now')
+     WHERE u.role = 'Agent' AND u.status = 'Actif'
+     GROUP BY u.id, u.first_name, u.last_name, d.name`
+  ).all() as any
+
+  // Total global productif / non productif (aujourd'hui)
+  const agentsToday = productivityToday.results as any[]
+  const totalProductiveToday = agentsToday.reduce((s: number, a: any) => s + Math.min(a.productive_minutes, 480), 0)
+  const totalNonProductiveToday = agentsToday.reduce((s: number, a: any) => s + a.non_productive_minutes, 0)
+  const totalCapacityToday = (totalAgents?.count || 0) * 480
 
   // Calcul distribution % par objectif
   const objData = hoursByObjective.results as any[]
@@ -442,10 +474,21 @@ app.get('/api/admin/stats', async (c) => {
     hoursByDept: hoursByDept.results,
     monthlyTrend: monthlyTrend.results,
     productivity: {
-      productive_minutes: productivity?.productive_minutes || 0,
-      non_productive_minutes: productivity?.non_productive_minutes || 0,
-      productive_hours: minutesToHours(productivity?.productive_minutes || 0),
-      non_productive_hours: minutesToHours(productivity?.non_productive_minutes || 0)
+      total_agents: totalAgents?.count || 0,
+      total_capacity_today: totalCapacityToday,
+      productive_minutes_today: totalProductiveToday,
+      non_productive_minutes_today: totalNonProductiveToday,
+      productive_hours_today: minutesToHours(totalProductiveToday),
+      non_productive_hours_today: minutesToHours(totalNonProductiveToday),
+      productive_pct: totalCapacityToday > 0 ? Math.round((totalProductiveToday / totalCapacityToday) * 100) : 0,
+      non_productive_pct: totalCapacityToday > 0 ? Math.round((totalNonProductiveToday / totalCapacityToday) * 100) : 0,
+      agents_detail: agentsToday.map((a: any) => ({
+        ...a,
+        productive_hours: minutesToHours(Math.min(a.productive_minutes, 480)),
+        non_productive_hours: minutesToHours(a.non_productive_minutes),
+        productive_pct: Math.round((Math.min(a.productive_minutes, 480) / 480) * 100),
+        non_productive_pct: Math.round((a.non_productive_minutes / 480) * 100)
+      }))
     }
   })
 })
@@ -793,7 +836,7 @@ app.get('/api/chef/dashboard', async (c) => {
      HAVING total_minutes > 0`
   ).bind(deptId).all()
 
-  // Détail par agent
+  // Détail par agent avec heures productives/non productives aujourd'hui
   const agentDetail = await c.env.DB.prepare(
     `SELECT u.id, u.first_name || ' ' || u.last_name as agent_name,
      COUNT(ws.id) as total_sessions,
@@ -806,8 +849,34 @@ app.get('/api/chef/dashboard', async (c) => {
      GROUP BY u.id, u.first_name, u.last_name`
   ).bind(deptId).all()
 
+  // Heures productives/non productives par agent AUJOURD'HUI
+  const agentProductivityToday = await c.env.DB.prepare(
+    `SELECT 
+       u.id,
+       u.first_name || ' ' || u.last_name as agent_name,
+       COALESCE(SUM(ws.duration_minutes), 0) as productive_minutes_today,
+       GREATEST(0, 480 - COALESCE(SUM(ws.duration_minutes), 0)) as non_productive_minutes_today
+     FROM users u
+     LEFT JOIN work_sessions ws ON ws.user_id = u.id 
+       AND ws.status = 'Validé' 
+       AND date(ws.start_time) = date('now')
+     WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
+     GROUP BY u.id, u.first_name, u.last_name`
+  ).bind(deptId).all()
+
   const objData = byObjective.results as any[]
   const totalMin = objData.reduce((sum: number, o: any) => sum + o.total_minutes, 0)
+
+  // Fusionner agentDetail avec productivité du jour
+  const productivityMap: any = {}
+  for (const p of (agentProductivityToday.results as any[])) {
+    productivityMap[p.id] = p
+  }
+
+  // Total productif / non productif de l'équipe aujourd'hui
+  const nbAgents = (agentDetail.results as any[]).length
+  const totalProductiveTeam = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + Math.min(a.productive_minutes_today, 480), 0)
+  const totalNonProductiveTeam = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + a.non_productive_minutes_today, 0)
 
   return c.json({
     active_agents: activeAgents?.count || 0,
@@ -819,11 +888,27 @@ app.get('/api/chef/dashboard', async (c) => {
       percentage: totalMin > 0 ? Math.round((o.total_minutes / totalMin) * 100) : 0,
       hours_display: minutesToHours(o.total_minutes)
     })),
-    agentDetail: (agentDetail.results as any[]).map((a: any) => ({
-      ...a,
-      total_hours: minutesToHours(a.total_minutes),
-      validated_hours: minutesToHours(a.validated_minutes)
-    }))
+    agentDetail: (agentDetail.results as any[]).map((a: any) => {
+      const p = productivityMap[a.id] || { productive_minutes_today: 0, non_productive_minutes_today: 480 }
+      return {
+        ...a,
+        total_hours: minutesToHours(a.total_minutes),
+        validated_hours: minutesToHours(a.validated_minutes),
+        productive_minutes_today: Math.min(p.productive_minutes_today, 480),
+        non_productive_minutes_today: p.non_productive_minutes_today,
+        productive_hours_today: minutesToHours(Math.min(p.productive_minutes_today, 480)),
+        non_productive_hours_today: minutesToHours(p.non_productive_minutes_today),
+        productive_pct_today: Math.round((Math.min(p.productive_minutes_today, 480) / 480) * 100),
+        non_productive_pct_today: Math.round((p.non_productive_minutes_today / 480) * 100)
+      }
+    }),
+    team_productivity: {
+      total_agents: nbAgents,
+      productive_hours_today: minutesToHours(totalProductiveTeam),
+      non_productive_hours_today: minutesToHours(totalNonProductiveTeam),
+      productive_pct: nbAgents > 0 ? Math.round((totalProductiveTeam / (nbAgents * 480)) * 100) : 0,
+      non_productive_pct: nbAgents > 0 ? Math.round((totalNonProductiveTeam / (nbAgents * 480)) * 100) : 0
+    }
   })
 })
 
