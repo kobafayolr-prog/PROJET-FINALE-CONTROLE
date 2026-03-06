@@ -1,12 +1,1143 @@
 import { Hono } from 'hono'
-import { renderer } from './renderer'
+import { cors } from 'hono/cors'
+import { serveStatic } from 'hono/cloudflare-workers'
 
-const app = new Hono()
+type Bindings = {
+  DB: D1Database
+}
 
-app.use(renderer)
+const app = new Hono<{ Bindings: Bindings }>()
 
-app.get('/', (c) => {
-  return c.render(<h1>Hello!</h1>)
+app.use('/api/*', cors())
+
+// ============================================
+// UTILITIES
+// ============================================
+const JWT_SECRET = 'timetrack-bgfibank-secret-2024'
+
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(password)
+  const hash = await crypto.subtle.digest('SHA-256', data)
+  return btoa(String.fromCharCode(...new Uint8Array(hash)))
+}
+
+// JWT manuel (HMAC-SHA256)
+async function signJWT(payload: any): Promise<string> {
+  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+  const body = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+  const data = `${header}.${body}`
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data))
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+  return `${data}.${sigB64}`
+}
+
+async function verifyJWT(token: string): Promise<any> {
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  const data = `${parts[0]}.${parts[1]}`
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+  const sigBytes = Uint8Array.from(atob(parts[2].replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))
+  const valid = await crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(data))
+  if (!valid) return null
+  const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+  return payload
+}
+
+async function getUser(c: any): Promise<any> {
+  try {
+    const authHeader = c.req.header('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return null
+    const token = authHeader.slice(7)
+    return await verifyJWT(token)
+  } catch {
+    return null
+  }
+}
+
+function minutesToHours(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return `${h}h ${m.toString().padStart(2, '0')}m`
+}
+
+// ============================================
+// AUTH ROUTES
+// ============================================
+
+app.post('/api/auth/login', async (c) => {
+  try {
+    const { email, password } = await c.req.json()
+    if (!email || !password) {
+      return c.json({ error: 'Email et mot de passe requis' }, 400)
+    }
+
+    const user = await c.env.DB.prepare(
+      'SELECT u.*, d.name as department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE u.email = ? AND u.status = "Actif"'
+    ).bind(email).first() as any
+
+    if (!user) {
+      return c.json({ error: 'Email ou mot de passe incorrect' }, 401)
+    }
+
+    const passwordHash = await hashPassword(password)
+    if (passwordHash !== user.password_hash) {
+      await c.env.DB.prepare(
+        'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
+      ).bind(user.id, 'LOGIN_FAILED', `Tentative de connexion échouée pour ${user.first_name} ${user.last_name}`).run()
+      return c.json({ error: 'Email ou mot de passe incorrect' }, 401)
+    }
+
+    await c.env.DB.prepare(
+      'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(user.id).run()
+
+    await c.env.DB.prepare(
+      'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
+    ).bind(user.id, 'LOGIN', `Connexion réussie de ${user.first_name} ${user.last_name}`).run()
+
+    const token = await signJWT({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      department_id: user.department_id,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      department_name: user.department_name
+    })
+
+    return c.json({
+      token,
+      user: {
+        id: user.id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        role: user.role,
+        department_id: user.department_id,
+        department_name: user.department_name
+      }
+    })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
 })
+
+app.get('/api/auth/me', async (c) => {
+  const user = await getUser(c)
+  if (!user) return c.json({ error: 'Non autorisé' }, 401)
+  return c.json({ user })
+})
+
+// ============================================
+// ADMIN - USERS
+// ============================================
+
+app.get('/api/admin/users', async (c) => {
+  const user = await getUser(c)
+  if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const users = await c.env.DB.prepare(
+    'SELECT u.*, d.name as department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.created_at DESC'
+  ).all()
+  return c.json(users.results)
+})
+
+app.post('/api/admin/users', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  try {
+    const { first_name, last_name, email, password, role, department_id, status } = await c.req.json()
+    const passwordHash = await hashPassword(password)
+
+    const result = await c.env.DB.prepare(
+      'INSERT INTO users (first_name, last_name, email, password_hash, role, department_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(first_name, last_name, email, passwordHash, role, department_id || null, status || 'Actif').run()
+
+    await c.env.DB.prepare(
+      'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
+    ).bind(currentUser.id, 'CREATE_USER', `Création de l'utilisateur ${first_name} ${last_name}`).run()
+
+    return c.json({ id: result.meta.last_row_id, message: 'Utilisateur créé avec succès' })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+app.put('/api/admin/users/:id', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  try {
+    const id = c.req.param('id')
+    const { first_name, last_name, email, password, role, department_id, status } = await c.req.json()
+
+    if (password) {
+      const passwordHash = await hashPassword(password)
+      await c.env.DB.prepare(
+        'UPDATE users SET first_name=?, last_name=?, email=?, password_hash=?, role=?, department_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+      ).bind(first_name, last_name, email, passwordHash, role, department_id || null, status, id).run()
+    } else {
+      await c.env.DB.prepare(
+        'UPDATE users SET first_name=?, last_name=?, email=?, role=?, department_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+      ).bind(first_name, last_name, email, role, department_id || null, status, id).run()
+    }
+
+    await c.env.DB.prepare(
+      'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
+    ).bind(currentUser.id, 'UPDATE_USER', `Modification de l'utilisateur ID ${id}`).run()
+
+    return c.json({ message: 'Utilisateur mis à jour' })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+app.delete('/api/admin/users/:id', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const id = c.req.param('id')
+  await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run()
+  return c.json({ message: 'Utilisateur supprimé' })
+})
+
+// ============================================
+// ADMIN - DEPARTMENTS
+// ============================================
+
+app.get('/api/admin/departments', async (c) => {
+  const depts = await c.env.DB.prepare('SELECT * FROM departments ORDER BY name').all()
+  return c.json(depts.results)
+})
+
+app.post('/api/admin/departments', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  try {
+    const { name, code, description, status } = await c.req.json()
+    const result = await c.env.DB.prepare(
+      'INSERT INTO departments (name, code, description, status) VALUES (?, ?, ?, ?)'
+    ).bind(name, code, description || '', status || 'Actif').run()
+
+    return c.json({ id: result.meta.last_row_id, message: 'Département créé' })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+app.put('/api/admin/departments/:id', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const id = c.req.param('id')
+  const { name, code, description, status } = await c.req.json()
+  await c.env.DB.prepare(
+    'UPDATE departments SET name=?, code=?, description=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+  ).bind(name, code, description || '', status, id).run()
+
+  return c.json({ message: 'Département mis à jour' })
+})
+
+// ============================================
+// ADMIN - OBJECTIVES
+// ============================================
+
+app.get('/api/admin/objectives', async (c) => {
+  const objs = await c.env.DB.prepare('SELECT * FROM strategic_objectives ORDER BY name').all()
+  return c.json(objs.results)
+})
+
+app.post('/api/admin/objectives', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const { name, description, color, target_percentage, status } = await c.req.json()
+  const result = await c.env.DB.prepare(
+    'INSERT INTO strategic_objectives (name, description, color, target_percentage, status) VALUES (?, ?, ?, ?, ?)'
+  ).bind(name, description || '', color || '#1e3a5f', target_percentage || 0, status || 'Actif').run()
+
+  return c.json({ id: result.meta.last_row_id, message: 'Objectif créé' })
+})
+
+app.put('/api/admin/objectives/:id', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const id = c.req.param('id')
+  const { name, description, color, target_percentage, status } = await c.req.json()
+  await c.env.DB.prepare(
+    'UPDATE strategic_objectives SET name=?, description=?, color=?, target_percentage=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+  ).bind(name, description || '', color || '#1e3a5f', target_percentage || 0, status, id).run()
+
+  return c.json({ message: 'Objectif mis à jour' })
+})
+
+// ============================================
+// ADMIN - PROCESSES
+// ============================================
+
+app.get('/api/admin/processes', async (c) => {
+  const procs = await c.env.DB.prepare(
+    `SELECT p.*, d.name as department_name, o.name as objective_name, o.color as objective_color
+     FROM processes p
+     JOIN departments d ON p.department_id = d.id
+     JOIN strategic_objectives o ON p.objective_id = o.id
+     ORDER BY p.name`
+  ).all()
+  return c.json(procs.results)
+})
+
+app.post('/api/admin/processes', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const { name, description, department_id, objective_id, status } = await c.req.json()
+  const result = await c.env.DB.prepare(
+    'INSERT INTO processes (name, description, department_id, objective_id, status) VALUES (?, ?, ?, ?, ?)'
+  ).bind(name, description || '', department_id, objective_id, status || 'Actif').run()
+
+  return c.json({ id: result.meta.last_row_id, message: 'Processus créé' })
+})
+
+app.put('/api/admin/processes/:id', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const id = c.req.param('id')
+  const { name, description, department_id, objective_id, status } = await c.req.json()
+  await c.env.DB.prepare(
+    'UPDATE processes SET name=?, description=?, department_id=?, objective_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+  ).bind(name, description || '', department_id, objective_id, status, id).run()
+
+  return c.json({ message: 'Processus mis à jour' })
+})
+
+// ============================================
+// ADMIN - TASKS
+// ============================================
+
+app.get('/api/admin/tasks', async (c) => {
+  const tasks = await c.env.DB.prepare(
+    `SELECT t.*, d.name as department_name, p.name as process_name, o.name as objective_name, o.color as objective_color
+     FROM tasks t
+     JOIN departments d ON t.department_id = d.id
+     JOIN processes p ON t.process_id = p.id
+     JOIN strategic_objectives o ON t.objective_id = o.id
+     ORDER BY t.name`
+  ).all()
+  return c.json(tasks.results)
+})
+
+app.post('/api/admin/tasks', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const { name, description, department_id, process_id, objective_id, task_type, status } = await c.req.json()
+  const result = await c.env.DB.prepare(
+    'INSERT INTO tasks (name, description, department_id, process_id, objective_id, task_type, status) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(name, description || '', department_id, process_id, objective_id, task_type || 'Productive', status || 'Actif').run()
+
+  return c.json({ id: result.meta.last_row_id, message: 'Tâche créée' })
+})
+
+app.put('/api/admin/tasks/:id', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const id = c.req.param('id')
+  const { name, description, department_id, process_id, objective_id, task_type, status } = await c.req.json()
+  await c.env.DB.prepare(
+    'UPDATE tasks SET name=?, description=?, department_id=?, process_id=?, objective_id=?, task_type=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+  ).bind(name, description || '', department_id, process_id, objective_id, task_type || 'Productive', status, id).run()
+
+  return c.json({ message: 'Tâche mise à jour' })
+})
+
+// ============================================
+// ADMIN - SESSIONS (toutes)
+// ============================================
+
+app.get('/api/admin/sessions', async (c) => {
+  const sessions = await c.env.DB.prepare(
+    `SELECT ws.*, 
+     u.first_name || ' ' || u.last_name as agent_name,
+     d.name as department_name,
+     t.name as task_name,
+     o.name as objective_name,
+     o.color as objective_color
+     FROM work_sessions ws
+     JOIN users u ON ws.user_id = u.id
+     JOIN departments d ON ws.department_id = d.id
+     JOIN tasks t ON ws.task_id = t.id
+     JOIN strategic_objectives o ON ws.objective_id = o.id
+     ORDER BY ws.created_at DESC
+     LIMIT 200`
+  ).all()
+  return c.json(sessions.results)
+})
+
+// ============================================
+// ADMIN - STATS (tableau de bord)
+// ============================================
+
+app.get('/api/admin/stats', async (c) => {
+  const user = await getUser(c)
+  if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  // Heures par objectif stratégique (sessions validées)
+  const hoursByObjective = await c.env.DB.prepare(
+    `SELECT o.name, o.color, o.target_percentage,
+     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
+     FROM strategic_objectives o
+     LEFT JOIN work_sessions ws ON ws.objective_id = o.id AND ws.status = 'Validé'
+     WHERE o.status = 'Actif'
+     GROUP BY o.id, o.name, o.color, o.target_percentage
+     ORDER BY total_minutes DESC`
+  ).all()
+
+  // Heures par département
+  const hoursByDept = await c.env.DB.prepare(
+    `SELECT d.name, COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
+     FROM departments d
+     LEFT JOIN work_sessions ws ON ws.department_id = d.id AND ws.status = 'Validé'
+     GROUP BY d.id, d.name
+     HAVING total_minutes > 0
+     ORDER BY total_minutes DESC`
+  ).all()
+
+  // Tendance mensuelle (6 derniers mois)
+  const monthlyTrend = await c.env.DB.prepare(
+    `SELECT strftime('%Y-%m', start_time) as month,
+     COALESCE(SUM(duration_minutes), 0) as total_minutes
+     FROM work_sessions WHERE status = 'Validé'
+     GROUP BY strftime('%Y-%m', start_time)
+     ORDER BY month DESC LIMIT 6`
+  ).all()
+
+  // Stats productivité globale (8h = 480 min par agent/jour)
+  const productivity = await c.env.DB.prepare(
+    `SELECT 
+     COALESCE(SUM(CASE WHEN t.task_type = 'Productive' THEN ws.duration_minutes ELSE 0 END), 0) as productive_minutes,
+     COALESCE(SUM(CASE WHEN t.task_type != 'Productive' THEN ws.duration_minutes ELSE 0 END), 0) as non_productive_minutes
+     FROM work_sessions ws
+     JOIN tasks t ON ws.task_id = t.id
+     WHERE ws.status = 'Validé'`
+  ).first() as any
+
+  // Calcul distribution % par objectif
+  const objData = hoursByObjective.results as any[]
+  const totalMinutes = objData.reduce((sum: number, o: any) => sum + o.total_minutes, 0)
+  const objectivesWithPct = objData.map((o: any) => ({
+    ...o,
+    percentage: totalMinutes > 0 ? Math.round((o.total_minutes / totalMinutes) * 100) : 0,
+    hours_display: minutesToHours(o.total_minutes)
+  }))
+
+  return c.json({
+    hoursByObjective: objectivesWithPct,
+    hoursByDept: hoursByDept.results,
+    monthlyTrend: monthlyTrend.results,
+    productivity: {
+      productive_minutes: productivity?.productive_minutes || 0,
+      non_productive_minutes: productivity?.non_productive_minutes || 0,
+      productive_hours: minutesToHours(productivity?.productive_minutes || 0),
+      non_productive_hours: minutesToHours(productivity?.non_productive_minutes || 0)
+    }
+  })
+})
+
+// ============================================
+// ADMIN - RAPPORTS & EXPORT
+// ============================================
+
+app.get('/api/admin/reports', async (c) => {
+  const user = await getUser(c)
+  if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const reports = await c.env.DB.prepare(
+    `SELECT ws.*,
+     u.first_name || ' ' || u.last_name as agent_name,
+     d.name as department_name,
+     t.name as task_name,
+     p.name as process_name,
+     o.name as objective_name,
+     o.color as objective_color
+     FROM work_sessions ws
+     JOIN users u ON ws.user_id = u.id
+     JOIN departments d ON ws.department_id = d.id
+     JOIN tasks t ON ws.task_id = t.id
+     JOIN processes p ON t.process_id = p.id
+     JOIN strategic_objectives o ON ws.objective_id = o.id
+     ORDER BY ws.start_time DESC`
+  ).all()
+  return c.json(reports.results)
+})
+
+// ============================================
+// ADMIN - JOURNAL D'AUDIT
+// ============================================
+
+app.get('/api/admin/audit', async (c) => {
+  const user = await getUser(c)
+  if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const logs = await c.env.DB.prepare(
+    `SELECT al.*, u.first_name || ' ' || u.last_name as user_name, u.last_name || ' ' || u.first_name as user_name_rev
+     FROM audit_logs al
+     LEFT JOIN users u ON al.user_id = u.id
+     ORDER BY al.created_at DESC LIMIT 100`
+  ).all()
+  return c.json(logs.results)
+})
+
+// ============================================
+// AGENT - DASHBOARD
+// ============================================
+
+app.get('/api/agent/dashboard', async (c) => {
+  const user = await getUser(c)
+  if (!user) return c.json({ error: 'Non autorisé' }, 401)
+
+  const today = new Date().toISOString().split('T')[0]
+
+  // Heures aujourd'hui
+  const todayStats = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(duration_minutes), 0) as today_minutes
+     FROM work_sessions WHERE user_id = ? AND date(start_time) = ? AND status IN ('Validé', 'Terminé')`
+  ).bind(user.id, today).first() as any
+
+  // Total cumulé
+  const totalStats = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(duration_minutes), 0) as total_minutes
+     FROM work_sessions WHERE user_id = ? AND status IN ('Validé', 'Terminé')`
+  ).bind(user.id).first() as any
+
+  // Sessions totales et rejetées
+  const sessionStats = await c.env.DB.prepare(
+    `SELECT COUNT(*) as total, 
+     SUM(CASE WHEN status = 'Rejeté' THEN 1 ELSE 0 END) as rejected
+     FROM work_sessions WHERE user_id = ?`
+  ).bind(user.id).first() as any
+
+  // Répartition par objectif
+  const byObjective = await c.env.DB.prepare(
+    `SELECT o.name, o.color, COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
+     FROM strategic_objectives o
+     LEFT JOIN work_sessions ws ON ws.objective_id = o.id AND ws.user_id = ? AND ws.status IN ('Validé', 'Terminé')
+     WHERE o.status = 'Actif'
+     GROUP BY o.id, o.name, o.color
+     HAVING total_minutes > 0
+     ORDER BY total_minutes DESC`
+  ).bind(user.id).all()
+
+  const objData = byObjective.results as any[]
+  const totalMin = objData.reduce((sum: number, o: any) => sum + o.total_minutes, 0)
+  const objectivesWithPct = objData.map((o: any) => ({
+    ...o,
+    percentage: totalMin > 0 ? Math.round((o.total_minutes / totalMin) * 100) : 0,
+    hours_display: minutesToHours(o.total_minutes)
+  }))
+
+  return c.json({
+    today_minutes: todayStats?.today_minutes || 0,
+    today_hours: minutesToHours(todayStats?.today_minutes || 0),
+    total_minutes: totalStats?.total_minutes || 0,
+    total_hours: minutesToHours(totalStats?.total_minutes || 0),
+    total_sessions: sessionStats?.total || 0,
+    rejected_sessions: sessionStats?.rejected || 0,
+    byObjective: objectivesWithPct
+  })
+})
+
+// ============================================
+// AGENT - TÂCHES DISPONIBLES
+// ============================================
+
+app.get('/api/agent/tasks', async (c) => {
+  const user = await getUser(c)
+  if (!user) return c.json({ error: 'Non autorisé' }, 401)
+
+  const tasks = await c.env.DB.prepare(
+    `SELECT t.*, p.name as process_name, o.name as objective_name, o.color as objective_color
+     FROM tasks t
+     JOIN processes p ON t.process_id = p.id
+     JOIN strategic_objectives o ON t.objective_id = o.id
+     WHERE t.department_id = ? AND t.status = 'Actif'
+     ORDER BY o.name, t.name`
+  ).bind(user.department_id).all()
+
+  return c.json(tasks.results)
+})
+
+// ============================================
+// AGENT - SESSIONS
+// ============================================
+
+app.get('/api/agent/sessions', async (c) => {
+  const user = await getUser(c)
+  if (!user) return c.json({ error: 'Non autorisé' }, 401)
+
+  const sessions = await c.env.DB.prepare(
+    `SELECT ws.*, t.name as task_name, o.name as objective_name, o.color as objective_color
+     FROM work_sessions ws
+     JOIN tasks t ON ws.task_id = t.id
+     JOIN strategic_objectives o ON ws.objective_id = o.id
+     WHERE ws.user_id = ?
+     ORDER BY ws.start_time DESC`
+  ).bind(user.id).all()
+
+  return c.json(sessions.results)
+})
+
+// Session en cours
+app.get('/api/agent/sessions/active', async (c) => {
+  const user = await getUser(c)
+  if (!user) return c.json({ error: 'Non autorisé' }, 401)
+
+  const session = await c.env.DB.prepare(
+    `SELECT ws.*, t.name as task_name, o.name as objective_name
+     FROM work_sessions ws
+     JOIN tasks t ON ws.task_id = t.id
+     JOIN strategic_objectives o ON ws.objective_id = o.id
+     WHERE ws.user_id = ? AND ws.status = 'En cours'
+     LIMIT 1`
+  ).bind(user.id).first()
+
+  return c.json(session || null)
+})
+
+// Démarrer une session (chronomètre)
+app.post('/api/agent/sessions/start', async (c) => {
+  const user = await getUser(c)
+  if (!user) return c.json({ error: 'Non autorisé' }, 401)
+
+  try {
+    const { task_id } = await c.req.json()
+
+    // Vérifier qu'il n'y a pas de session en cours
+    const active = await c.env.DB.prepare(
+      'SELECT id FROM work_sessions WHERE user_id = ? AND status = "En cours"'
+    ).bind(user.id).first()
+    if (active) return c.json({ error: 'Une session est déjà en cours' }, 400)
+
+    const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(task_id).first() as any
+    if (!task) return c.json({ error: 'Tâche non trouvée' }, 404)
+
+    const result = await c.env.DB.prepare(
+      'INSERT INTO work_sessions (user_id, task_id, objective_id, department_id, start_time, session_type, status) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, "Auto", "En cours")'
+    ).bind(user.id, task_id, task.objective_id, user.department_id).run()
+
+    return c.json({ id: result.meta.last_row_id, message: 'Session démarrée' })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+// Arrêter une session
+app.post('/api/agent/sessions/stop', async (c) => {
+  const user = await getUser(c)
+  if (!user) return c.json({ error: 'Non autorisé' }, 401)
+
+  try {
+    const active = await c.env.DB.prepare(
+      'SELECT * FROM work_sessions WHERE user_id = ? AND status = "En cours"'
+    ).bind(user.id).first() as any
+
+    if (!active) return c.json({ error: 'Aucune session en cours' }, 400)
+
+    const startTime = new Date(active.start_time)
+    const endTime = new Date()
+    const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000)
+
+    await c.env.DB.prepare(
+      'UPDATE work_sessions SET end_time=CURRENT_TIMESTAMP, duration_minutes=?, status="Terminé", updated_at=CURRENT_TIMESTAMP WHERE id=?'
+    ).bind(durationMinutes, active.id).run()
+
+    return c.json({ message: 'Session arrêtée', duration_minutes: durationMinutes })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+// Saisie manuelle d'une session
+app.post('/api/agent/sessions/manual', async (c) => {
+  const user = await getUser(c)
+  if (!user) return c.json({ error: 'Non autorisé' }, 401)
+
+  try {
+    const { task_id, start_time, end_time, comment } = await c.req.json()
+    const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(task_id).first() as any
+    if (!task) return c.json({ error: 'Tâche non trouvée' }, 404)
+
+    const start = new Date(start_time)
+    const end = new Date(end_time)
+    const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000)
+
+    if (durationMinutes < 0) return c.json({ error: 'La date de fin doit être après la date de début' }, 400)
+
+    const result = await c.env.DB.prepare(
+      'INSERT INTO work_sessions (user_id, task_id, objective_id, department_id, start_time, end_time, duration_minutes, session_type, status, comment) VALUES (?, ?, ?, ?, ?, ?, ?, "Manuelle", "Terminé", ?)'
+    ).bind(user.id, task_id, task.objective_id, user.department_id, start_time, end_time, durationMinutes, comment || '').run()
+
+    return c.json({ id: result.meta.last_row_id, message: 'Session enregistrée' })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+// ============================================
+// AGENT - STATISTIQUES
+// ============================================
+
+app.get('/api/agent/stats', async (c) => {
+  const user = await getUser(c)
+  if (!user) return c.json({ error: 'Non autorisé' }, 401)
+
+  const today = new Date().toISOString().split('T')[0]
+
+  // KPIs
+  const todayMin = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(duration_minutes), 0) as m FROM work_sessions WHERE user_id=? AND date(start_time)=? AND status IN ('Validé','Terminé')`
+  ).bind(user.id, today).first() as any
+
+  const totalMin = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(duration_minutes), 0) as m FROM work_sessions WHERE user_id=? AND status IN ('Validé','Terminé')`
+  ).bind(user.id).first() as any
+
+  const validatedMin = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(duration_minutes), 0) as m FROM work_sessions WHERE user_id=? AND status='Validé'`
+  ).bind(user.id).first() as any
+
+  const totalSessions = await c.env.DB.prepare(
+    `SELECT COUNT(*) as c FROM work_sessions WHERE user_id=?`
+  ).bind(user.id).first() as any
+
+  // Par objectif
+  const byObjective = await c.env.DB.prepare(
+    `SELECT o.name, o.color, COALESCE(SUM(ws.duration_minutes), 0) as total_minutes,
+     COUNT(ws.id) as session_count
+     FROM strategic_objectives o
+     LEFT JOIN work_sessions ws ON ws.objective_id = o.id AND ws.user_id = ? AND ws.status IN ('Validé','Terminé')
+     WHERE o.status = 'Actif'
+     GROUP BY o.id, o.name, o.color
+     ORDER BY total_minutes DESC`
+  ).bind(user.id).all()
+
+  const objData = byObjective.results as any[]
+  const totalM = objData.reduce((sum: number, o: any) => sum + o.total_minutes, 0)
+
+  return c.json({
+    today_hours: minutesToHours(todayMin?.m || 0),
+    total_hours: minutesToHours(totalMin?.m || 0),
+    validated_hours: minutesToHours(validatedMin?.m || 0),
+    total_sessions: totalSessions?.c || 0,
+    byObjective: objData.map((o: any) => ({
+      ...o,
+      percentage: totalM > 0 ? Math.round((o.total_minutes / totalM) * 100) : 0,
+      hours_display: minutesToHours(o.total_minutes)
+    }))
+  })
+})
+
+// ============================================
+// CHEF - DASHBOARD
+// ============================================
+
+app.get('/api/chef/dashboard', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+
+  const deptId = user.department_id
+
+  // Agents actifs dans le département
+  const activeAgents = await c.env.DB.prepare(
+    `SELECT COUNT(DISTINCT user_id) as count FROM work_sessions 
+     WHERE department_id = ? AND date(start_time) = date('now')`
+  ).bind(deptId).first() as any
+
+  // Total heures équipe ce mois
+  const totalTeamHours = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(duration_minutes), 0) as m FROM work_sessions 
+     WHERE department_id = ? AND strftime('%Y-%m', start_time) = strftime('%Y-%m', 'now') AND status IN ('Validé','Terminé')`
+  ).bind(deptId).first() as any
+
+  // Sessions à valider
+  const toValidate = await c.env.DB.prepare(
+    `SELECT COUNT(*) as c FROM work_sessions WHERE department_id = ? AND status = 'Terminé'`
+  ).bind(deptId).first() as any
+
+  // Heures par agent
+  const hoursByAgent = await c.env.DB.prepare(
+    `SELECT u.first_name || ' ' || u.last_name as agent_name,
+     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
+     FROM users u
+     LEFT JOIN work_sessions ws ON ws.user_id = u.id AND ws.status IN ('Validé','Terminé')
+     WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
+     GROUP BY u.id, u.first_name, u.last_name`
+  ).bind(deptId).all()
+
+  // Répartition par objectif (département)
+  const byObjective = await c.env.DB.prepare(
+    `SELECT o.name, o.color, o.target_percentage,
+     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
+     FROM strategic_objectives o
+     LEFT JOIN work_sessions ws ON ws.objective_id = o.id AND ws.department_id = ? AND ws.status IN ('Validé','Terminé')
+     WHERE o.status = 'Actif'
+     GROUP BY o.id, o.name, o.color, o.target_percentage
+     HAVING total_minutes > 0`
+  ).bind(deptId).all()
+
+  // Détail par agent
+  const agentDetail = await c.env.DB.prepare(
+    `SELECT u.id, u.first_name || ' ' || u.last_name as agent_name,
+     COUNT(ws.id) as total_sessions,
+     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes,
+     COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END), 0) as validated_minutes,
+     COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END) * 100.0 / NULLIF(SUM(ws.duration_minutes), 0), 0) as pct_validated
+     FROM users u
+     LEFT JOIN work_sessions ws ON ws.user_id = u.id
+     WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
+     GROUP BY u.id, u.first_name, u.last_name`
+  ).bind(deptId).all()
+
+  const objData = byObjective.results as any[]
+  const totalMin = objData.reduce((sum: number, o: any) => sum + o.total_minutes, 0)
+
+  return c.json({
+    active_agents: activeAgents?.count || 0,
+    total_team_hours: minutesToHours(totalTeamHours?.m || 0),
+    to_validate: toValidate?.c || 0,
+    hoursByAgent: hoursByAgent.results,
+    byObjective: objData.map((o: any) => ({
+      ...o,
+      percentage: totalMin > 0 ? Math.round((o.total_minutes / totalMin) * 100) : 0,
+      hours_display: minutesToHours(o.total_minutes)
+    })),
+    agentDetail: (agentDetail.results as any[]).map((a: any) => ({
+      ...a,
+      total_hours: minutesToHours(a.total_minutes),
+      validated_hours: minutesToHours(a.validated_minutes)
+    }))
+  })
+})
+
+// ============================================
+// CHEF - ÉQUIPE
+// ============================================
+
+app.get('/api/chef/team', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+
+  const today = new Date().toISOString().split('T')[0]
+  const members = await c.env.DB.prepare(
+    `SELECT u.*,
+     COALESCE(SUM(CASE WHEN date(ws.start_time) = ? THEN 1 ELSE 0 END), 0) as today_sessions,
+     COALESCE(SUM(CASE WHEN date(ws.start_time) = ? THEN ws.duration_minutes ELSE 0 END), 0) as today_minutes
+     FROM users u
+     LEFT JOIN work_sessions ws ON ws.user_id = u.id AND ws.status IN ('Validé','Terminé')
+     WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
+     GROUP BY u.id`
+  ).bind(today, today, user.department_id).all()
+
+  return c.json((members.results as any[]).map((m: any) => ({
+    ...m,
+    today_hours: minutesToHours(m.today_minutes),
+    password_hash: undefined
+  })))
+})
+
+// ============================================
+// CHEF - VALIDATION
+// ============================================
+
+app.get('/api/chef/validation', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+
+  const sessions = await c.env.DB.prepare(
+    `SELECT ws.*, u.first_name || ' ' || u.last_name as agent_name,
+     t.name as task_name, o.name as objective_name, o.color as objective_color
+     FROM work_sessions ws
+     JOIN users u ON ws.user_id = u.id
+     JOIN tasks t ON ws.task_id = t.id
+     JOIN strategic_objectives o ON ws.objective_id = o.id
+     WHERE ws.department_id = ? AND ws.status = 'Terminé'
+     ORDER BY ws.start_time DESC`
+  ).bind(user.department_id).all()
+
+  return c.json(sessions.results)
+})
+
+app.post('/api/chef/validate/:id', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+
+  const id = c.req.param('id')
+  await c.env.DB.prepare(
+    'UPDATE work_sessions SET status="Validé", validated_by=?, validated_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+  ).bind(user.id, id).run()
+
+  await c.env.DB.prepare(
+    'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
+  ).bind(user.id, 'VALIDATION', `Session #${id} validée`).run()
+
+  return c.json({ message: 'Session validée' })
+})
+
+app.post('/api/chef/reject/:id', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({})) as any
+  await c.env.DB.prepare(
+    'UPDATE work_sessions SET status="Rejeté", rejected_reason=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+  ).bind(body.reason || '', id).run()
+
+  await c.env.DB.prepare(
+    'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
+  ).bind(user.id, 'REJET', `Session #${id} rejetée`).run()
+
+  return c.json({ message: 'Session rejetée' })
+})
+
+app.post('/api/chef/validate-all', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+
+  await c.env.DB.prepare(
+    'UPDATE work_sessions SET status="Validé", validated_by=?, validated_at=CURRENT_TIMESTAMP WHERE department_id=? AND status="Terminé"'
+  ).bind(user.id, user.department_id).run()
+
+  await c.env.DB.prepare(
+    'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
+  ).bind(user.id, 'VALIDATION', `Validation groupée de toutes les sessions du département`).run()
+
+  return c.json({ message: 'Toutes les sessions validées' })
+})
+
+// ============================================
+// CHEF - RAPPORTS
+// ============================================
+
+app.get('/api/chef/reports', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+
+  const reports = await c.env.DB.prepare(
+    `SELECT ws.*, u.first_name || ' ' || u.last_name as agent_name,
+     t.name as task_name, p.name as process_name,
+     o.name as objective_name, o.color as objective_color
+     FROM work_sessions ws
+     JOIN users u ON ws.user_id = u.id
+     JOIN tasks t ON ws.task_id = t.id
+     JOIN processes p ON t.process_id = p.id
+     JOIN strategic_objectives o ON ws.objective_id = o.id
+     WHERE ws.department_id = ?
+     ORDER BY ws.start_time DESC`
+  ).bind(user.department_id).all()
+
+  return c.json(reports.results)
+})
+
+// ============================================
+// STATIC FILES
+// ============================================
+
+app.use('/static/*', serveStatic({ root: './' }))
+
+// ============================================
+// FRONTEND ROUTES (SPA)
+// ============================================
+
+// Login page
+app.get('/login', (c) => {
+  return c.html(getLoginHTML())
+})
+
+// Admin routes
+app.get('/admin/*', (c) => {
+  return c.html(getAdminHTML())
+})
+
+// Agent routes
+app.get('/agent/*', (c) => {
+  return c.html(getAgentHTML())
+})
+
+// Chef routes
+app.get('/chef/*', (c) => {
+  return c.html(getChefHTML())
+})
+
+// Root redirect
+app.get('/', (c) => {
+  return c.redirect('/login')
+})
+
+// ============================================
+// HTML TEMPLATES
+// ============================================
+
+function getLoginHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TimeTrack - BGFIBank</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+  body { background: linear-gradient(135deg, #0f2544 0%, #1e3a5f 50%, #0f2544 100%); min-height: 100vh; }
+  .login-card { background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+  .btn-primary { background: #1e3a5f; color: white; transition: all 0.2s; }
+  .btn-primary:hover { background: #0f2544; }
+  .input-field { border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 14px; width: 100%; outline: none; transition: border 0.2s; }
+  .input-field:focus { border-color: #1e3a5f; box-shadow: 0 0 0 2px rgba(30,58,95,0.1); }
+</style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+<div class="login-card w-full max-w-md p-8">
+  <div class="text-center mb-8">
+    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4" style="background:#1e3a5f">
+      <i class="fas fa-star text-yellow-400 text-2xl"></i>
+    </div>
+    <h1 class="text-2xl font-bold text-gray-800">TimeTrack</h1>
+    <p class="text-gray-500 text-sm">BGFIBank</p>
+  </div>
+  <div id="error-msg" class="hidden bg-red-50 border border-red-200 text-red-600 rounded-lg p-3 mb-4 text-sm"></div>
+  <form id="login-form">
+    <div class="mb-4">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Adresse email</label>
+      <input type="email" id="email" class="input-field" placeholder="email@bgfibank.com" required>
+    </div>
+    <div class="mb-6">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Mot de passe</label>
+      <div class="relative">
+        <input type="password" id="password" class="input-field pr-10" placeholder="••••••••" required>
+        <button type="button" onclick="togglePwd()" class="absolute right-3 top-3 text-gray-400">
+          <i class="fas fa-eye" id="eye-icon"></i>
+        </button>
+      </div>
+    </div>
+    <button type="submit" class="btn-primary w-full py-3 rounded-lg font-semibold text-sm" id="login-btn">
+      <i class="fas fa-sign-in-alt mr-2"></i>Se connecter
+    </button>
+  </form>
+</div>
+<script>
+function togglePwd(){
+  const p=document.getElementById('password');
+  const i=document.getElementById('eye-icon');
+  if(p.type==='password'){p.type='text';i.className='fas fa-eye-slash';}
+  else{p.type='password';i.className='fas fa-eye';}
+}
+document.getElementById('login-form').addEventListener('submit',async(e)=>{
+  e.preventDefault();
+  const btn=document.getElementById('login-btn');
+  const err=document.getElementById('error-msg');
+  btn.innerHTML='<i class="fas fa-spinner fa-spin mr-2"></i>Connexion...';
+  btn.disabled=true;
+  err.classList.add('hidden');
+  try{
+    const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Erreur de connexion');
+    localStorage.setItem('token',d.token);
+    localStorage.setItem('user',JSON.stringify(d.user));
+    if(d.user.role==='Administrateur')window.location='/admin/dashboard';
+    else if(d.user.role==='Chef de Département')window.location='/chef/dashboard';
+    else window.location='/agent/dashboard';
+  }catch(e){
+    err.textContent=e.message;
+    err.classList.remove('hidden');
+    btn.innerHTML='<i class="fas fa-sign-in-alt mr-2"></i>Se connecter';
+    btn.disabled=false;
+  }
+});
+// Redirect if already logged in
+const t=localStorage.getItem('token');
+if(t){const u=JSON.parse(localStorage.getItem('user')||'{}');if(u.role==='Administrateur')window.location='/admin/dashboard';else if(u.role==='Chef de Département')window.location='/chef/dashboard';else if(u.role==='Agent')window.location='/agent/dashboard';}
+</script>
+</body>
+</html>`
+}
+
+function getAdminHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TimeTrack Admin - BGFIBank</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/static/admin.js"></script>
+</body>
+</html>`
+}
+
+function getAgentHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TimeTrack Agent - BGFIBank</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="/static/agent.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/static/agent.js"></script>
+</body>
+</html>`
+}
+
+function getChefHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TimeTrack Chef - BGFIBank</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="/static/chef.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/static/chef.js"></script>
+</body>
+</html>`
+}
 
 export default app
