@@ -544,77 +544,110 @@ app.get('/api/admin/stats', async (c) => {
   const user = await getUser(c)
   if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
-  // Heures par objectif stratégique (sessions validées)
+  // ── Correction 1 : sessions Validé + En attente + En cours comptent toutes
+  // ── Correction 3 : on exclut les weekends (strftime('%w') : 0=dim, 6=sam)
+
+  // Heures par objectif stratégique (toutes sessions actives)
   const hoursByObjective = await c.env.DB.prepare(
     `SELECT o.name, o.color, o.target_percentage,
      COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
      FROM strategic_objectives o
-     LEFT JOIN work_sessions ws ON ws.objective_id = o.id AND ws.status = 'Validé'
+     LEFT JOIN work_sessions ws ON ws.objective_id = o.id
+       AND ws.status IN ('Validé', 'En attente', 'En cours')
      WHERE o.status = 'Actif'
      GROUP BY o.id, o.name, o.color, o.target_percentage
      ORDER BY total_minutes DESC`
   ).all()
 
-  // Heures par département
+  // Heures par département (toutes sessions actives)
   const hoursByDept = await c.env.DB.prepare(
     `SELECT d.name, COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
      FROM departments d
-     LEFT JOIN work_sessions ws ON ws.department_id = d.id AND ws.status = 'Validé'
+     LEFT JOIN work_sessions ws ON ws.department_id = d.id
+       AND ws.status IN ('Validé', 'En attente', 'En cours')
      GROUP BY d.id, d.name
      HAVING total_minutes > 0
      ORDER BY total_minutes DESC`
   ).all()
 
-  // Tendance mensuelle (6 derniers mois)
+  // Tendance mensuelle (6 derniers mois — toutes sessions actives)
   const monthlyTrend = await c.env.DB.prepare(
     `SELECT strftime('%Y-%m', start_time) as month,
      COALESCE(SUM(duration_minutes), 0) as total_minutes
-     FROM work_sessions WHERE status = 'Validé'
+     FROM work_sessions
+     WHERE status IN ('Validé', 'En attente', 'En cours')
      GROUP BY strftime('%Y-%m', start_time)
      ORDER BY month DESC LIMIT 6`
   ).all()
-
-  // Stats productivité globale par agent/jour (8h = 480 min)
-  // Pour chaque agent et chaque jour, on calcule les heures pointées vs 8h
-  const productivityByAgentDay = await c.env.DB.prepare(
-    `SELECT 
-       u.id as user_id,
-       date(ws.start_time) as work_date,
-       COALESCE(SUM(ws.duration_minutes), 0) as pointed_minutes
-     FROM users u
-     LEFT JOIN work_sessions ws ON ws.user_id = u.id AND ws.status = 'Validé'
-     WHERE u.role = 'Agent' AND u.status = 'Actif'
-     GROUP BY u.id, date(ws.start_time)
-     HAVING work_date IS NOT NULL`
-  ).all() as any
 
   // Nombre total d'agents actifs
   const totalAgents = await c.env.DB.prepare(
     `SELECT COUNT(*) as count FROM users WHERE role = 'Agent' AND status = 'Actif'`
   ).first() as any
 
-  // Heures productives/non productives aujourd'hui par agent
+  // ── Correction 3 : on vérifie si aujourd'hui est un jour ouvrable (lun-ven)
+  // strftime('%w', 'now') : 0=dimanche, 6=samedi
+  const todayDow = new Date().getDay() // 0=dim, 6=sam
+  const isWeekend = todayDow === 0 || todayDow === 6
+
+  // ── Correction 2 : on distingue 3 catégories par agent aujourd'hui
+  //    validated_minutes  = sessions Validé
+  //    pending_minutes    = sessions En attente (travail réel non encore validé)
+  //    inprogress_minutes = sessions En cours (agent actuellement en train de travailler)
+  //    non_pointed        = 480 - tout ce qui est pointé (absent sans justificatif)
   const productivityToday = await c.env.DB.prepare(
-    `SELECT 
+    `SELECT
        u.id,
        u.first_name || ' ' || u.last_name as agent_name,
        d.name as department_name,
-       COALESCE(SUM(ws.duration_minutes), 0) as productive_minutes,
-       CASE WHEN 480 - COALESCE(SUM(ws.duration_minutes), 0) > 0 THEN 480 - COALESCE(SUM(ws.duration_minutes), 0) ELSE 0 END as non_productive_minutes
+       COALESCE(SUM(CASE WHEN ws.status = 'Validé'     THEN ws.duration_minutes ELSE 0 END), 0) as validated_minutes,
+       COALESCE(SUM(CASE WHEN ws.status = 'En attente' THEN ws.duration_minutes ELSE 0 END), 0) as pending_minutes,
+       COALESCE(SUM(CASE WHEN ws.status = 'En cours'   THEN ws.duration_minutes ELSE 0 END), 0) as inprogress_minutes
      FROM users u
      LEFT JOIN departments d ON u.department_id = d.id
-     LEFT JOIN work_sessions ws ON ws.user_id = u.id 
-       AND ws.status = 'Validé' 
+     LEFT JOIN work_sessions ws ON ws.user_id = u.id
        AND date(ws.start_time) = date('now')
+       AND ws.status IN ('Validé', 'En attente', 'En cours')
      WHERE u.role = 'Agent' AND u.status = 'Actif'
      GROUP BY u.id, u.first_name, u.last_name, d.name`
   ).all() as any
 
-  // Total global productif / non productif (aujourd'hui)
   const agentsToday = productivityToday.results as any[]
-  const totalProductiveToday = agentsToday.reduce((s: number, a: any) => s + Math.min(a.productive_minutes, 480), 0)
-  const totalNonProductiveToday = agentsToday.reduce((s: number, a: any) => s + a.non_productive_minutes, 0)
-  const totalCapacityToday = (totalAgents?.count || 0) * 480
+
+  // ── Si on est un weekend : capacité = 0 (pas de journée de travail attendue)
+  const capacityPerAgent = isWeekend ? 0 : 480
+  const totalCapacityToday = (totalAgents?.count || 0) * capacityPerAgent
+
+  // ── Calculs agrégés avec les 3 catégories
+  const agentsTodayMapped = agentsToday.map((a: any) => {
+    const total_pointed = Math.min(a.validated_minutes + a.pending_minutes + a.inprogress_minutes, capacityPerAgent || 480)
+    const non_pointed   = capacityPerAgent > 0 ? Math.max(capacityPerAgent - (a.validated_minutes + a.pending_minutes + a.inprogress_minutes), 0) : 0
+    return {
+      ...a,
+      total_pointed,
+      non_pointed,
+      // Pour l'affichage
+      validated_hours:   minutesToHours(a.validated_minutes),
+      pending_hours:     minutesToHours(a.pending_minutes),
+      inprogress_hours:  minutesToHours(a.inprogress_minutes),
+      non_pointed_hours: minutesToHours(non_pointed),
+      // Rétrocompatibilité avec l'ancien champ productive_minutes / non_productive_minutes
+      productive_minutes:     total_pointed,
+      non_productive_minutes: non_pointed,
+      productive_hours:       minutesToHours(total_pointed),
+      non_productive_hours:   minutesToHours(non_pointed),
+      productive_pct:         capacityPerAgent > 0 ? Math.round((total_pointed / capacityPerAgent) * 100) : 0,
+      non_productive_pct:     capacityPerAgent > 0 ? Math.round((non_pointed   / capacityPerAgent) * 100) : 0,
+      validated_pct:          capacityPerAgent > 0 ? Math.round((Math.min(a.validated_minutes, capacityPerAgent) / capacityPerAgent) * 100) : 0,
+      pending_pct:            capacityPerAgent > 0 ? Math.round((Math.min(a.pending_minutes,   capacityPerAgent) / capacityPerAgent) * 100) : 0,
+      is_weekend:             isWeekend
+    }
+  })
+
+  const totalPointedToday    = agentsTodayMapped.reduce((s: number, a: any) => s + a.total_pointed, 0)
+  const totalNonPointedToday = agentsTodayMapped.reduce((s: number, a: any) => s + a.non_pointed, 0)
+  const totalValidatedToday  = agentsTodayMapped.reduce((s: number, a: any) => s + Math.min(a.validated_minutes, capacityPerAgent || 480), 0)
+  const totalPendingToday    = agentsTodayMapped.reduce((s: number, a: any) => s + Math.min(a.pending_minutes, capacityPerAgent || 480), 0)
 
   // Calcul distribution % par objectif
   const objData = hoursByObjective.results as any[]
@@ -629,22 +662,27 @@ app.get('/api/admin/stats', async (c) => {
     hoursByObjective: objectivesWithPct,
     hoursByDept: hoursByDept.results,
     monthlyTrend: monthlyTrend.results,
+    is_weekend: isWeekend,
     productivity: {
-      total_agents: totalAgents?.count || 0,
-      total_capacity_today: totalCapacityToday,
-      productive_minutes_today: totalProductiveToday,
-      non_productive_minutes_today: totalNonProductiveToday,
-      productive_hours_today: minutesToHours(totalProductiveToday),
-      non_productive_hours_today: minutesToHours(totalNonProductiveToday),
-      productive_pct: totalCapacityToday > 0 ? Math.round((totalProductiveToday / totalCapacityToday) * 100) : 0,
-      non_productive_pct: totalCapacityToday > 0 ? Math.round((totalNonProductiveToday / totalCapacityToday) * 100) : 0,
-      agents_detail: agentsToday.map((a: any) => ({
-        ...a,
-        productive_hours: minutesToHours(Math.min(a.productive_minutes, 480)),
-        non_productive_hours: minutesToHours(a.non_productive_minutes),
-        productive_pct: Math.round((Math.min(a.productive_minutes, 480) / 480) * 100),
-        non_productive_pct: Math.round((a.non_productive_minutes / 480) * 100)
-      }))
+      total_agents:                  totalAgents?.count || 0,
+      total_capacity_today:          totalCapacityToday,
+      is_weekend:                    isWeekend,
+      // Catégorie 1 : sessions validées par le chef
+      validated_minutes_today:       totalValidatedToday,
+      validated_hours_today:         minutesToHours(totalValidatedToday),
+      validated_pct:                 totalCapacityToday > 0 ? Math.round((totalValidatedToday / totalCapacityToday) * 100) : 0,
+      // Catégorie 2 : sessions pointées mais en attente de validation
+      pending_minutes_today:         totalPendingToday,
+      pending_hours_today:           minutesToHours(totalPendingToday),
+      pending_pct:                   totalCapacityToday > 0 ? Math.round((totalPendingToday / totalCapacityToday) * 100) : 0,
+      // Catégorie 3 : total pointé (validé + en attente)
+      productive_minutes_today:      totalPointedToday,
+      non_productive_minutes_today:  totalNonPointedToday,
+      productive_hours_today:        minutesToHours(totalPointedToday),
+      non_productive_hours_today:    minutesToHours(totalNonPointedToday),
+      productive_pct:                totalCapacityToday > 0 ? Math.round((totalPointedToday    / totalCapacityToday) * 100) : 0,
+      non_productive_pct:            totalCapacityToday > 0 ? Math.round((totalNonPointedToday / totalCapacityToday) * 100) : 0,
+      agents_detail: agentsTodayMapped
     }
   })
 })
@@ -1005,17 +1043,23 @@ app.get('/api/chef/dashboard', async (c) => {
      GROUP BY u.id, u.first_name, u.last_name`
   ).bind(deptId).all()
 
-  // Heures productives/non productives par agent AUJOURD'HUI
+  // ── Correction 3 : weekend = capacité 0
+  const todayDowChef = new Date().getDay()
+  const isWeekendChef = todayDowChef === 0 || todayDowChef === 6
+  const capPerAgentChef = isWeekendChef ? 0 : 480
+
+  // ── Corrections 1+2 : 3 catégories par agent aujourd'hui (chef)
   const agentProductivityToday = await c.env.DB.prepare(
-    `SELECT 
+    `SELECT
        u.id,
        u.first_name || ' ' || u.last_name as agent_name,
-       COALESCE(SUM(ws.duration_minutes), 0) as productive_minutes_today,
-       CASE WHEN 480 - COALESCE(SUM(ws.duration_minutes), 0) > 0 THEN 480 - COALESCE(SUM(ws.duration_minutes), 0) ELSE 0 END as non_productive_minutes_today
+       COALESCE(SUM(CASE WHEN ws.status = 'Validé'     THEN ws.duration_minutes ELSE 0 END), 0) as validated_minutes_today,
+       COALESCE(SUM(CASE WHEN ws.status = 'En attente' THEN ws.duration_minutes ELSE 0 END), 0) as pending_minutes_today,
+       COALESCE(SUM(CASE WHEN ws.status = 'En cours'   THEN ws.duration_minutes ELSE 0 END), 0) as inprogress_minutes_today
      FROM users u
-     LEFT JOIN work_sessions ws ON ws.user_id = u.id 
-       AND ws.status = 'Validé' 
+     LEFT JOIN work_sessions ws ON ws.user_id = u.id
        AND date(ws.start_time) = date('now')
+       AND ws.status IN ('Validé', 'En attente', 'En cours')
      WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
      GROUP BY u.id, u.first_name, u.last_name`
   ).bind(deptId).all()
@@ -1029,15 +1073,20 @@ app.get('/api/chef/dashboard', async (c) => {
     productivityMap[p.id] = p
   }
 
-  // Total productif / non productif de l'équipe aujourd'hui
   const nbAgents = (agentDetail.results as any[]).length
-  const totalProductiveTeam = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + Math.min(a.productive_minutes_today, 480), 0)
-  const totalNonProductiveTeam = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + a.non_productive_minutes_today, 0)
+
+  // Totaux équipe avec les 3 catégories
+  const totalValidatedTeam   = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + Math.min(a.validated_minutes_today,   capPerAgentChef || 480), 0)
+  const totalPendingTeam     = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + Math.min(a.pending_minutes_today,     capPerAgentChef || 480), 0)
+  const totalInprogressTeam  = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + Math.min(a.inprogress_minutes_today,  capPerAgentChef || 480), 0)
+  const totalPointedTeam     = Math.min(totalValidatedTeam + totalPendingTeam + totalInprogressTeam, nbAgents * (capPerAgentChef || 480))
+  const totalNonPointedTeam  = capPerAgentChef > 0 ? Math.max(nbAgents * capPerAgentChef - totalPointedTeam, 0) : 0
 
   return c.json({
     active_agents: activeAgents?.count || 0,
     total_team_hours: minutesToHours(totalTeamHours?.m || 0),
     to_validate: toValidate?.c || 0,
+    is_weekend: isWeekendChef,
     hoursByAgent: hoursByAgent.results,
     byObjective: objData.map((o: any) => ({
       ...o,
@@ -1045,25 +1094,46 @@ app.get('/api/chef/dashboard', async (c) => {
       hours_display: minutesToHours(o.total_minutes)
     })),
     agentDetail: (agentDetail.results as any[]).map((a: any) => {
-      const p = productivityMap[a.id] || { productive_minutes_today: 0, non_productive_minutes_today: 480 }
+      const p = productivityMap[a.id] || { validated_minutes_today: 0, pending_minutes_today: 0, inprogress_minutes_today: 0 }
+      const cap = capPerAgentChef || 480
+      const total_pointed = Math.min(p.validated_minutes_today + p.pending_minutes_today + p.inprogress_minutes_today, cap)
+      const non_pointed   = capPerAgentChef > 0 ? Math.max(cap - total_pointed, 0) : 0
       return {
         ...a,
-        total_hours: minutesToHours(a.total_minutes),
-        validated_hours: minutesToHours(a.validated_minutes),
-        productive_minutes_today: Math.min(p.productive_minutes_today, 480),
-        non_productive_minutes_today: p.non_productive_minutes_today,
-        productive_hours_today: minutesToHours(Math.min(p.productive_minutes_today, 480)),
-        non_productive_hours_today: minutesToHours(p.non_productive_minutes_today),
-        productive_pct_today: Math.round((Math.min(p.productive_minutes_today, 480) / 480) * 100),
-        non_productive_pct_today: Math.round((p.non_productive_minutes_today / 480) * 100)
+        total_hours:               minutesToHours(a.total_minutes),
+        validated_hours:           minutesToHours(a.validated_minutes),
+        // Aujourd'hui — 3 catégories
+        validated_minutes_today:   Math.min(p.validated_minutes_today, cap),
+        pending_minutes_today:     Math.min(p.pending_minutes_today,   cap),
+        inprogress_minutes_today:  Math.min(p.inprogress_minutes_today,cap),
+        non_pointed_today:         non_pointed,
+        validated_hours_today:     minutesToHours(Math.min(p.validated_minutes_today, cap)),
+        pending_hours_today:       minutesToHours(Math.min(p.pending_minutes_today,   cap)),
+        inprogress_hours_today:    minutesToHours(Math.min(p.inprogress_minutes_today,cap)),
+        non_pointed_hours_today:   minutesToHours(non_pointed),
+        // Rétrocompatibilité
+        productive_minutes_today:     total_pointed,
+        non_productive_minutes_today: non_pointed,
+        productive_hours_today:       minutesToHours(total_pointed),
+        non_productive_hours_today:   minutesToHours(non_pointed),
+        productive_pct_today:         cap > 0 ? Math.round((total_pointed / cap) * 100) : 0,
+        non_productive_pct_today:     cap > 0 ? Math.round((non_pointed   / cap) * 100) : 0,
+        validated_pct_today:          cap > 0 ? Math.round((Math.min(p.validated_minutes_today, cap) / cap) * 100) : 0,
+        pending_pct_today:            cap > 0 ? Math.round((Math.min(p.pending_minutes_today,   cap) / cap) * 100) : 0,
+        is_weekend:                   isWeekendChef
       }
     }),
     team_productivity: {
-      total_agents: nbAgents,
-      productive_hours_today: minutesToHours(totalProductiveTeam),
-      non_productive_hours_today: minutesToHours(totalNonProductiveTeam),
-      productive_pct: nbAgents > 0 ? Math.round((totalProductiveTeam / (nbAgents * 480)) * 100) : 0,
-      non_productive_pct: nbAgents > 0 ? Math.round((totalNonProductiveTeam / (nbAgents * 480)) * 100) : 0
+      total_agents:              nbAgents,
+      is_weekend:                isWeekendChef,
+      validated_hours_today:     minutesToHours(totalValidatedTeam),
+      pending_hours_today:       minutesToHours(totalPendingTeam),
+      productive_hours_today:    minutesToHours(totalPointedTeam),
+      non_productive_hours_today:minutesToHours(totalNonPointedTeam),
+      productive_pct:            nbAgents > 0 && capPerAgentChef > 0 ? Math.round((totalPointedTeam   / (nbAgents * capPerAgentChef)) * 100) : 0,
+      non_productive_pct:        nbAgents > 0 && capPerAgentChef > 0 ? Math.round((totalNonPointedTeam/ (nbAgents * capPerAgentChef)) * 100) : 0,
+      validated_pct:             nbAgents > 0 && capPerAgentChef > 0 ? Math.round((totalValidatedTeam  / (nbAgents * capPerAgentChef)) * 100) : 0,
+      pending_pct:               nbAgents > 0 && capPerAgentChef > 0 ? Math.round((totalPendingTeam    / (nbAgents * capPerAgentChef)) * 100) : 0
     }
   })
 })

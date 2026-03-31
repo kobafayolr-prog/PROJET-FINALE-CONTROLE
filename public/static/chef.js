@@ -242,47 +242,64 @@ async function renderDashboard() {
 
   <!-- Productivité équipe aujourd'hui -->
   <div class="chart-card" style="margin-bottom:16px">
-    <div class="chart-title"><i class="fas fa-user-clock" style="color:#1e3a5f"></i> Productivité de l'Équipe — Aujourd'hui (base 8h/agent)</div>
-    <div style="display:flex;gap:16px;margin-bottom:16px">
-      <div style="flex:1;padding:14px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:#16a34a">${data.team_productivity?.productive_hours_today || '0h'}</div>
-        <div style="font-size:12px;color:#6b7280">Heures Productives <b style="color:#16a34a">(${data.team_productivity?.productive_pct || 0}%)</b></div>
+    <div class="chart-title"><i class="fas fa-user-clock" style="color:#1e3a5f"></i> Productivité de l'Équipe — Aujourd'hui ${data.is_weekend ? '<span style="background:#fef3c7;color:#92400e;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px"><i class="fas fa-moon"></i> Week-end</span>' : '(base 8h/agent)'}</div>
+    ${data.is_weekend ? `
+    <div style="text-align:center;padding:24px;color:#92400e;background:#fef9c3;border-radius:10px">
+      <i class="fas fa-calendar-times" style="font-size:28px;margin-bottom:8px;display:block"></i>
+      <div style="font-weight:700">Week-end — Pas de journée de travail attendue</div>
+      <div style="font-size:12px;margin-top:4px;color:#78350f">Les statistiques reprennent automatiquement lundi</div>
+    </div>` : `
+    <div style="display:flex;gap:12px;margin-bottom:16px">
+      <div style="flex:1;padding:12px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:#16a34a">${data.team_productivity?.validated_hours_today || data.team_productivity?.productive_hours_today || '0h 00m'}</div>
+        <div style="font-size:11px;color:#6b7280">✅ Validées <b style="color:#16a34a">(${data.team_productivity?.validated_pct || data.team_productivity?.productive_pct || 0}%)</b></div>
       </div>
-      <div style="flex:1;padding:14px;background:#fee2e2;border-radius:10px;border:1px solid #fecaca;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:#dc2626">${data.team_productivity?.non_productive_hours_today || '0h'}</div>
-        <div style="font-size:12px;color:#6b7280">Heures Non Productives <b style="color:#dc2626">(${data.team_productivity?.non_productive_pct || 0}%)</b></div>
+      <div style="flex:1;padding:12px;background:#fffbeb;border-radius:10px;border:1px solid #fde68a;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:#d97706">${data.team_productivity?.pending_hours_today || '0h 00m'}</div>
+        <div style="font-size:11px;color:#6b7280">⏳ En attente <b style="color:#d97706">(${data.team_productivity?.pending_pct || 0}%)</b></div>
+      </div>
+      <div style="flex:1;padding:12px;background:#fee2e2;border-radius:10px;border:1px solid #fecaca;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:#dc2626">${data.team_productivity?.non_productive_hours_today || '0h 00m'}</div>
+        <div style="font-size:11px;color:#6b7280">❌ Non pointées <b style="color:#dc2626">(${data.team_productivity?.non_productive_pct || 0}%)</b></div>
       </div>
     </div>
     <table style="width:100%">
       <thead><tr>
         <th>AGENT</th>
-        <th>H. PRODUCTIVES (auj.)</th>
-        <th>H. NON PRODUCTIVES (auj.)</th>
+        <th style="color:#16a34a">✅ VALIDÉES</th>
+        <th style="color:#d97706">⏳ EN ATTENTE</th>
+        <th style="color:#ef4444">❌ NON POINTÉES</th>
         <th>PROGRESSION</th>
       </tr></thead>
       <tbody>
         ${data.agentDetail.map(a => {
           const pct = a.productive_pct_today || 0;
+          const valMin = a.validated_minutes_today || 0;
+          const pendMin = a.pending_minutes_today || 0;
           const color = pct >= 80 ? '#16a34a' : (pct >= 50 ? '#f59e0b' : '#dc2626');
           const badge = pct >= 80 ? 'badge-active' : (pct >= 50 ? 'badge-warning' : 'badge-inactive');
           const label = pct >= 80 ? 'Bon' : (pct >= 50 ? 'Moyen' : 'Faible');
+          const valW  = Math.round((valMin / 480) * 100);
+          const pendW = Math.round((pendMin / 480) * 100);
           return `<tr>
             <td style="font-weight:600;color:#1e3a5f">${a.agent_name}</td>
-            <td><span style="font-weight:700;color:#16a34a">${a.productive_hours_today || '0h'}</span> <span style="font-size:11px;color:#6b7280">(${pct}%)</span></td>
-            <td><span style="font-weight:700;color:#dc2626">${a.non_productive_hours_today || '8h00'}</span> <span style="font-size:11px;color:#6b7280">(${a.non_productive_pct_today || 100}%)</span></td>
+            <td><span style="font-weight:700;color:#16a34a">${a.validated_hours_today || a.productive_hours_today || '0h 00m'}</span> <span style="font-size:10px;color:#6b7280">(${a.validated_pct_today || a.productive_pct_today || 0}%)</span></td>
+            <td><span style="font-weight:700;color:#d97706">${a.pending_hours_today || '0h 00m'}</span> <span style="font-size:10px;color:#6b7280">(${a.pending_pct_today || 0}%)</span></td>
+            <td><span style="font-weight:700;color:#dc2626">${a.non_pointed_hours_today || a.non_productive_hours_today || '0h 00m'}</span> <span style="font-size:10px;color:#6b7280">(${a.non_productive_pct_today || 0}%)</span></td>
             <td style="min-width:130px">
               <div style="display:flex;align-items:center;gap:6px">
-                <div style="flex:1;height:8px;background:#f3f4f6;border-radius:4px;overflow:hidden">
-                  <div style="height:100%;width:${pct}%;background:${color};border-radius:4px"></div>
+                <div style="flex:1;height:10px;background:#f3f4f6;border-radius:5px;overflow:hidden;display:flex">
+                  <div style="height:100%;width:${valW}%;background:#22c55e" title="Validé"></div>
+                  <div style="height:100%;width:${pendW}%;background:#f59e0b" title="En attente"></div>
                 </div>
                 <span class="badge ${badge}" style="font-size:10px">${label}</span>
               </div>
             </td>
           </tr>`;
         }).join('')}
-        ${data.agentDetail.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:#9ca3af;padding:16px">Aucune donnée</td></tr>' : ''}
+        ${data.agentDetail.length === 0 ? '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:16px">Aucune donnée</td></tr>' : ''}
       </tbody>
-    </table>
+    </table>`}
   </div>
 
   <!-- Détail par Agent — Ce mois -->

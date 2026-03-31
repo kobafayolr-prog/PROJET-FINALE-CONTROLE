@@ -242,65 +242,91 @@ async function renderDashboard() {
     </div>
     <!-- Productivité -->
     <div class="chart-card">
-      <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Productivité du Jour (base 8h/agent)</div>
+      <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Productivité du Jour ${stats.is_weekend ? '<span style="background:#fef3c7;color:#92400e;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:8px"><i class="fas fa-moon"></i> Week-end</span>' : '(base 8h/agent)'}</div>
+      ${stats.is_weekend ? `
+      <div style="text-align:center;padding:30px 20px;color:#92400e;background:#fef9c3;border-radius:10px;margin:10px 0">
+        <i class="fas fa-calendar-times" style="font-size:32px;margin-bottom:10px;display:block"></i>
+        <div style="font-weight:700;font-size:15px">Week-end — Pas de journée de travail attendue</div>
+        <div style="font-size:12px;margin-top:6px;color:#78350f">Les statistiques reprennent automatiquement lundi</div>
+      </div>` : `
       <div style="display:flex;align-items:center;gap:20px">
         <div style="flex:1"><canvas id="chartProductivity" height="220"></canvas></div>
         <div>
-          <div style="font-size:11px;color:#6b7280;margin-bottom:8px;text-align:center">${stats.productivity.total_agents} agent(s) — Capacité: ${Math.floor(stats.productivity.total_capacity_today/60)}h</div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-            <span style="width:12px;height:12px;border-radius:50%;background:#22c55e;display:inline-block"></span>
-            <span style="font-size:12px;color:#555">Productives</span>
+          <div style="font-size:11px;color:#6b7280;margin-bottom:10px;text-align:center">${stats.productivity.total_agents} agent(s) — Capacité: ${Math.floor(stats.productivity.total_capacity_today/60)}h</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <span style="width:12px;height:12px;border-radius:3px;background:#22c55e;display:inline-block"></span>
+            <span style="font-size:12px;color:#555">Validées par le chef</span>
           </div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="width:12px;height:12px;border-radius:50%;background:#ef4444;display:inline-block"></span>
-            <span style="font-size:12px;color:#555">Non productives</span>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <span style="width:12px;height:12px;border-radius:3px;background:#f59e0b;display:inline-block"></span>
+            <span style="font-size:12px;color:#555">En attente de validation</span>
           </div>
-          <div style="margin-top:12px;padding:10px;background:#f0fdf4;border-radius:8px;text-align:center">
-            <div style="font-size:18px;font-weight:800;color:#16a34a">${stats.productivity.productive_hours_today}</div>
-            <div style="font-size:11px;color:#6b7280">Productives (${stats.productivity.productive_pct}%)</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
+            <span style="width:12px;height:12px;border-radius:3px;background:#ef4444;display:inline-block"></span>
+            <span style="font-size:12px;color:#555">Non pointées</span>
           </div>
-          <div style="margin-top:8px;padding:10px;background:#fee2e2;border-radius:8px;text-align:center">
-            <div style="font-size:18px;font-weight:800;color:#dc2626">${stats.productivity.non_productive_hours_today}</div>
-            <div style="font-size:11px;color:#6b7280">Non productives (${stats.productivity.non_productive_pct}%)</div>
+          <div style="padding:8px;background:#f0fdf4;border-radius:8px;text-align:center;margin-bottom:6px">
+            <div style="font-size:16px;font-weight:800;color:#16a34a">${stats.productivity.validated_hours_today || stats.productivity.productive_hours_today}</div>
+            <div style="font-size:10px;color:#6b7280">Validées (${stats.productivity.validated_pct || stats.productivity.productive_pct}%)</div>
+          </div>
+          <div style="padding:8px;background:#fffbeb;border-radius:8px;text-align:center;margin-bottom:6px">
+            <div style="font-size:16px;font-weight:800;color:#d97706">${stats.productivity.pending_hours_today || '0h 00m'}</div>
+            <div style="font-size:10px;color:#6b7280">En attente (${stats.productivity.pending_pct || 0}%)</div>
+          </div>
+          <div style="padding:8px;background:#fee2e2;border-radius:8px;text-align:center">
+            <div style="font-size:16px;font-weight:800;color:#dc2626">${stats.productivity.non_productive_hours_today}</div>
+            <div style="font-size:10px;color:#6b7280">Non pointées (${stats.productivity.non_productive_pct}%)</div>
           </div>
         </div>
-      </div>
+      </div>`}
     </div>
   </div>
   <!-- Tableau Productivité par Agent (Aujourd'hui) -->
   <div class="card" style="margin-bottom:20px">
     <div class="card-body">
-      <div class="chart-title"><i class="fas fa-user-clock" style="color:#1e3a5f"></i> Productivité par Agent — Aujourd'hui (base 8h)</div>
+      <div class="chart-title"><i class="fas fa-user-clock" style="color:#1e3a5f"></i> Productivité par Agent — Aujourd'hui ${stats.is_weekend ? '(Week-end)' : '(base 8h)'}</div>
+      ${stats.is_weekend ? '<div style="text-align:center;padding:20px;color:#9ca3af">Aucun calcul de productivité les week-ends</div>' : `
       <table style="width:100%">
         <thead><tr>
           <th>AGENT</th>
           <th>DÉPARTEMENT</th>
-          <th>H. PRODUCTIVES</th>
-          <th>H. NON PRODUCTIVES</th>
+          <th style="color:#16a34a">✅ VALIDÉES</th>
+          <th style="color:#d97706">⏳ EN ATTENTE</th>
+          <th style="color:#ef4444">❌ NON POINTÉES</th>
           <th>PROGRESSION</th>
           <th>STATUT</th>
         </tr></thead>
         <tbody>
           ${(stats.productivity.agents_detail || []).map(a => {
             const pct = a.productive_pct;
+            const valMin = a.validated_minutes || 0;
+            const pendMin = a.pending_minutes || 0;
+            const nonMin = a.non_pointed || a.non_productive_minutes || 0;
             const color = pct >= 80 ? '#16a34a' : (pct >= 50 ? '#f59e0b' : '#dc2626');
             const badge = pct >= 80 ? 'badge-active' : (pct >= 50 ? 'badge-warning' : 'badge-inactive');
             const label = pct >= 80 ? 'Bon' : (pct >= 50 ? 'Moyen' : 'Faible');
+            const valW = Math.round((valMin/480)*100);
+            const pendW = Math.round((pendMin/480)*100);
             return `<tr>
               <td style="font-weight:600">${a.agent_name}</td>
               <td style="color:#6b7280;font-size:12px">${a.department_name || '—'}</td>
               <td>
-                <span style="font-weight:700;color:#16a34a">${a.productive_hours}</span>
-                <span style="font-size:11px;color:#6b7280"> (${a.productive_pct}%)</span>
+                <span style="font-weight:700;color:#16a34a">${a.validated_hours || a.productive_hours}</span>
+                <span style="font-size:10px;color:#6b7280"> (${a.validated_pct || a.productive_pct}%)</span>
               </td>
               <td>
-                <span style="font-weight:700;color:#dc2626">${a.non_productive_hours}</span>
-                <span style="font-size:11px;color:#6b7280"> (${a.non_productive_pct}%)</span>
+                <span style="font-weight:700;color:#d97706">${a.pending_hours || '0h 00m'}</span>
+                <span style="font-size:10px;color:#6b7280"> (${a.pending_pct || 0}%)</span>
+              </td>
+              <td>
+                <span style="font-weight:700;color:#dc2626">${a.non_pointed_hours || a.non_productive_hours}</span>
+                <span style="font-size:10px;color:#6b7280"> (${a.non_productive_pct}%)</span>
               </td>
               <td style="min-width:140px">
                 <div style="display:flex;align-items:center;gap:8px">
-                  <div style="flex:1;height:8px;background:#f3f4f6;border-radius:4px;overflow:hidden">
-                    <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width 0.3s"></div>
+                  <div style="flex:1;height:10px;background:#f3f4f6;border-radius:5px;overflow:hidden;display:flex">
+                    <div style="height:100%;width:${valW}%;background:#22c55e;transition:width 0.3s" title="Validé"></div>
+                    <div style="height:100%;width:${pendW}%;background:#f59e0b;transition:width 0.3s" title="En attente"></div>
                   </div>
                   <span style="font-size:12px;font-weight:700;color:${color}">${pct}%</span>
                 </div>
@@ -308,9 +334,9 @@ async function renderDashboard() {
               <td><span class="badge ${badge}">${label}</span></td>
             </tr>`;
           }).join('')}
-          ${(stats.productivity.agents_detail || []).length === 0 ? '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:20px">Aucune donnée pour aujourd\'hui</td></tr>' : ''}
+          ${(stats.productivity.agents_detail || []).length === 0 ? '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:20px">Aucun agent actif</td></tr>' : ''}
         </tbody>
-      </table>
+      </table>`}
     </div>
   </div>
 
@@ -389,34 +415,41 @@ async function renderDashboard() {
     });
   }
 
-  // Productivity pie (heures aujourd'hui)
-  const prodMin = stats.productivity.productive_minutes_today || 0;
-  const nonProdMin = stats.productivity.non_productive_minutes_today || 0;
-  const totalCap = stats.productivity.total_capacity_today || 1;
-  adminCharts.productivity = new Chart(document.getElementById('chartProductivity'), {
-    type: 'doughnut',
-    data: {
-      labels: ['Productives', 'Non productives'],
-      datasets: [{ data: [prodMin, nonProdMin], backgroundColor: ['#22c55e', '#ef4444'], borderWidth: 2 }]
-    },
-    options: {
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: function(ctx) {
-              const val = ctx.raw;
-              const pct = Math.round((val / totalCap) * 100);
-              const h = Math.floor(val/60);
-              const m = val % 60;
-              return ` ${h}h${m.toString().padStart(2,'0')} (${pct}%)`;
+  // Donut productivité — 3 couleurs (seulement si jour ouvrable)
+  if (!stats.is_weekend && document.getElementById('chartProductivity')) {
+    const valMin     = stats.productivity.validated_minutes_today  || 0;
+    const pendMin    = stats.productivity.pending_minutes_today     || 0;
+    const nonMin     = stats.productivity.non_productive_minutes_today || 0;
+    const totalCap   = stats.productivity.total_capacity_today || 1;
+    adminCharts.productivity = new Chart(document.getElementById('chartProductivity'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Validées', 'En attente', 'Non pointées'],
+        datasets: [{
+          data: [valMin, pendMin, nonMin],
+          backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
+          borderWidth: 2
+        }]
+      },
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                const val = ctx.raw;
+                const pct = Math.round((val / totalCap) * 100);
+                const h = Math.floor(val / 60);
+                const m = val % 60;
+                return ` ${h}h${String(m).padStart(2,'0')} (${pct}%)`;
+              }
             }
           }
-        }
-      },
-      cutout: '60%'
-    }
-  });
+        },
+        cutout: '60%'
+      }
+    });
+  }
 }
 
 function destroyCharts() {
