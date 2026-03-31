@@ -22,6 +22,47 @@ checkAuth();
 // ============================================
 // UTILITIES
 // ============================================
+
+/**
+ * Modal de confirmation personnalisé
+ * Usage : showConfirmDialog('Message ?', 'Nom élément').then(ok => { if(ok) ... })
+ */
+function showConfirmDialog(message, itemName) {
+  return new Promise(resolve => {
+    // Supprimer un éventuel ancien modal
+    const old = document.getElementById('confirm-dialog-overlay');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'confirm-dialog-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease';
+
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.25);text-align:center">
+        <div style="width:56px;height:56px;background:#fee2e2;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+          <i class="fas fa-trash-alt" style="font-size:22px;color:#dc2626"></i>
+        </div>
+        <h3 style="font-size:17px;font-weight:700;color:#111827;margin-bottom:8px">Confirmer la suppression</h3>
+        <p style="font-size:14px;color:#6b7280;margin-bottom:6px">${message}</p>
+        ${itemName ? `<p style="font-size:13px;font-weight:600;color:#1e3a5f;background:#f0f4ff;padding:6px 12px;border-radius:6px;display:inline-block;margin-bottom:4px">« ${itemName} »</p>` : ''}
+        <p style="font-size:12px;color:#9ca3af;margin-bottom:24px">Cette action ne peut pas être annulée.</p>
+        <div style="display:flex;gap:12px;justify-content:center">
+          <button id="confirm-no"  style="flex:1;padding:10px 20px;border:2px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;font-size:14px;font-weight:600;cursor:pointer">Annuler</button>
+          <button id="confirm-yes" style="flex:1;padding:10px 20px;border:none;border-radius:8px;background:#dc2626;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Oui, supprimer</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+
+    // Fermer avec Echap
+    const onKey = e => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(false); } };
+    document.addEventListener('keydown', onKey);
+
+    overlay.querySelector('#confirm-no').onclick  = () => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(false); };
+    overlay.querySelector('#confirm-yes').onclick = () => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(true); };
+  });
+}
+
 function api(path, opts = {}) {
   return fetch(API + path, {
     ...opts,
@@ -651,7 +692,8 @@ function showUserModal(userId = null) {
 // Suppression processus + tâches
 async function deleteProcess(id, name) {
   name = name || id;
-  if (!confirm(`Désactiver le processus "${name}" ?`)) return;
+  const ok = await showConfirmDialog('Voulez-vous vraiment désactiver ce processus ?', name);
+  if (!ok) return;
   const r = await api('/api/admin/processes/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
   toast('Processus désactivé');
@@ -660,7 +702,8 @@ async function deleteProcess(id, name) {
 
 async function deleteTask(id, name) {
   name = name || id;
-  if (!confirm(`Désactiver la tâche "${name}" ?`)) return;
+  const ok = await showConfirmDialog('Voulez-vous vraiment désactiver cette tâche ?', name);
+  if (!ok) return;
   const r = await api('/api/admin/tasks/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
   toast('Tâche désactivée');
@@ -668,7 +711,8 @@ async function deleteTask(id, name) {
 }
 
 async function deleteUser(id) {
-  if (!confirm('Supprimer définitivement cet utilisateur ?')) return;
+  const ok = await showConfirmDialog('Voulez-vous vraiment supprimer cet utilisateur ?', '');
+  if (!ok) return;
   await api('/api/admin/users/' + id, { method: 'DELETE' });
   toast('Utilisateur supprimé');
   renderUsers();
@@ -805,7 +849,8 @@ async function renderDepartments() {
 
 async function deleteDept(id, name) {
   name = name || id;
-  if (!confirm(`Désactiver le département "${name}" ?`)) return;
+  const ok = await showConfirmDialog('Voulez-vous vraiment désactiver ce département ?', name);
+  if (!ok) return;
   const r = await api('/api/admin/departments/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
   toast('Département désactivé');
@@ -883,7 +928,7 @@ async function renderObjectives() {
     <div class="page-title"><i class="fas fa-bullseye"></i><h2>Objectifs Stratégiques</h2></div>
     <button class="btn btn-primary" onclick="showObjModal()"><i class="fas fa-plus"></i> Nouvel objectif</button>
   </div>
-  <div class="grid-auto">${cards}`;
+  <div class="grid-auto">${cards}</div>`;
 
   // Attacher les événements après rendu DOM
   document.querySelectorAll('.btn-delete-obj').forEach(btn => {
@@ -893,7 +938,8 @@ async function renderObjectives() {
 
 async function deleteObjective(id, name) {
   name = name || id;
-  if (!confirm(`Désactiver l'objectif "${name}" ?`)) return;
+  const ok = await showConfirmDialog('Voulez-vous vraiment désactiver cet objectif ?', name);
+  if (!ok) return;
   const r = await api('/api/admin/objectives/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
   toast('Objectif désactivé');
