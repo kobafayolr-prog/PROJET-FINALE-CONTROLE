@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cahier Technique — TimeTrack BGFIBank</title>
+  <style>
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.6;
+      color: #1a1a2e;
+      background: #fff;
+    }
+
+    /* ===== COUVERTURE ===== */
+    .cover {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f2040 50%, #0a1628 100%);
+      color: #fff;
+      text-align: center;
+      padding: 60px 40px;
+      page-break-after: always;
+    }
+    .cover-logo {
+      width: 90px; height: 90px;
+      background: #fff;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 30px;
+      font-size: 40px;
+    }
+    .cover-bank {
+      font-size: 13pt;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #a8c4e0;
+      margin-bottom: 8px;
+    }
+    .cover-title {
+      font-size: 36pt;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+    .cover-subtitle {
+      font-size: 14pt;
+      color: #7fb3d3;
+      margin-bottom: 50px;
+    }
+    .cover-divider {
+      width: 80px; height: 3px;
+      background: linear-gradient(90deg, #3b82f6, #22c55e);
+      margin: 20px auto;
+      border-radius: 2px;
+    }
+    .cover-doc-type {
+      font-size: 11pt;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 8px 24px;
+      border-radius: 20px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 60px;
+    }
+    .cover-meta {
+      font-size: 10pt;
+      color: #a0b4c8;
+      margin-top: 40px;
+    }
+    .cover-meta table { margin: 0 auto; }
+    .cover-meta td { padding: 4px 16px; text-align: left; }
+    .cover-meta td:first-child { color: #7fb3d3; font-weight: 600; }
+    .cover-stamp {
+      margin-top: 40px;
+      border: 2px solid rgba(255,255,255,0.3);
+      padding: 10px 30px;
+      border-radius: 4px;
+      font-size: 9pt;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+    }
+
+    /* ===== SOMMAIRE ===== */
+    .toc-page {
+      padding: 60px 80px;
+      page-break-after: always;
+      min-height: 100vh;
+    }
+    .toc-title {
+      font-size: 22pt;
+      font-weight: 800;
+      color: #1e3a5f;
+      border-bottom: 3px solid #1e3a5f;
+      padding-bottom: 12px;
+      margin-bottom: 30px;
+    }
+    .toc-section { margin-bottom: 6px; }
+    .toc-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 5px 0;
+      border-bottom: 1px dotted #cdd5e0;
+      color: #1e3a5f;
+      font-size: 11pt;
+    }
+    .toc-item.main { font-weight: 700; font-size: 12pt; margin-top: 10px; }
+    .toc-item.sub { padding-left: 24px; font-size: 10.5pt; color: #3a5580; }
+    .toc-item.subsub { padding-left: 46px; font-size: 10pt; color: #5a7a9a; }
+    .toc-num { color: #1e3a5f; font-weight: 700; margin-right: 10px; }
+    .toc-page-num { color: #6b7280; font-size: 10pt; flex-shrink: 0; }
+
+    /* ===== PAGES CONTENU ===== */
+    .content-page {
+      padding: 50px 80px;
+      page-break-before: always;
+    }
+    .content-page:first-of-type { page-break-before: avoid; }
+
+    /* ===== EN-TÊTES DE SECTION ===== */
+    .section-header {
+      background: linear-gradient(135deg, #1e3a5f, #2d5a8e);
+      color: #fff;
+      padding: 18px 28px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+      margin-top: 40px;
+    }
+    .section-header h2 {
+      font-size: 18pt;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+    .section-num {
+      font-size: 10pt;
+      opacity: 0.7;
+      display: block;
+      margin-bottom: 4px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    h3 {
+      font-size: 14pt;
+      font-weight: 700;
+      color: #1e3a5f;
+      margin: 28px 0 12px;
+      padding-left: 12px;
+      border-left: 4px solid #3b82f6;
+    }
+    h4 {
+      font-size: 11.5pt;
+      font-weight: 700;
+      color: #2d5a8e;
+      margin: 18px 0 8px;
+    }
+
+    p { margin-bottom: 10px; text-align: justify; }
+
+    /* ===== TABLEAUX ===== */
+    .table-wrap { overflow-x: auto; margin: 16px 0 24px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10pt;
+    }
+    thead th {
+      background: #1e3a5f;
+      color: #fff;
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 9.5pt;
+      letter-spacing: 0.5px;
+    }
+    tbody tr:nth-child(even) { background: #f1f5fb; }
+    tbody tr:hover { background: #dce9f7; }
+    tbody td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    .pk { font-weight: 700; color: #1e3a5f; }
+    .fk { font-style: italic; color: #4a7cb5; }
+    .type-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 8.5pt;
+      font-weight: 600;
+    }
+    .t-int { background: #dbeafe; color: #1d4ed8; }
+    .t-text { background: #dcfce7; color: #15803d; }
+    .t-real { background: #fef3c7; color: #b45309; }
+    .t-dt { background: #f3e8ff; color: #7e22ce; }
+
+    /* ===== DIAGRAMME ERD ===== */
+    .erd-container {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 30px;
+      margin: 20px 0;
+    }
+    .erd-entities {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+    }
+    .erd-entity {
+      border: 2px solid #1e3a5f;
+      border-radius: 8px;
+      overflow: hidden;
+      min-width: 180px;
+      background: #fff;
+    }
+    .erd-entity-header {
+      background: #1e3a5f;
+      color: #fff;
+      padding: 8px 14px;
+      font-weight: 700;
+      font-size: 10pt;
+      text-align: center;
+    }
+    .erd-entity-body { padding: 8px 0; }
+    .erd-field {
+      padding: 3px 14px;
+      font-size: 9pt;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .erd-field.pk-field { font-weight: 700; color: #1e3a5f; border-bottom: 1px solid #e2e8f0; margin-bottom: 4px; padding-bottom: 6px; }
+    .erd-field.fk-field { color: #3b82f6; font-style: italic; }
+    .erd-badge-pk { background: #fef3c7; color: #b45309; padding: 1px 5px; border-radius: 3px; font-size: 7.5pt; font-weight: 700; }
+    .erd-badge-fk { background: #dbeafe; color: #1d4ed8; padding: 1px 5px; border-radius: 3px; font-size: 7.5pt; font-weight: 700; }
+
+    /* ===== JOINS ===== */
+    .join-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 12px 0;
+    }
+    .join-title {
+      font-weight: 700;
+      color: #1e3a5f;
+      font-size: 10.5pt;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .join-badge {
+      background: #1e3a5f;
+      color: #fff;
+      padding: 2px 10px;
+      border-radius: 10px;
+      font-size: 8pt;
+    }
+    .code-block {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 16px 20px;
+      border-radius: 8px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 9pt;
+      overflow-x: auto;
+      margin: 10px 0 16px;
+      line-height: 1.7;
+    }
+    .sql-kw { color: #93c5fd; font-weight: 600; }
+    .sql-tbl { color: #86efac; }
+    .sql-col { color: #fde68a; }
+    .sql-op { color: #f9a8d4; }
+    .sql-cmt { color: #64748b; font-style: italic; }
+    .sql-str { color: #fca5a5; }
+
+    /* ===== API ROUTES ===== */
+    .api-section { margin-bottom: 28px; }
+    .api-group-title {
+      font-size: 12pt;
+      font-weight: 700;
+      color: #fff;
+      background: #2d5a8e;
+      padding: 8px 16px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+    }
+    .api-route {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 14px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      background: #fafbfd;
+    }
+    .method {
+      font-weight: 700;
+      font-size: 9pt;
+      padding: 3px 10px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      min-width: 52px;
+      text-align: center;
+    }
+    .GET { background: #dcfce7; color: #15803d; }
+    .POST { background: #dbeafe; color: #1d4ed8; }
+    .PUT { background: #fef3c7; color: #b45309; }
+    .DELETE { background: #fee2e2; color: #dc2626; }
+    .api-path { font-family: 'Consolas', monospace; font-size: 9.5pt; color: #1e3a5f; font-weight: 600; }
+    .api-desc { font-size: 9.5pt; color: #4b5563; margin-top: 2px; }
+    .api-auth {
+      font-size: 8pt;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    .auth-admin { background: #fee2e2; color: #dc2626; }
+    .auth-chef { background: #fef3c7; color: #b45309; }
+    .auth-agent { background: #dcfce7; color: #15803d; }
+    .auth-public { background: #f3f4f6; color: #6b7280; }
+
+    /* ===== SECURITY BOXES ===== */
+    .security-box {
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 14px 0;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .security-box.green { background: #f0fdf4; border-left: 4px solid #22c55e; }
+    .security-box.blue { background: #eff6ff; border-left: 4px solid #3b82f6; }
+    .security-box.orange { background: #fffbeb; border-left: 4px solid #f59e0b; }
+    .security-box.red { background: #fef2f2; border-left: 4px solid #ef4444; }
+    .sec-icon { font-size: 22px; flex-shrink: 0; }
+    .sec-content h4 { margin: 0 0 4px; font-size: 11pt; color: #1e3a5f; }
+    .sec-content p { margin: 0; font-size: 10pt; color: #374151; }
+
+    /* ===== ROLE FLOW ===== */
+    .role-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 20px 0; }
+    .role-card {
+      border: 2px solid;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .role-card.admin { border-color: #dc2626; }
+    .role-card.chef { border-color: #f59e0b; }
+    .role-card.agent { border-color: #22c55e; }
+    .role-card-header {
+      padding: 10px 16px;
+      color: #fff;
+      font-weight: 700;
+      font-size: 11pt;
+      text-align: center;
+    }
+    .role-card.admin .role-card-header { background: #dc2626; }
+    .role-card.chef .role-card-header { background: #f59e0b; }
+    .role-card.agent .role-card-header { background: #22c55e; }
+    .role-card-body { padding: 12px 16px; background: #fafafa; }
+    .role-card-body ul { padding-left: 16px; }
+    .role-card-body li { font-size: 9.5pt; margin-bottom: 4px; color: #374151; }
+
+    /* ===== INFRA ===== */
+    .infra-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 20px;
+      margin: 16px 0;
+    }
+    .infra-title { font-weight: 700; color: #1e3a5f; margin-bottom: 12px; font-size: 11pt; }
+    .infra-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e7eb; font-size: 10pt; }
+    .infra-row:last-child { border-bottom: none; }
+    .infra-label { color: #6b7280; }
+    .infra-value { font-weight: 600; color: #1e3a5f; }
+
+    /* ===== BADGES & CHIPS ===== */
+    .chip {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 9pt;
+      font-weight: 600;
+      margin: 2px;
+    }
+    .chip-blue { background: #dbeafe; color: #1d4ed8; }
+    .chip-green { background: #dcfce7; color: #15803d; }
+    .chip-gray { background: #f3f4f6; color: #374151; }
+    .chip-orange { background: #fef3c7; color: #b45309; }
+
+    /* ===== FLOW CHART ===== */
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin: 20px 0;
+    }
+    .flow-step {
+      background: #1e3a5f;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 10pt;
+      font-weight: 600;
+      text-align: center;
+      min-width: 110px;
+    }
+    .flow-arrow {
+      font-size: 18pt;
+      color: #1e3a5f;
+      margin: 0 4px;
+    }
+
+    /* ===== INDEX ===== */
+    .index-table td { font-size: 10pt; }
+
+    /* ===== FOOTER ===== */
+    .page-footer {
+      position: running(footer);
+      font-size: 8.5pt;
+      color: #9ca3af;
+      display: flex;
+      justify-content: space-between;
+      padding-top: 8px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    /* ===== PRINT ===== */
+    @media print {
+      body { font-size: 10pt; }
+      .cover { page-break-after: always; }
+      .toc-page { page-break-after: always; }
+      .no-break { page-break-inside: avoid; }
+      h2 { page-break-before: always; }
+      h3 { page-break-after: avoid; }
+      .code-block { font-size: 8pt; }
+      thead { display: table-header-group; }
+    }
+
+    ul, ol { padding-left: 22px; margin-bottom: 10px; }
+    li { margin-bottom: 4px; }
+    strong { color: #1e3a5f; }
+
+    .highlight {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 10pt;
+    }
+    .note {
+      background: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      padding: 10px 16px;
+      border-radius: 0 6px 6px 0;
+      margin: 10px 0;
+      font-size: 10pt;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ============================================ -->
+<!-- PAGE DE COUVERTURE                          -->
+<!-- ============================================ -->
+<div class="cover">
+  <div class="cover-logo">🏦</div>
+  <div class="cover-bank">BGFIBank — Direction des Systèmes d'Information</div>
+  <div class="cover-title">TimeTrack</div>
+  <div class="cover-subtitle">Système de Gestion du Temps de Travail</div>
+  <div class="cover-divider"></div>
+  <div class="cover-doc-type">📋 Cahier Technique</div>
+  <div class="cover-meta">
+    <table>
+      <tr><td>Version</td><td>1.2.0</td></tr>
+      <tr><td>Date</td><td>Mars 2025</td></tr>
+      <tr><td>Rédigé par</td><td>Direction Informatique — BGFIBank</td></tr>
+      <tr><td>Classification</td><td>Usage Interne</td></tr>
+      <tr><td>GitHub</td><td>kobafayolr-prog / PROJET-FINALE-CONTROLE</td></tr>
+    </table>
+  </div>
+  <div class="cover-stamp">Document Confidentiel — Usage Interne</div>
+</div>
+
+<!-- ============================================ -->
+<!-- TABLE DES MATIÈRES                          -->
+<!-- ============================================ -->
+<div class="toc-page">
+  <div class="toc-title">Table des Matières</div>
+
+  <div class="toc-item main"><span><span class="toc-num">1.</span> Présentation générale du projet</span><span class="toc-page-num">3</span></div>
+  <div class="toc-item sub"><span>1.1 Contexte et objectifs</span></div>
+  <div class="toc-item sub"><span>1.2 Périmètre fonctionnel</span></div>
+  <div class="toc-item sub"><span>1.3 Acteurs du système</span></div>
+
+  <div class="toc-item main"><span><span class="toc-num">2.</span> Architecture technique</span><span class="toc-page-num">4</span></div>
+  <div class="toc-item sub"><span>2.1 Stack technologique</span></div>
+  <div class="toc-item sub"><span>2.2 Architecture applicative</span></div>
+  <div class="toc-item sub"><span>2.3 Structure des fichiers</span></div>
+
+  <div class="toc-item main"><span><span class="toc-num">3.</span> Modèle de données</span><span class="toc-page-num">6</span></div>
+  <div class="toc-item sub"><span>3.1 Diagramme Entité-Relation (ERD)</span></div>
+  <div class="toc-item sub"><span>3.2 Description détaillée des tables</span></div>
+  <div class="toc-item subsub"><span>3.2.1 Table strategic_objectives</span></div>
+  <div class="toc-item subsub"><span>3.2.2 Table departments</span></div>
+  <div class="toc-item subsub"><span>3.2.3 Table processes</span></div>
+  <div class="toc-item subsub"><span>3.2.4 Table tasks</span></div>
+  <div class="toc-item subsub"><span>3.2.5 Table users</span></div>
+  <div class="toc-item subsub"><span>3.2.6 Table work_sessions</span></div>
+  <div class="toc-item subsub"><span>3.2.7 Table audit_logs</span></div>
+  <div class="toc-item sub"><span>3.3 Index de performance</span></div>
+
+  <div class="toc-item main"><span><span class="toc-num">4.</span> Jointures SQL</span><span class="toc-page-num">11</span></div>
+  <div class="toc-item sub"><span>4.1 Relations entre les tables</span></div>
+  <div class="toc-item sub"><span>4.2 Jointures principales par fonctionnalité</span></div>
+  <div class="toc-item sub"><span>4.3 Requêtes complexes — exemples annotés</span></div>
+
+  <div class="toc-item main"><span><span class="toc-num">5.</span> API REST — Documentation des routes</span><span class="toc-page-num">14</span></div>
+  <div class="toc-item sub"><span>5.1 Authentification</span></div>
+  <div class="toc-item sub"><span>5.2 Routes Administrateur</span></div>
+  <div class="toc-item sub"><span>5.3 Routes Chef de Département</span></div>
+  <div class="toc-item sub"><span>5.4 Routes Agent</span></div>
+
+  <div class="toc-item main"><span><span class="toc-num">6.</span> Sécurité</span><span class="toc-page-num">17</span></div>
+  <div class="toc-item sub"><span>6.1 Authentification JWT</span></div>
+  <div class="toc-item sub"><span>6.2 Hachage des mots de passe</span></div>
+  <div class="toc-item sub"><span>6.3 Rate limiting & verrouillage de compte</span></div>
+  <div class="toc-item sub"><span>6.4 En-têtes HTTP de sécurité</span></div>
+  <div class="toc-item sub"><span>6.5 Journal d'audit</span></div>
+
+  <div class="toc-item main"><span><span class="toc-num">7.</span> Calcul de productivité</span><span class="toc-page-num">19</span></div>
+
+  <div class="toc-item main"><span><span class="toc-num">8.</span> Déploiement & infrastructure</span><span class="toc-page-num">20</span></div>
+
+  <div class="toc-item main"><span><span class="toc-num">9.</span> Comptes utilisateurs par défaut</span><span class="toc-page-num">21</span></div>
+
+  <div class="toc-item main"><span><span class="toc-num">10.</span> Migrations de base de données</span><span class="toc-page-num">22</span></div>
+
+  <div class="toc-item main"><span><span class="toc-num">Annexe A.</span> Glossaire</span><span class="toc-page-num">23</span></div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 1 — PRÉSENTATION GÉNÉRALE           -->
+<!-- ============================================ -->
+<div class="content-page">
+  <div class="section-header">
+    <span class="section-num">Section 01</span>
+    <h2>Présentation Générale du Projet</h2>
+  </div>
+
+  <h3>1.1 Contexte et objectifs</h3>
+  <p>
+    <strong>TimeTrack BGFIBank</strong> est une application web interne développée pour la <strong>BGFIBank</strong>
+    afin de permettre le suivi en temps réel du temps de travail des collaborateurs. Elle répond au besoin
+    de mesurer la contribution effective de chaque agent aux objectifs stratégiques de la banque.
+  </p>
+  <p>
+    L'application permet à chaque employé de saisir, démarrer et arrêter des sessions de travail associées
+    à des tâches définies, des processus métiers et des objectifs stratégiques. Les données collectées
+    alimentent des tableaux de bord analytiques pour l'encadrement et la direction.
+  </p>
+
+  <div class="highlight">
+    <strong>Objectif principal :</strong> Mesurer et optimiser la productivité des agents en calculant
+    le ratio entre les heures productives saisies et la capacité journalière standard de 8 heures,
+    par agent, département et objectif stratégique.
+  </div>
+
+  <h3>1.2 Périmètre fonctionnel</h3>
+  <table>
+    <thead><tr><th>Module</th><th>Description</th><th>Profil concerné</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Authentification</strong></td><td>Connexion sécurisée avec JWT, rate-limiting 3 tentatives, verrouillage 15 min</td><td>Tous</td></tr>
+      <tr><td><strong>Gestion des utilisateurs</strong></td><td>CRUD complet : création, modification, suppression, affichage des mots de passe</td><td>Admin</td></tr>
+      <tr><td><strong>Référentiels</strong></td><td>Gestion des départements, objectifs stratégiques, processus, tâches</td><td>Admin</td></tr>
+      <tr><td><strong>Pointage Agent</strong></td><td>Chronomètre en temps réel + saisie manuelle de sessions</td><td>Agent</td></tr>
+      <tr><td><strong>Validation des sessions</strong></td><td>Valider ou rejeter les sessions soumises par les agents</td><td>Chef Dépt</td></tr>
+      <tr><td><strong>Tableau de bord Admin</strong></td><td>Statistiques globales, productivité, heures par objectif et département</td><td>Admin</td></tr>
+      <tr><td><strong>Tableau de bord Chef</strong></td><td>Suivi d'équipe, heures productives/non-productives par agent</td><td>Chef Dépt</td></tr>
+      <tr><td><strong>Tableau de bord Agent</strong></td><td>KPI personnels, sessions en cours, historique, statistiques</td><td>Agent</td></tr>
+      <tr><td><strong>Rapports</strong></td><td>Export détaillé des sessions avec filtres</td><td>Admin, Chef</td></tr>
+      <tr><td><strong>Journal d'audit</strong></td><td>Traçabilité de toutes les actions sensibles</td><td>Admin</td></tr>
+    </tbody>
+  </table>
+
+  <h3>1.3 Acteurs du système</h3>
+  <div class="role-grid">
+    <div class="role-card admin">
+      <div class="role-card-header">🔴 Administrateur</div>
+      <div class="role-card-body">
+        <ul>
+          <li>Gestion complète des utilisateurs</li>
+          <li>Gestion des référentiels (dept., objectifs, tâches…)</li>
+          <li>Visualisation de toutes les sessions</li>
+          <li>Statistiques globales multi-département</li>
+          <li>Accès au journal d'audit</li>
+          <li>Consultation des mots de passe</li>
+          <li>Rapports d'export</li>
+        </ul>
+      </div>
+    </div>
+    <div class="role-card chef">
+      <div class="role-card-header">🟡 Chef de Département</div>
+      <div class="role-card-body">
+        <ul>
+          <li>Tableau de bord de son équipe</li>
+          <li>Validation / rejet des sessions</li>
+          <li>Suivi productivité par agent</li>
+          <li>Heures productives/non-productives</li>
+          <li>Rapports de son département</li>
+          <li>Vue équipe du jour</li>
+        </ul>
+      </div>
+    </div>
+    <div class="role-card agent">
+      <div class="role-card-header">🟢 Agent</div>
+      <div class="role-card-body">
+        <ul>
+          <li>Démarrer / arrêter un chronomètre</li>
+          <li>Saisie manuelle de sessions</li>
+          <li>KPI personnels du jour</li>
+          <li>Historique de ses sessions</li>
+          <li>Statistiques par objectif</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 2 — ARCHITECTURE TECHNIQUE          -->
+<!-- ============================================ -->
+<div class="content-page">
+  <div class="section-header">
+    <span class="section-num">Section 02</span>
+    <h2>Architecture Technique</h2>
+  </div>
+
+  <h3>2.1 Stack technologique</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Couche</th><th>Technologie</th><th>Version</th><th>Rôle</th></tr></thead>
+      <tbody>
+        <tr><td>Runtime</td><td><strong>Node.js</strong></td><td>≥ 18 LTS</td><td>Environnement d'exécution JavaScript côté serveur</td></tr>
+        <tr><td>Framework Web</td><td><strong>Hono</strong></td><td>4.12.x</td><td>Framework HTTP léger, compatible Edge/Workers</td></tr>
+        <tr><td>Bundler</td><td><strong>Vite</strong></td><td>6.x</td><td>Compilation TypeScript → JavaScript optimisé</td></tr>
+        <tr><td>Serveur Dev</td><td><strong>Wrangler</strong></td><td>4.x</td><td>Émulation locale Cloudflare + gestion D1</td></tr>
+        <tr><td>Base de données</td><td><strong>SQLite (D1)</strong></td><td>—</td><td>Base relationnelle locale via Cloudflare D1</td></tr>
+        <tr><td>Gestionnaire de processus</td><td><strong>PM2</strong></td><td>—</td><td>Daemon de production (auto-restart)</td></tr>
+        <tr><td>Langage Backend</td><td><strong>TypeScript</strong></td><td>5.x</td><td>Typage statique sur le backend</td></tr>
+        <tr><td>Frontend</td><td><strong>HTML5 / CSS3 / JS vanilla</strong></td><td>—</td><td>SPA mono-fichier par rôle</td></tr>
+        <tr><td>CSS Framework</td><td><strong>Tailwind CSS (CDN)</strong></td><td>3.x</td><td>Utilitaires CSS</td></tr>
+        <tr><td>Graphiques</td><td><strong>Chart.js (CDN)</strong></td><td>4.x</td><td>Visualisations des statistiques</td></tr>
+        <tr><td>Icônes</td><td><strong>Font Awesome (CDN)</strong></td><td>6.x</td><td>Iconographie</td></tr>
+        <tr><td>Authentification</td><td><strong>JWT HS256 manuel</strong></td><td>—</td><td>Tokens signés HMAC-SHA256 (Web Crypto API)</td></tr>
+        <tr><td>Contrôle de version</td><td><strong>Git + GitHub</strong></td><td>—</td><td>Gestion du code source</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>2.2 Architecture applicative</h3>
+  <p>L'application suit un modèle <strong>monolithique backend-frontend séparé</strong> :</p>
+  <ul>
+    <li>Le backend est un unique fichier <code>src/index.tsx</code> compilé en <code>dist/_worker.js</code></li>
+    <li>Chaque rôle dispose de son propre fichier JavaScript frontend servi en statique</li>
+    <li>La communication Frontend → Backend se fait exclusivement via des appels <strong>API REST JSON</strong></li>
+    <li>Le token JWT est stocké dans le <code>localStorage</code> du navigateur</li>
+  </ul>
+
+  <div class="flow">
+    <div class="flow-step">🌐 Navigateur<br><small>(admin.js / agent.js / chef.js)</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">🔌 API REST<br><small>/api/*</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">⚙️ Hono Backend<br><small>src/index.tsx</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">🗄️ SQLite D1<br><small>timetrack-production</small></div>
+  </div>
+
+  <h3>2.3 Structure des fichiers</h3>
+  <div class="code-block">
+<span class="sql-cmt">PROJET-FINALE-CONTROLE/</span>
+├── <span class="sql-kw">src/</span>
+│   └── <span class="sql-tbl">index.tsx</span>          <span class="sql-cmt">← Backend complet (routes API + HTML des SPA)</span>
+├── <span class="sql-kw">public/</span>
+│   └── <span class="sql-kw">static/</span>
+│       ├── <span class="sql-tbl">admin.js</span>         <span class="sql-cmt">← SPA Administrateur</span>
+│       ├── <span class="sql-tbl">agent.js</span>         <span class="sql-cmt">← SPA Agent</span>
+│       ├── <span class="sql-tbl">chef.js</span>          <span class="sql-cmt">← SPA Chef de Département</span>
+│       └── <span class="sql-tbl">cahier_technique.html</span>
+├── <span class="sql-kw">migrations/</span>
+│   ├── <span class="sql-tbl">0001_initial_schema.sql</span>  <span class="sql-cmt">← Schéma initial (7 tables)</span>
+│   └── <span class="sql-tbl">0002_add_security.sql</span>    <span class="sql-cmt">← Ajout colonne password_encrypted</span>
+├── <span class="sql-kw">dist/</span>                    <span class="sql-cmt">← Généré par `npm run build` (ne pas modifier)</span>
+│   ├── <span class="sql-tbl">_worker.js</span>           <span class="sql-cmt">← Backend compilé (~67 Ko)</span>
+│   └── <span class="sql-tbl">static/</span>              <span class="sql-cmt">← Assets copiés depuis public/static/</span>
+├── <span class="sql-tbl">seed.sql</span>              <span class="sql-cmt">← Données initiales (utilisateurs, référentiels)</span>
+├── <span class="sql-tbl">wrangler.jsonc</span>        <span class="sql-cmt">← Configuration Cloudflare / D1</span>
+├── <span class="sql-tbl">package.json</span>          <span class="sql-cmt">← Dépendances Node.js</span>
+├── <span class="sql-tbl">ecosystem.config.cjs</span>  <span class="sql-cmt">← Configuration PM2</span>
+├── <span class="sql-tbl">install.bat / install.sh</span> <span class="sql-cmt">← Scripts d'installation</span>
+└── <span class="sql-tbl">start.bat / start.sh</span>     <span class="sql-cmt">← Scripts de démarrage</span>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 3 — MODÈLE DE DONNÉES               -->
+<!-- ============================================ -->
+<div class="content-page">
+  <div class="section-header">
+    <span class="section-num">Section 03</span>
+    <h2>Modèle de Données</h2>
+  </div>
+
+  <h3>3.1 Diagramme Entité-Relation (ERD)</h3>
+  <div class="erd-container">
+    <div class="erd-entities">
+
+      <div class="erd-entity">
+        <div class="erd-entity-header">🎯 strategic_objectives</div>
+        <div class="erd-entity-body">
+          <div class="erd-field pk-field"><span class="erd-badge-pk">PK</span> id</div>
+          <div class="erd-field">name</div>
+          <div class="erd-field">description</div>
+          <div class="erd-field">color</div>
+          <div class="erd-field">target_percentage</div>
+          <div class="erd-field">status</div>
+        </div>
+      </div>
+
+      <div class="erd-entity">
+        <div class="erd-entity-header">🏢 departments</div>
+        <div class="erd-entity-body">
+          <div class="erd-field pk-field"><span class="erd-badge-pk">PK</span> id</div>
+          <div class="erd-field">name</div>
+          <div class="erd-field">code (UNIQUE)</div>
+          <div class="erd-field">description</div>
+          <div class="erd-field">status</div>
+        </div>
+      </div>
+
+      <div class="erd-entity">
+        <div class="erd-entity-header">⚙️ processes</div>
+        <div class="erd-entity-body">
+          <div class="erd-field pk-field"><span class="erd-badge-pk">PK</span> id</div>
+          <div class="erd-field">name</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> department_id</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> objective_id</div>
+          <div class="erd-field">status</div>
+        </div>
+      </div>
+
+      <div class="erd-entity">
+        <div class="erd-entity-header">✅ tasks</div>
+        <div class="erd-entity-body">
+          <div class="erd-field pk-field"><span class="erd-badge-pk">PK</span> id</div>
+          <div class="erd-field">name</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> department_id</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> process_id</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> objective_id</div>
+          <div class="erd-field">task_type</div>
+        </div>
+      </div>
+
+      <div class="erd-entity">
+        <div class="erd-entity-header">👤 users</div>
+        <div class="erd-entity-body">
+          <div class="erd-field pk-field"><span class="erd-badge-pk">PK</span> id</div>
+          <div class="erd-field">first_name, last_name</div>
+          <div class="erd-field">email (UNIQUE)</div>
+          <div class="erd-field">password_hash</div>
+          <div class="erd-field">password_encrypted</div>
+          <div class="erd-field">role</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> department_id</div>
+          <div class="erd-field">status, last_login</div>
+        </div>
+      </div>
+
+      <div class="erd-entity">
+        <div class="erd-entity-header">⏱️ work_sessions</div>
+        <div class="erd-entity-body">
+          <div class="erd-field pk-field"><span class="erd-badge-pk">PK</span> id</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> user_id</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> task_id</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> objective_id</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> department_id</div>
+          <div class="erd-field">start_time, end_time</div>
+          <div class="erd-field">duration_minutes</div>
+          <div class="erd-field">status, session_type</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> validated_by</div>
+        </div>
+      </div>
+
+      <div class="erd-entity">
+        <div class="erd-entity-header">📋 audit_logs</div>
+        <div class="erd-entity-body">
+          <div class="erd-field pk-field"><span class="erd-badge-pk">PK</span> id</div>
+          <div class="erd-field fk-field"><span class="erd-badge-fk">FK</span> user_id</div>
+          <div class="erd-field">action</div>
+          <div class="erd-field">details</div>
+          <div class="erd-field">ip_address</div>
+          <div class="erd-field">created_at</div>
+        </div>
+      </div>
+
+    </div>
+    <p style="text-align:center;font-size:9pt;color:#6b7280;margin-top:16px">
+      <strong>PK</strong> = Clé primaire &nbsp;|&nbsp; <strong>FK</strong> = Clé étrangère &nbsp;|&nbsp; Les flèches de relation sont décrites dans la section 4.1
+    </p>
+  </div>
+
+  <h3>3.2 Description détaillée des tables</h3>
+
+  <h4>3.2.1 Table <code>strategic_objectives</code> — Objectifs Stratégiques</h4>
+  <p>Contient les 5 axes stratégiques de la banque auxquels toutes les activités sont rattachées.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Colonne</th><th>Type</th><th>Contrainte</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="pk">id</td><td><span class="type-badge t-int">INTEGER</span></td><td>PK AUTOINCREMENT</td><td>Identifiant unique auto-généré</td></tr>
+        <tr><td>name</td><td><span class="type-badge t-text">TEXT</span></td><td>NOT NULL</td><td>Libellé de l'objectif (ex: "Développement Commercial")</td></tr>
+        <tr><td>description</td><td><span class="type-badge t-text">TEXT</span></td><td>—</td><td>Description détaillée de l'objectif</td></tr>
+        <tr><td>color</td><td><span class="type-badge t-text">TEXT</span></td><td>DEFAULT '#1e3a5f'</td><td>Code couleur hexadécimal pour les graphiques (ex: "#22c55e")</td></tr>
+        <tr><td>target_percentage</td><td><span class="type-badge t-real">REAL</span></td><td>DEFAULT 0</td><td>Pourcentage cible d'heures à consacrer à cet objectif (0–100)</td></tr>
+        <tr><td>status</td><td><span class="type-badge t-text">TEXT</span></td><td>DEFAULT 'Actif'</td><td>État : <em>Actif</em> / <em>Inactif</em></td></tr>
+        <tr><td>created_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date de création</td></tr>
+        <tr><td>updated_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date de dernière modification</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>3.2.2 Table <code>departments</code> — Départements</h4>
+  <p>Référentiel des 8 directions de la banque.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Colonne</th><th>Type</th><th>Contrainte</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="pk">id</td><td><span class="type-badge t-int">INTEGER</span></td><td>PK AUTOINCREMENT</td><td>Identifiant unique</td></tr>
+        <tr><td>name</td><td><span class="type-badge t-text">TEXT</span></td><td>NOT NULL</td><td>Nom complet (ex: "Direction Commerciale")</td></tr>
+        <tr><td>code</td><td><span class="type-badge t-text">TEXT</span></td><td>UNIQUE NOT NULL</td><td>Code abrégé unique (ex: "DC", "DRH", "DR"…)</td></tr>
+        <tr><td>description</td><td><span class="type-badge t-text">TEXT</span></td><td>—</td><td>Description du département</td></tr>
+        <tr><td>status</td><td><span class="type-badge t-text">TEXT</span></td><td>DEFAULT 'Actif'</td><td>État : <em>Actif</em> / <em>Inactif</em></td></tr>
+        <tr><td>created_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date de création</td></tr>
+        <tr><td>updated_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date de modification</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>3.2.3 Table <code>processes</code> — Processus Métiers</h4>
+  <p>Chaque processus appartient à un département et contribue à un objectif stratégique.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Colonne</th><th>Type</th><th>Contrainte</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="pk">id</td><td><span class="type-badge t-int">INTEGER</span></td><td>PK AUTOINCREMENT</td><td>Identifiant unique</td></tr>
+        <tr><td>name</td><td><span class="type-badge t-text">TEXT</span></td><td>NOT NULL</td><td>Libellé du processus (ex: "Gestion des crédits")</td></tr>
+        <tr><td>description</td><td><span class="type-badge t-text">TEXT</span></td><td>—</td><td>Description du processus</td></tr>
+        <tr><td class="fk">department_id</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → departments(id) NOT NULL</td><td>Département propriétaire du processus</td></tr>
+        <tr><td class="fk">objective_id</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → strategic_objectives(id) NOT NULL</td><td>Objectif stratégique alimenté par ce processus</td></tr>
+        <tr><td>status</td><td><span class="type-badge t-text">TEXT</span></td><td>DEFAULT 'Actif'</td><td>État du processus</td></tr>
+        <tr><td>created_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date de création</td></tr>
+        <tr><td>updated_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date de modification</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>3.2.4 Table <code>tasks</code> — Tâches Prédéfinies</h4>
+  <p>Catalogue des tâches assignables aux agents. Chaque tâche est liée à un département, un processus et un objectif.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Colonne</th><th>Type</th><th>Contrainte</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="pk">id</td><td><span class="type-badge t-int">INTEGER</span></td><td>PK AUTOINCREMENT</td><td>Identifiant unique</td></tr>
+        <tr><td>name</td><td><span class="type-badge t-text">TEXT</span></td><td>NOT NULL</td><td>Libellé de la tâche (ex: "Accueil clientèle")</td></tr>
+        <tr><td>description</td><td><span class="type-badge t-text">TEXT</span></td><td>—</td><td>Description détaillée</td></tr>
+        <tr><td class="fk">department_id</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → departments(id) NOT NULL</td><td>Département auquel la tâche est rattachée</td></tr>
+        <tr><td class="fk">process_id</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → processes(id) NOT NULL</td><td>Processus métier auquel appartient la tâche</td></tr>
+        <tr><td class="fk">objective_id</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → strategic_objectives(id) NOT NULL</td><td>Objectif stratégique alimenté par cette tâche</td></tr>
+        <tr><td>task_type</td><td><span class="type-badge t-text">TEXT</span></td><td>DEFAULT 'Productive'</td><td>Nature : <em>Productive</em> ou <em>Non productive</em></td></tr>
+        <tr><td>status</td><td><span class="type-badge t-text">TEXT</span></td><td>DEFAULT 'Actif'</td><td>État de la tâche</td></tr>
+        <tr><td>created_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date de création</td></tr>
+        <tr><td>updated_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date de modification</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>3.2.5 Table <code>users</code> — Utilisateurs</h4>
+  <p>Table centrale des comptes utilisateurs. Contient les collaborateurs de la banque avec leur rôle et leur département.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Colonne</th><th>Type</th><th>Contrainte</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="pk">id</td><td><span class="type-badge t-int">INTEGER</span></td><td>PK AUTOINCREMENT</td><td>Identifiant unique de l'utilisateur</td></tr>
+        <tr><td>first_name</td><td><span class="type-badge t-text">TEXT</span></td><td>NOT NULL</td><td>Prénom</td></tr>
+        <tr><td>last_name</td><td><span class="type-badge t-text">TEXT</span></td><td>NOT NULL</td><td>Nom de famille</td></tr>
+        <tr><td>email</td><td><span class="type-badge t-text">TEXT</span></td><td>UNIQUE NOT NULL</td><td>Adresse email (identifiant de connexion)</td></tr>
+        <tr><td>password_hash</td><td><span class="type-badge t-text">TEXT</span></td><td>NOT NULL</td><td>Hash SHA-256 hexadécimal du mot de passe</td></tr>
+        <tr><td>password_encrypted</td><td><span class="type-badge t-text">TEXT</span></td><td>—</td><td>Mot de passe obfusqué XOR+Base64 (lecture admin seulement). Ajouté en migration 0002.</td></tr>
+        <tr><td>role</td><td><span class="type-badge t-text">TEXT</span></td><td>DEFAULT 'Agent'</td><td>Rôle : <em>Agent</em> | <em>Chef de Département</em> | <em>Administrateur</em></td></tr>
+        <tr><td class="fk">department_id</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → departments(id), nullable</td><td>Département de rattachement (NULL pour l'admin)</td></tr>
+        <tr><td>status</td><td><span class="type-badge t-text">TEXT</span></td><td>DEFAULT 'Actif'</td><td>État du compte : <em>Actif</em> / <em>Inactif</em></td></tr>
+        <tr><td>last_login</td><td><span class="type-badge t-dt">DATETIME</span></td><td>—</td><td>Date/heure de la dernière connexion</td></tr>
+        <tr><td>created_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date de création du compte</td></tr>
+        <tr><td>updated_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date de dernière modification</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>3.2.6 Table <code>work_sessions</code> — Sessions de Travail</h4>
+  <p>Table centrale du pointage. Chaque ligne représente une activité effectuée par un agent.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Colonne</th><th>Type</th><th>Contrainte</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="pk">id</td><td><span class="type-badge t-int">INTEGER</span></td><td>PK AUTOINCREMENT</td><td>Identifiant unique de la session</td></tr>
+        <tr><td class="fk">user_id</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → users(id) NOT NULL</td><td>Agent ayant effectué la session</td></tr>
+        <tr><td class="fk">task_id</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → tasks(id) NOT NULL</td><td>Tâche réalisée pendant la session</td></tr>
+        <tr><td class="fk">objective_id</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → strategic_objectives(id) NOT NULL</td><td>Objectif stratégique alimenté (dénormalisé pour performance)</td></tr>
+        <tr><td class="fk">department_id</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → departments(id) NOT NULL</td><td>Département (dénormalisé pour filtres rapides)</td></tr>
+        <tr><td>start_time</td><td><span class="type-badge t-dt">DATETIME</span></td><td>NOT NULL</td><td>Début de la session</td></tr>
+        <tr><td>end_time</td><td><span class="type-badge t-dt">DATETIME</span></td><td>—</td><td>Fin de la session (NULL si en cours)</td></tr>
+        <tr><td>duration_minutes</td><td><span class="type-badge t-int">INTEGER</span></td><td>DEFAULT 0</td><td>Durée calculée en minutes (automatique à l'arrêt)</td></tr>
+        <tr><td>session_type</td><td><span class="type-badge t-text">TEXT</span></td><td>DEFAULT 'Auto'</td><td>Mode : <em>Auto</em> (chronomètre) | <em>Manuel</em> (saisie directe)</td></tr>
+        <tr><td>status</td><td><span class="type-badge t-text">TEXT</span></td><td>DEFAULT 'En cours'</td><td><em>En cours</em> | <em>Terminé</em> | <em>Validé</em> | <em>Rejeté</em></td></tr>
+        <tr><td>comment</td><td><span class="type-badge t-text">TEXT</span></td><td>—</td><td>Commentaire de l'agent</td></tr>
+        <tr><td class="fk">validated_by</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → users(id), nullable</td><td>Chef de département ayant validé la session</td></tr>
+        <tr><td>validated_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>—</td><td>Date/heure de validation</td></tr>
+        <tr><td>rejected_reason</td><td><span class="type-badge t-text">TEXT</span></td><td>—</td><td>Motif de rejet (si applicable)</td></tr>
+        <tr><td>created_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date d'enregistrement</td></tr>
+        <tr><td>updated_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Date de dernière modification</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note">
+    <strong>Dénormalisation intentionnelle :</strong> Les colonnes <code>objective_id</code> et <code>department_id</code>
+    sont dupliquées dans <code>work_sessions</code> pour éviter des jointures coûteuses lors des agrégations statistiques.
+    Elles sont alimentées automatiquement au moment de la création de la session à partir de la tâche sélectionnée.
+  </div>
+
+  <h4>3.2.7 Table <code>audit_logs</code> — Journal d'Audit</h4>
+  <p>Trace toutes les actions sensibles de l'application pour des raisons de conformité et de sécurité.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Colonne</th><th>Type</th><th>Contrainte</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="pk">id</td><td><span class="type-badge t-int">INTEGER</span></td><td>PK AUTOINCREMENT</td><td>Identifiant unique de l'entrée</td></tr>
+        <tr><td class="fk">user_id</td><td><span class="type-badge t-int">INTEGER</span></td><td>FK → users(id), nullable</td><td>Utilisateur ayant déclenché l'action</td></tr>
+        <tr><td>action</td><td><span class="type-badge t-text">TEXT</span></td><td>NOT NULL</td><td>Code action : LOGIN, LOGIN_FAILED, CREATE_USER, UPDATE_USER, VIEW_PASSWORD, VALIDATE_SESSION, REJECT_SESSION…</td></tr>
+        <tr><td>details</td><td><span class="type-badge t-text">TEXT</span></td><td>—</td><td>Détails textuels de l'action</td></tr>
+        <tr><td>ip_address</td><td><span class="type-badge t-text">TEXT</span></td><td>—</td><td>Adresse IP du client (CF-Connecting-IP ou X-Forwarded-For)</td></tr>
+        <tr><td>created_at</td><td><span class="type-badge t-dt">DATETIME</span></td><td>DEFAULT CURRENT_TIMESTAMP</td><td>Horodatage de l'action</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>3.3 Index de performance</h3>
+  <p>Sept index sont définis pour accélérer les requêtes les plus fréquentes :</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nom de l'index</th><th>Table</th><th>Colonne(s)</th><th>Utilisation</th></tr></thead>
+      <tbody>
+        <tr><td>idx_work_sessions_user_id</td><td>work_sessions</td><td>user_id</td><td>Filtrer les sessions d'un agent</td></tr>
+        <tr><td>idx_work_sessions_status</td><td>work_sessions</td><td>status</td><td>Filtrer par état (En cours, Terminé, Validé…)</td></tr>
+        <tr><td>idx_work_sessions_objective</td><td>work_sessions</td><td>objective_id</td><td>Agréger les heures par objectif</td></tr>
+        <tr><td>idx_work_sessions_department</td><td>work_sessions</td><td>department_id</td><td>Agréger les heures par département</td></tr>
+        <tr><td>idx_tasks_department</td><td>tasks</td><td>department_id</td><td>Lister les tâches d'un département</td></tr>
+        <tr><td>idx_processes_department</td><td>processes</td><td>department_id</td><td>Lister les processus d'un département</td></tr>
+        <tr><td>idx_audit_logs_user</td><td>audit_logs</td><td>user_id</td><td>Consulter l'historique d'un utilisateur</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 4 — JOINTURES SQL                   -->
+<!-- ============================================ -->
+<div class="content-page">
+  <div class="section-header">
+    <span class="section-num">Section 04</span>
+    <h2>Jointures SQL</h2>
+  </div>
+
+  <h3>4.1 Relations entre les tables</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Table source</th><th>Colonne FK</th><th>→ Table cible</th><th>Cardinalité</th><th>Signification</th></tr></thead>
+      <tbody>
+        <tr><td>processes</td><td>department_id</td><td>departments.id</td><td>N → 1</td><td>Un processus appartient à un département</td></tr>
+        <tr><td>processes</td><td>objective_id</td><td>strategic_objectives.id</td><td>N → 1</td><td>Un processus contribue à un objectif</td></tr>
+        <tr><td>tasks</td><td>department_id</td><td>departments.id</td><td>N → 1</td><td>Une tâche est rattachée à un département</td></tr>
+        <tr><td>tasks</td><td>process_id</td><td>processes.id</td><td>N → 1</td><td>Une tâche appartient à un processus</td></tr>
+        <tr><td>tasks</td><td>objective_id</td><td>strategic_objectives.id</td><td>N → 1</td><td>Une tâche alimente un objectif</td></tr>
+        <tr><td>users</td><td>department_id</td><td>departments.id</td><td>N → 1</td><td>Un utilisateur appartient à un département</td></tr>
+        <tr><td>work_sessions</td><td>user_id</td><td>users.id</td><td>N → 1</td><td>Une session est effectuée par un agent</td></tr>
+        <tr><td>work_sessions</td><td>task_id</td><td>tasks.id</td><td>N → 1</td><td>Une session correspond à une tâche</td></tr>
+        <tr><td>work_sessions</td><td>objective_id</td><td>strategic_objectives.id</td><td>N → 1</td><td>Une session contribue à un objectif (dénorm.)</td></tr>
+        <tr><td>work_sessions</td><td>department_id</td><td>departments.id</td><td>N → 1</td><td>Une session appartient à un département (dénorm.)</td></tr>
+        <tr><td>work_sessions</td><td>validated_by</td><td>users.id</td><td>N → 1</td><td>Une session est validée par un chef de département</td></tr>
+        <tr><td>audit_logs</td><td>user_id</td><td>users.id</td><td>N → 1</td><td>Un log d'audit est associé à un utilisateur</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>4.2 Jointures principales par fonctionnalité</h3>
+
+  <div class="join-card">
+    <div class="join-title">🔐 Authentification — Récupération d'un utilisateur avec son département <span class="join-badge">LEFT JOIN</span></div>
+    <div class="code-block">
+<span class="sql-kw">SELECT</span> <span class="sql-tbl">u</span>.*<span class="sql-op">,</span> <span class="sql-tbl">d</span>.<span class="sql-col">name</span> <span class="sql-kw">as</span> <span class="sql-col">department_name</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">users</span> <span class="sql-tbl">u</span>
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">departments</span> <span class="sql-tbl">d</span> <span class="sql-kw">ON</span> <span class="sql-tbl">u</span>.<span class="sql-col">department_id</span> <span class="sql-op">=</span> <span class="sql-tbl">d</span>.<span class="sql-col">id</span>
+<span class="sql-kw">WHERE</span> <span class="sql-tbl">u</span>.<span class="sql-col">email</span> <span class="sql-op">=</span> <span class="sql-str">?</span> <span class="sql-kw">AND</span> <span class="sql-tbl">u</span>.<span class="sql-col">status</span> <span class="sql-op">=</span> <span class="sql-str">'Actif'</span>
+    </div>
+    <p>Le LEFT JOIN permet de récupérer les utilisateurs sans département (ex: Administrateur) en retournant NULL pour department_name.</p>
+  </div>
+
+  <div class="join-card">
+    <div class="join-title">📊 Rapport Admin — Sessions avec toutes les informations jointes <span class="join-badge">JOIN multiple</span></div>
+    <div class="code-block">
+<span class="sql-kw">SELECT</span> <span class="sql-tbl">ws</span>.*<span class="sql-op">,</span>
+  <span class="sql-tbl">u</span>.<span class="sql-col">first_name</span> <span class="sql-op">||</span> <span class="sql-str">' '</span> <span class="sql-op">||</span> <span class="sql-tbl">u</span>.<span class="sql-col">last_name</span> <span class="sql-kw">as</span> <span class="sql-col">agent_name</span><span class="sql-op">,</span>
+  <span class="sql-tbl">d</span>.<span class="sql-col">name</span> <span class="sql-kw">as</span> <span class="sql-col">department_name</span><span class="sql-op">,</span>
+  <span class="sql-tbl">t</span>.<span class="sql-col">name</span> <span class="sql-kw">as</span> <span class="sql-col">task_name</span><span class="sql-op">,</span>
+  <span class="sql-tbl">p</span>.<span class="sql-col">name</span> <span class="sql-kw">as</span> <span class="sql-col">process_name</span><span class="sql-op">,</span>
+  <span class="sql-tbl">o</span>.<span class="sql-col">name</span> <span class="sql-kw">as</span> <span class="sql-col">objective_name</span><span class="sql-op">,</span>
+  <span class="sql-tbl">o</span>.<span class="sql-col">color</span> <span class="sql-kw">as</span> <span class="sql-col">objective_color</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">work_sessions</span> <span class="sql-tbl">ws</span>
+<span class="sql-kw">JOIN</span> <span class="sql-tbl">users</span> <span class="sql-tbl">u</span> <span class="sql-kw">ON</span> <span class="sql-tbl">ws</span>.<span class="sql-col">user_id</span> <span class="sql-op">=</span> <span class="sql-tbl">u</span>.<span class="sql-col">id</span>
+<span class="sql-kw">JOIN</span> <span class="sql-tbl">departments</span> <span class="sql-tbl">d</span> <span class="sql-kw">ON</span> <span class="sql-tbl">ws</span>.<span class="sql-col">department_id</span> <span class="sql-op">=</span> <span class="sql-tbl">d</span>.<span class="sql-col">id</span>
+<span class="sql-kw">JOIN</span> <span class="sql-tbl">tasks</span> <span class="sql-tbl">t</span> <span class="sql-kw">ON</span> <span class="sql-tbl">ws</span>.<span class="sql-col">task_id</span> <span class="sql-op">=</span> <span class="sql-tbl">t</span>.<span class="sql-col">id</span>
+<span class="sql-kw">JOIN</span> <span class="sql-tbl">processes</span> <span class="sql-tbl">p</span> <span class="sql-kw">ON</span> <span class="sql-tbl">t</span>.<span class="sql-col">process_id</span> <span class="sql-op">=</span> <span class="sql-tbl">p</span>.<span class="sql-col">id</span>
+<span class="sql-kw">JOIN</span> <span class="sql-tbl">strategic_objectives</span> <span class="sql-tbl">o</span> <span class="sql-kw">ON</span> <span class="sql-tbl">ws</span>.<span class="sql-col">objective_id</span> <span class="sql-op">=</span> <span class="sql-tbl">o</span>.<span class="sql-col">id</span>
+<span class="sql-kw">ORDER BY</span> <span class="sql-tbl">ws</span>.<span class="sql-col">start_time</span> <span class="sql-kw">DESC</span>
+    </div>
+    <p>Cette requête relie 6 tables en chaîne : sessions → agents → départements → tâches → processus → objectifs. Utilisée pour les exports de rapports complets.</p>
+  </div>
+
+  <div class="join-card">
+    <div class="join-title">🎯 Stats Admin — Heures cumulées par objectif stratégique <span class="join-badge">LEFT JOIN + GROUP BY</span></div>
+    <div class="code-block">
+<span class="sql-kw">SELECT</span> <span class="sql-tbl">o</span>.<span class="sql-col">name</span><span class="sql-op">,</span> <span class="sql-tbl">o</span>.<span class="sql-col">color</span><span class="sql-op">,</span> <span class="sql-tbl">o</span>.<span class="sql-col">target_percentage</span><span class="sql-op">,</span>
+  <span class="sql-kw">COALESCE</span>(<span class="sql-kw">SUM</span>(<span class="sql-tbl">ws</span>.<span class="sql-col">duration_minutes</span>)<span class="sql-op">, 0</span>) <span class="sql-kw">as</span> <span class="sql-col">total_minutes</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">strategic_objectives</span> <span class="sql-tbl">o</span>
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">work_sessions</span> <span class="sql-tbl">ws</span>
+  <span class="sql-kw">ON</span> <span class="sql-tbl">ws</span>.<span class="sql-col">objective_id</span> <span class="sql-op">=</span> <span class="sql-tbl">o</span>.<span class="sql-col">id</span>
+  <span class="sql-kw">AND</span> <span class="sql-tbl">ws</span>.<span class="sql-col">status</span> <span class="sql-op">=</span> <span class="sql-str">'Validé'</span>     <span class="sql-cmt">-- ne compter que les sessions validées</span>
+<span class="sql-kw">WHERE</span> <span class="sql-tbl">o</span>.<span class="sql-col">status</span> <span class="sql-op">=</span> <span class="sql-str">'Actif'</span>
+<span class="sql-kw">GROUP BY</span> <span class="sql-tbl">o</span>.<span class="sql-col">id</span><span class="sql-op">,</span> <span class="sql-tbl">o</span>.<span class="sql-col">name</span><span class="sql-op">,</span> <span class="sql-tbl">o</span>.<span class="sql-col">color</span><span class="sql-op">,</span> <span class="sql-tbl">o</span>.<span class="sql-col">target_percentage</span>
+<span class="sql-kw">ORDER BY</span> <span class="sql-col">total_minutes</span> <span class="sql-kw">DESC</span>
+    </div>
+    <p>Le LEFT JOIN garantit que tous les objectifs apparaissent même s'ils n'ont aucune session enregistrée (total_minutes = 0 via COALESCE).</p>
+  </div>
+
+  <div class="join-card">
+    <div class="join-title">📈 Productivité Chef — Heures productives/non-productives par agent aujourd'hui <span class="join-badge">LEFT JOIN + CASE WHEN</span></div>
+    <div class="code-block">
+<span class="sql-kw">SELECT</span>
+  <span class="sql-tbl">u</span>.<span class="sql-col">id</span><span class="sql-op">,</span>
+  <span class="sql-tbl">u</span>.<span class="sql-col">first_name</span> <span class="sql-op">||</span> <span class="sql-str">' '</span> <span class="sql-op">||</span> <span class="sql-tbl">u</span>.<span class="sql-col">last_name</span> <span class="sql-kw">as</span> <span class="sql-col">agent_name</span><span class="sql-op">,</span>
+  <span class="sql-kw">COALESCE</span>(<span class="sql-kw">SUM</span>(<span class="sql-tbl">ws</span>.<span class="sql-col">duration_minutes</span>)<span class="sql-op">, 0</span>) <span class="sql-kw">as</span> <span class="sql-col">productive_minutes_today</span><span class="sql-op">,</span>
+  <span class="sql-kw">CASE WHEN</span> <span class="sql-op">480 -</span> <span class="sql-kw">COALESCE</span>(<span class="sql-kw">SUM</span>(<span class="sql-tbl">ws</span>.<span class="sql-col">duration_minutes</span>)<span class="sql-op">, 0</span>) <span class="sql-op">&gt; 0</span>
+       <span class="sql-kw">THEN</span> <span class="sql-op">480 -</span> <span class="sql-kw">COALESCE</span>(<span class="sql-kw">SUM</span>(<span class="sql-tbl">ws</span>.<span class="sql-col">duration_minutes</span>)<span class="sql-op">, 0</span>)
+       <span class="sql-kw">ELSE</span> <span class="sql-op">0</span> <span class="sql-kw">END</span> <span class="sql-kw">as</span> <span class="sql-col">non_productive_minutes_today</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">users</span> <span class="sql-tbl">u</span>
+<span class="sql-kw">LEFT JOIN</span> <span class="sql-tbl">work_sessions</span> <span class="sql-tbl">ws</span>
+  <span class="sql-kw">ON</span> <span class="sql-tbl">ws</span>.<span class="sql-col">user_id</span> <span class="sql-op">=</span> <span class="sql-tbl">u</span>.<span class="sql-col">id</span>
+  <span class="sql-kw">AND</span> <span class="sql-tbl">ws</span>.<span class="sql-col">status</span> <span class="sql-op">=</span> <span class="sql-str">'Validé'</span>
+  <span class="sql-kw">AND</span> <span class="sql-kw">date</span>(<span class="sql-tbl">ws</span>.<span class="sql-col">start_time</span>) <span class="sql-op">=</span> <span class="sql-kw">date</span>(<span class="sql-str">'now'</span>)   <span class="sql-cmt">-- filtre sur le jour courant</span>
+<span class="sql-kw">WHERE</span> <span class="sql-tbl">u</span>.<span class="sql-col">department_id</span> <span class="sql-op">=</span> <span class="sql-str">?</span>
+  <span class="sql-kw">AND</span> <span class="sql-tbl">u</span>.<span class="sql-col">role</span> <span class="sql-op">=</span> <span class="sql-str">'Agent'</span>
+  <span class="sql-kw">AND</span> <span class="sql-tbl">u</span>.<span class="sql-col">status</span> <span class="sql-op">=</span> <span class="sql-str">'Actif'</span>
+<span class="sql-kw">GROUP BY</span> <span class="sql-tbl">u</span>.<span class="sql-col">id</span><span class="sql-op">,</span> <span class="sql-tbl">u</span>.<span class="sql-col">first_name</span><span class="sql-op">,</span> <span class="sql-tbl">u</span>.<span class="sql-col">last_name</span>
+    </div>
+    <p>
+      <strong>Logique métier :</strong> 480 minutes = 8h journée standard.
+      <code>CASE WHEN</code> remplace <code>GREATEST()</code> absent de SQLite.
+      Seules les sessions en statut <em>Validé</em> comptent comme productives.
+    </p>
+  </div>
+
+  <div class="join-card">
+    <div class="join-title">📋 Tâches disponibles pour un agent — Jointure 4 niveaux <span class="join-badge">JOIN chaîné</span></div>
+    <div class="code-block">
+<span class="sql-kw">SELECT</span> <span class="sql-tbl">t</span>.*<span class="sql-op">,</span>
+  <span class="sql-tbl">p</span>.<span class="sql-col">name</span> <span class="sql-kw">as</span> <span class="sql-col">process_name</span><span class="sql-op">,</span>
+  <span class="sql-tbl">o</span>.<span class="sql-col">name</span> <span class="sql-kw">as</span> <span class="sql-col">objective_name</span><span class="sql-op">,</span>
+  <span class="sql-tbl">o</span>.<span class="sql-col">color</span> <span class="sql-kw">as</span> <span class="sql-col">objective_color</span>
+<span class="sql-kw">FROM</span> <span class="sql-tbl">tasks</span> <span class="sql-tbl">t</span>
+<span class="sql-kw">JOIN</span> <span class="sql-tbl">processes</span> <span class="sql-tbl">p</span> <span class="sql-kw">ON</span> <span class="sql-tbl">t</span>.<span class="sql-col">process_id</span> <span class="sql-op">=</span> <span class="sql-tbl">p</span>.<span class="sql-col">id</span>
+<span class="sql-kw">JOIN</span> <span class="sql-tbl">strategic_objectives</span> <span class="sql-tbl">o</span> <span class="sql-kw">ON</span> <span class="sql-tbl">t</span>.<span class="sql-col">objective_id</span> <span class="sql-op">=</span> <span class="sql-tbl">o</span>.<span class="sql-col">id</span>
+<span class="sql-kw">WHERE</span> <span class="sql-tbl">t</span>.<span class="sql-col">department_id</span> <span class="sql-op">=</span> <span class="sql-str">?</span>   <span class="sql-cmt">-- département de l'agent connecté</span>
+  <span class="sql-kw">AND</span> <span class="sql-tbl">t</span>.<span class="sql-col">status</span> <span class="sql-op">=</span> <span class="sql-str">'Actif'</span>
+<span class="sql-kw">ORDER BY</span> <span class="sql-tbl">o</span>.<span class="sql-col">name</span><span class="sql-op">,</span> <span class="sql-tbl">t</span>.<span class="sql-col">name</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 5 — API REST                        -->
+<!-- ============================================ -->
+<div class="content-page">
+  <div class="section-header">
+    <span class="section-num">Section 05</span>
+    <h2>API REST — Documentation des Routes</h2>
+  </div>
+
+  <div class="note">
+    Toutes les routes (sauf <code>/api/auth/login</code>) nécessitent un header <strong>Authorization: Bearer &lt;JWT&gt;</strong>.
+    Le format de réponse est toujours <strong>JSON</strong>. Le serveur écoute sur le port <strong>3000</strong>.
+  </div>
+
+  <h3>5.1 Authentification</h3>
+  <div class="api-section">
+    <div class="api-route">
+      <span class="method POST">POST</span>
+      <div>
+        <div class="api-path">/api/auth/login</div>
+        <div class="api-desc">Connexion utilisateur. Corps : <code>{"email": "…", "password": "…"}</code>. Retourne un JWT et les infos utilisateur. Rate-limiting 3 tentatives / 15 min de blocage.</div>
+      </div>
+      <span class="api-auth auth-public">Public</span>
+    </div>
+    <div class="api-route">
+      <span class="method GET">GET</span>
+      <div>
+        <div class="api-path">/api/auth/me</div>
+        <div class="api-desc">Retourne le profil de l'utilisateur courant (depuis le JWT).</div>
+      </div>
+      <span class="api-auth auth-agent">Tout rôle</span>
+    </div>
+  </div>
+
+  <h3>5.2 Routes Administrateur</h3>
+  <div class="api-section">
+    <div class="api-group-title">👤 Gestion des Utilisateurs</div>
+    <div class="api-route">
+      <span class="method GET">GET</span>
+      <div><div class="api-path">/api/admin/users</div><div class="api-desc">Liste tous les utilisateurs avec leur département (LEFT JOIN departments).</div></div>
+      <span class="api-auth auth-admin">Admin</span>
+    </div>
+    <div class="api-route">
+      <span class="method POST">POST</span>
+      <div><div class="api-path">/api/admin/users</div><div class="api-desc">Crée un utilisateur. Corps : first_name, last_name, email, password, role, department_id, status. Hash SHA-256 + chiffrement XOR automatique.</div></div>
+      <span class="api-auth auth-admin">Admin</span>
+    </div>
+    <div class="api-route">
+      <span class="method PUT">PUT</span>
+      <div><div class="api-path">/api/admin/users/:id</div><div class="api-desc">Modifie un utilisateur. Si un nouveau mot de passe est fourni, il est re-hashé.</div></div>
+      <span class="api-auth auth-admin">Admin</span>
+    </div>
+    <div class="api-route">
+      <span class="method GET">GET</span>
+      <div><div class="api-path">/api/admin/users/:id/password</div><div class="api-desc">Retourne le mot de passe en clair (déchiffrement XOR). Action enregistrée en audit.</div></div>
+      <span class="api-auth auth-admin">Admin</span>
+    </div>
+    <div class="api-route">
+      <span class="method DELETE">DEL</span>
+      <div><div class="api-path">/api/admin/users/:id</div><div class="api-desc">Supprime un utilisateur (impossible de se supprimer soi-même).</div></div>
+      <span class="api-auth auth-admin">Admin</span>
+    </div>
+
+    <div class="api-group-title" style="margin-top:14px">🏢 Référentiels</div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/admin/departments</div><div class="api-desc">Liste tous les départements avec le nombre d'utilisateurs actifs.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/admin/departments</div><div class="api-desc">Crée un département.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method PUT">PUT</span><div><div class="api-path">/api/admin/departments/:id</div><div class="api-desc">Modifie un département.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/admin/objectives</div><div class="api-desc">Liste les objectifs stratégiques.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/admin/objectives</div><div class="api-desc">Crée un objectif stratégique.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method PUT">PUT</span><div><div class="api-path">/api/admin/objectives/:id</div><div class="api-desc">Modifie un objectif stratégique.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/admin/processes</div><div class="api-desc">Liste les processus métiers avec département et objectif (JOIN).</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/admin/processes</div><div class="api-desc">Crée un processus.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method PUT">PUT</span><div><div class="api-path">/api/admin/processes/:id</div><div class="api-desc">Modifie un processus.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/admin/tasks</div><div class="api-desc">Liste les tâches avec processus et objectif (JOIN multiple).</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/admin/tasks</div><div class="api-desc">Crée une tâche.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method PUT">PUT</span><div><div class="api-path">/api/admin/tasks/:id</div><div class="api-desc">Modifie une tâche.</div></div><span class="api-auth auth-admin">Admin</span></div>
+
+    <div class="api-group-title" style="margin-top:14px">📊 Analytics & Audit</div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/admin/sessions</div><div class="api-desc">Liste toutes les sessions avec filtre optionnel (?department_id=, ?status=, ?date_from=, ?date_to=).</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/admin/stats</div><div class="api-desc">Statistiques globales : heures/objectif, heures/département, tendance mensuelle (6 mois), productivité globale du jour.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/admin/reports</div><div class="api-desc">Rapport complet avec jointures 6 tables, filtres et export.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/admin/audit</div><div class="api-desc">Journal d'audit des 30 dernières actions (avec nom de l'utilisateur).</div></div><span class="api-auth auth-admin">Admin</span></div>
+  </div>
+
+  <h3>5.3 Routes Chef de Département</h3>
+  <div class="api-section">
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/chef/dashboard</div><div class="api-desc">Tableau de bord complet : agents actifs, total heures équipe, sessions à valider, heures par agent, répartition par objectif, productivité équipe aujourd'hui (productif vs non-productif).</div></div><span class="api-auth auth-chef">Chef</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/chef/team</div><div class="api-desc">Liste les agents du département avec les sessions et minutes du jour.</div></div><span class="api-auth auth-chef">Chef</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/chef/validation</div><div class="api-desc">Retourne les sessions avec statut "Terminé" en attente de validation.</div></div><span class="api-auth auth-chef">Chef</span></div>
+    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/chef/validate/:id</div><div class="api-desc">Valide une session. Met à jour status → "Validé", validated_by, validated_at. Enregistrement en audit.</div></div><span class="api-auth auth-chef">Chef</span></div>
+    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/chef/reject/:id</div><div class="api-desc">Rejette une session avec motif. Met à jour status → "Rejeté", rejected_reason. Enregistrement en audit.</div></div><span class="api-auth auth-chef">Chef</span></div>
+    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/chef/validate-all</div><div class="api-desc">Valide en masse toutes les sessions "Terminé" du département.</div></div><span class="api-auth auth-chef">Chef</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/chef/reports</div><div class="api-desc">Rapport détaillé du département avec jointures (agent, tâche, processus, objectif).</div></div><span class="api-auth auth-chef">Chef</span></div>
+  </div>
+
+  <h3>5.4 Routes Agent</h3>
+  <div class="api-section">
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/agent/dashboard</div><div class="api-desc">KPI du jour : heures pointées, session active, objectif du jour, statut de validation.</div></div><span class="api-auth auth-agent">Agent</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/agent/tasks</div><div class="api-desc">Liste les tâches actives du département de l'agent (JOIN processes + objectives).</div></div><span class="api-auth auth-agent">Agent</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/agent/sessions</div><div class="api-desc">Historique de toutes les sessions de l'agent avec tâche et objectif (JOIN).</div></div><span class="api-auth auth-agent">Agent</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/agent/sessions/active</div><div class="api-desc">Retourne la session en cours (status="En cours") ou null.</div></div><span class="api-auth auth-agent">Agent</span></div>
+    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/agent/sessions/start</div><div class="api-desc">Démarre le chronomètre sur une tâche. Refuse si une session est déjà en cours.</div></div><span class="api-auth auth-agent">Agent</span></div>
+    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/agent/sessions/stop</div><div class="api-desc">Arrête le chronomètre. Calcule duration_minutes = (end_time - start_time) / 60. Status → "Terminé".</div></div><span class="api-auth auth-agent">Agent</span></div>
+    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/agent/sessions/manual</div><div class="api-desc">Saisie manuelle. Corps : task_id, date, start_time, end_time, comment. session_type = "Manuel".</div></div><span class="api-auth auth-agent">Agent</span></div>
+    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/agent/stats</div><div class="api-desc">Statistiques personnelles : heures du jour, total, validées, nombre de sessions, répartition par objectif.</div></div><span class="api-auth auth-agent">Agent</span></div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 6 — SÉCURITÉ                        -->
+<!-- ============================================ -->
+<div class="content-page">
+  <div class="section-header">
+    <span class="section-num">Section 06</span>
+    <h2>Sécurité</h2>
+  </div>
+
+  <h3>6.1 Authentification JWT (HS256)</h3>
+  <div class="security-box blue">
+    <div class="sec-icon">🔑</div>
+    <div class="sec-content">
+      <h4>Token JWT signé HMAC-SHA256</h4>
+      <p>Le token est généré manuellement via la <strong>Web Crypto API</strong> (standard W3C, sans dépendance externe).
+      Il contient : id, email, role, department_id, first_name, last_name, department_name.
+      Secret configurable via variable d'environnement <code>JWT_SECRET</code>.</p>
+    </div>
+  </div>
+  <div class="flow" style="margin:10px 0">
+    <div class="flow-step" style="font-size:9pt">Utilisateur<br>envoie email+mdp</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step" style="font-size:9pt">Vérification<br>hash SHA-256</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step" style="font-size:9pt">Génération<br>JWT signé</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step" style="font-size:9pt">localStorage<br>navigateur</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step" style="font-size:9pt">Header Bearer<br>sur chaque appel</div>
+  </div>
+
+  <h3>6.2 Hachage des mots de passe</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Champ</th><th>Algorithme</th><th>Format</th><th>Usage</th></tr></thead>
+      <tbody>
+        <tr><td>password_hash</td><td>SHA-256 (Web Crypto API)</td><td>Hexadécimal 64 chars</td><td>Comparaison lors de la connexion</td></tr>
+        <tr><td>password_encrypted</td><td>XOR + Base64 (clé: bgfibank2024)</td><td>Base64 variable</td><td>Affichage admin (bouton œil)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="security-box orange">
+    <div class="sec-icon">⚠️</div>
+    <div class="sec-content">
+      <h4>Note pour une évolution future</h4>
+      <p>Le SHA-256 sans sel est fonctionnel pour un environnement interne protégé. Pour un déploiement internet public, il est recommandé de migrer vers <strong>bcrypt</strong> ou <strong>Argon2</strong> avec sel aléatoire par utilisateur.</p>
+    </div>
+  </div>
+
+  <h3>6.3 Rate limiting & verrouillage de compte</h3>
+  <div class="security-box green">
+    <div class="sec-icon">🛡️</div>
+    <div class="sec-content">
+      <h4>Protection contre les attaques par force brute</h4>
+      <p>Après <strong>3 tentatives de connexion échouées</strong> depuis la même adresse IP, le compte est verrouillé pendant <strong>15 minutes</strong>. Les tentatives restantes sont affichées à l'utilisateur. Le verrou se lève automatiquement après expiration.</p>
+    </div>
+  </div>
+
+  <h3>6.4 En-têtes HTTP de sécurité</h3>
+  <p>Ces en-têtes sont automatiquement ajoutés à toutes les réponses HTTP :</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>En-tête</th><th>Valeur</th><th>Protection</th></tr></thead>
+      <tbody>
+        <tr><td>X-Content-Type-Options</td><td>nosniff</td><td>Empêche le MIME sniffing</td></tr>
+        <tr><td>X-Frame-Options</td><td>DENY</td><td>Empêche l'intégration en iframe (protection clickjacking)</td></tr>
+        <tr><td>X-XSS-Protection</td><td>1; mode=block</td><td>Active le filtre XSS du navigateur</td></tr>
+        <tr><td>Referrer-Policy</td><td>strict-origin-when-cross-origin</td><td>Contrôle les informations de référent</td></tr>
+        <tr><td>Permissions-Policy</td><td>geolocation=(), microphone=(), camera=()</td><td>Désactive accès aux capteurs</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>6.5 Validation des entrées</h3>
+  <div class="security-box green">
+    <div class="sec-icon">✅</div>
+    <div class="sec-content">
+      <h4>Sanitisation contre les injections</h4>
+      <p>La fonction <code>sanitizeString()</code> supprime les caractères dangereux : <code>&lt; &gt; " ' % ; ( ) &amp; +</code>.
+      Toutes les requêtes SQL utilisent des <strong>requêtes préparées avec paramètres liés</strong> (<code>?</code>) — protection native contre les injections SQL.</p>
+    </div>
+  </div>
+
+  <h3>6.6 Contrôle d'accès basé sur les rôles (RBAC)</h3>
+  <p>Chaque route API vérifie le rôle de l'utilisateur extrait du JWT :</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Préfixe route</th><th>Rôle requis</th><th>Vérification</th></tr></thead>
+      <tbody>
+        <tr><td>/api/admin/*</td><td>Administrateur</td><td>user.role === 'Administrateur'</td></tr>
+        <tr><td>/api/chef/*</td><td>Chef de Département ou Administrateur</td><td>user.role IN ('Chef de Département', 'Administrateur')</td></tr>
+        <tr><td>/api/agent/*</td><td>Tout utilisateur authentifié</td><td>getUser(c) !== null</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>6.7 Journal d'audit</h3>
+  <p>Les actions suivantes sont enregistrées dans la table <code>audit_logs</code> avec horodatage et IP :</p>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0">
+    <span class="chip chip-blue">LOGIN</span>
+    <span class="chip chip-blue">LOGIN_FAILED</span>
+    <span class="chip chip-orange">CREATE_USER</span>
+    <span class="chip chip-orange">UPDATE_USER</span>
+    <span class="chip chip-orange">DELETE_USER</span>
+    <span class="chip chip-gray">VIEW_PASSWORD</span>
+    <span class="chip chip-green">VALIDATE_SESSION</span>
+    <span class="chip chip-blue">REJECT_SESSION</span>
+    <span class="chip chip-green">VALIDATE_ALL</span>
+    <span class="chip chip-orange">CREATE_DEPARTMENT</span>
+    <span class="chip chip-orange">CREATE_OBJECTIVE</span>
+    <span class="chip chip-orange">CREATE_PROCESS</span>
+    <span class="chip chip-orange">CREATE_TASK</span>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 7 — CALCUL DE PRODUCTIVITÉ          -->
+<!-- ============================================ -->
+<div class="content-page">
+  <div class="section-header">
+    <span class="section-num">Section 07</span>
+    <h2>Calcul de Productivité</h2>
+  </div>
+
+  <h3>7.1 Formule de base</h3>
+  <div class="highlight">
+    <strong>Règle métier :</strong> Une journée de travail standard est de <strong>8 heures = 480 minutes</strong>.
+    <br>
+    <strong>Heures productives</strong> = Somme des minutes des sessions validées du jour (plafonnée à 480 min)
+    <br>
+    <strong>Heures non-productives</strong> = MAX(0, 480 − Heures productives)
+  </div>
+
+  <h3>7.2 Tableau de calcul — Exemples</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Sessions validées</th><th>Durée totale</th><th>H. productives</th><th>H. non-productives</th><th>Taux productivité</th></tr></thead>
+      <tbody>
+        <tr><td>Aucune session</td><td>0 min</td><td>0h 00m</td><td>8h 00m</td><td style="color:#dc2626;font-weight:700">0 %</td></tr>
+        <tr><td>2 sessions</td><td>120 min</td><td>2h 00m</td><td>6h 00m</td><td style="color:#f59e0b;font-weight:700">25 %</td></tr>
+        <tr><td>3 sessions</td><td>360 min</td><td>6h 00m</td><td>2h 00m</td><td style="color:#f59e0b;font-weight:700">75 %</td></tr>
+        <tr><td>4 sessions</td><td>480 min</td><td>8h 00m</td><td>0h 00m</td><td style="color:#16a34a;font-weight:700">100 %</td></tr>
+        <tr><td>Heures sup.</td><td>540 min</td><td>8h 00m (plafonné)</td><td>0h 00m</td><td style="color:#16a34a;font-weight:700">100 %</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>7.3 Seuils de performance et badges</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Taux de productivité</th><th>Badge affiché</th><th>Couleur</th><th>Signification</th></tr></thead>
+      <tbody>
+        <tr><td>≥ 80 %</td><td>✅ Bon</td><td style="color:#16a34a;font-weight:700">Vert</td><td>Journée productive</td></tr>
+        <tr><td>50 % – 79 %</td><td>⚠️ Moyen</td><td style="color:#f59e0b;font-weight:700">Orange</td><td>Journée partiellement productive</td></tr>
+        <tr><td>&lt; 50 %</td><td>❌ Faible</td><td style="color:#dc2626;font-weight:700">Rouge</td><td>Journée insuffisante</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>7.4 Où est affiché ce calcul ?</h3>
+  <ul>
+    <li><strong>Tableau de bord Admin</strong> : Bloc "Productivité" global + tableau détaillé par agent avec barre de progression</li>
+    <li><strong>Tableau de bord Chef de Département</strong> : Bloc productivité de l'équipe + tableau par agent avec heures productives/non-productives du jour</li>
+    <li><strong>Tendance mensuelle Admin</strong> : Graphique courbe sur 6 mois des heures validées</li>
+  </ul>
+
+  <h3>7.5 Précision technique — CASE WHEN au lieu de GREATEST()</h3>
+  <div class="code-block">
+<span class="sql-cmt">-- SQLite ne supporte pas GREATEST(), on utilise CASE WHEN :</span>
+<span class="sql-kw">CASE WHEN</span> <span class="sql-op">480 -</span> <span class="sql-kw">COALESCE</span>(<span class="sql-kw">SUM</span>(<span class="sql-col">duration_minutes</span>)<span class="sql-op">, 0</span>) <span class="sql-op">&gt; 0</span>
+     <span class="sql-kw">THEN</span> <span class="sql-op">480 -</span> <span class="sql-kw">COALESCE</span>(<span class="sql-kw">SUM</span>(<span class="sql-col">duration_minutes</span>)<span class="sql-op">, 0</span>)
+     <span class="sql-kw">ELSE</span> <span class="sql-op">0</span>
+<span class="sql-kw">END</span> <span class="sql-kw">AS</span> <span class="sql-col">non_productive_minutes</span>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 8 — DÉPLOIEMENT & INFRASTRUCTURE    -->
+<!-- ============================================ -->
+<div class="content-page">
+  <div class="section-header">
+    <span class="section-num">Section 08</span>
+    <h2>Déploiement et Infrastructure</h2>
+  </div>
+
+  <h3>8.1 Architecture de déploiement</h3>
+  <div class="infra-box">
+    <div class="infra-title">🖥️ Déploiement Local (réseau interne bancaire)</div>
+    <div class="infra-row"><span class="infra-label">Serveur hôte</span><span class="infra-value">Windows Server 2016/2019 ou Linux Ubuntu 20.04+</span></div>
+    <div class="infra-row"><span class="infra-label">Runtime</span><span class="infra-value">Node.js 18+ LTS</span></div>
+    <div class="infra-row"><span class="infra-label">Gestionnaire de processus</span><span class="infra-value">PM2 (auto-restart, surveillance)</span></div>
+    <div class="infra-row"><span class="infra-label">Serveur HTTP</span><span class="infra-value">Wrangler Pages Dev (port 3000)</span></div>
+    <div class="infra-row"><span class="infra-label">Base de données</span><span class="infra-value">SQLite via Cloudflare D1 local (.wrangler/state/v3/d1/)</span></div>
+    <div class="infra-row"><span class="infra-label">Accès réseau</span><span class="infra-value">http://&lt;IP_SERVEUR&gt;:3000 (intranet uniquement)</span></div>
+    <div class="infra-row"><span class="infra-label">Optionnel : reverse proxy</span><span class="infra-value">Nginx → port 80 → localhost:3000</span></div>
+    <div class="infra-row"><span class="infra-label">DNS interne suggéré</span><span class="infra-value">http://timetrack.bgfibank.local</span></div>
+  </div>
+
+  <h3>8.2 Prérequis système</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Composant</th><th>Version minimale</th><th>Téléchargement</th></tr></thead>
+      <tbody>
+        <tr><td>Node.js</td><td>18.0.0 LTS</td><td>https://nodejs.org/</td></tr>
+        <tr><td>npm</td><td>8.x (inclus avec Node.js)</td><td>—</td></tr>
+        <tr><td>Git</td><td>2.x</td><td>https://git-scm.com/</td></tr>
+        <tr><td>RAM disponible</td><td>512 Mo minimum</td><td>—</td></tr>
+        <tr><td>Espace disque</td><td>500 Mo (app + dépendances)</td><td>—</td></tr>
+        <tr><td>Port réseau</td><td>3000 (TCP entrant)</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>8.3 Procédure d'installation</h3>
+  <div class="code-block">
+<span class="sql-cmt"># 1. Cloner le dépôt</span>
+git clone https://github.com/kobafayolr-prog/PROJET-FINALE-CONTROLE.git
+cd PROJET-FINALE-CONTROLE
+
+<span class="sql-cmt"># 2. Installer les dépendances</span>
+npm install
+
+<span class="sql-cmt"># 3. Créer et initialiser la base de données locale</span>
+npx wrangler d1 migrations apply timetrack-production --local
+
+<span class="sql-cmt"># 4. Charger les données initiales</span>
+npx wrangler d1 execute timetrack-production --local --file=./seed.sql
+
+<span class="sql-cmt"># 5. Compiler le projet</span>
+npm run build
+cp -r public/static dist/static       <span class="sql-cmt"># Linux/Mac</span>
+xcopy /E /I /Y public\static dist\static  <span class="sql-cmt"># Windows</span>
+
+<span class="sql-cmt"># 6. Démarrer (via script ou PM2)</span>
+./start.sh          <span class="sql-cmt"># Linux/Mac</span>
+start.bat           <span class="sql-cmt"># Windows</span>
+  </div>
+
+  <h3>8.4 Sauvegarde de la base de données</h3>
+  <p>La base SQLite est stockée dans <code>.wrangler/state/v3/d1/</code>. Sauvegarder régulièrement ce dossier :</p>
+  <div class="code-block">
+<span class="sql-cmt"># Sauvegarde manuelle Linux</span>
+cp -r .wrangler/state/v3/d1/ /backup/timetrack-db-$(date +%Y%m%d)/
+
+<span class="sql-cmt"># Sauvegarde Windows</span>
+xcopy /E /I .wrangler\state\v3\d1 D:\backups\timetrack-db-%date:~6,4%%date:~3,2%%date:~0,2%\
+  </div>
+
+  <h3>8.5 Variables d'environnement</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Variable</th><th>Valeur par défaut</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>JWT_SECRET</td><td>timetrack-bgfibank-secret-2024-x9k2p7m</td><td>Clé secrète de signature des tokens JWT. À changer en production.</td></tr>
+        <tr><td>PORT</td><td>3000</td><td>Port d'écoute du serveur</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 9 — COMPTES PAR DÉFAUT              -->
+<!-- ============================================ -->
+<div class="content-page">
+  <div class="section-header">
+    <span class="section-num">Section 09</span>
+    <h2>Comptes Utilisateurs par Défaut</h2>
+  </div>
+
+  <div class="highlight">
+    <strong>Important :</strong> Ces comptes sont créés lors de l'initialisation via <code>seed.sql</code>.
+    Les mots de passe doivent être changés après la première connexion en production.
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Prénom NOM</th><th>Email</th><th>Mot de passe</th><th>Rôle</th><th>Département</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Fayolle KOBA</strong></td>
+          <td>admin@bgfibank.com</td>
+          <td><code>admin123</code></td>
+          <td><span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700">Administrateur</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><strong>Marc NZOGHE</strong></td>
+          <td>chef.commercial@bgfibank.com</td>
+          <td><code>Chef@2024</code></td>
+          <td><span style="background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700">Chef de Dépt</span></td>
+          <td>Direction Commerciale (DC)</td>
+        </tr>
+        <tr>
+          <td><strong>Sandra MBOUMBA</strong></td>
+          <td>agent.commercial@bgfibank.com</td>
+          <td><code>Agent@2024</code></td>
+          <td><span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700">Agent</span></td>
+          <td>Direction Commerciale (DC)</td>
+        </tr>
+        <tr>
+          <td><strong>Eliel KAPOU</strong></td>
+          <td>eliel@bgfi.com</td>
+          <td><code>Agent@2024</code></td>
+          <td><span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700">Agent</span></td>
+          <td>Direction des Risques (DR)</td>
+        </tr>
+        <tr>
+          <td><strong>Ingara MAIDOU</strong></td>
+          <td>maidou@bgfi.com</td>
+          <td><code>Chef@2024</code></td>
+          <td><span style="background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700">Chef de Dépt</span></td>
+          <td>Direction des Risques (DR)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>9.1 Données de référence chargées (seed.sql)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Référentiel</th><th>Quantité</th><th>Détail</th></tr></thead>
+      <tbody>
+        <tr><td>Objectifs stratégiques</td><td>5</td><td>Développement Commercial (30%), Expérience Client (25%), Maîtrise des Frais (20%), Maîtrise des Pertes (15%), PNB (10%)</td></tr>
+        <tr><td>Départements</td><td>8</td><td>DC, DCONF, DF, DG, DI, DOT, DRH, DR</td></tr>
+        <tr><td>Processus métiers</td><td>14</td><td>Couvrant tous les départements et objectifs</td></tr>
+        <tr><td>Tâches prédéfinies</td><td>21</td><td>Réparties sur 7 départements</td></tr>
+        <tr><td>Utilisateurs</td><td>5</td><td>1 Admin + 2 Chefs + 2 Agents</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SECTION 10 — MIGRATIONS                     -->
+<!-- ============================================ -->
+<div class="content-page">
+  <div class="section-header">
+    <span class="section-num">Section 10</span>
+    <h2>Migrations de Base de Données</h2>
+  </div>
+
+  <p>Les migrations sont des fichiers SQL numérotés dans le répertoire <code>migrations/</code>.
+  Elles sont appliquées séquentiellement par Wrangler et ne peuvent pas être rejouées une fois appliquées.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Fichier</th><th>Date</th><th>Description</th><th>Tables impactées</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>0001_initial_schema.sql</strong></td>
+          <td>Jan 2025</td>
+          <td>Schéma initial complet : création des 7 tables, définition des clés étrangères, création des 7 index de performance.</td>
+          <td>strategic_objectives, departments, processes, tasks, users, work_sessions, audit_logs</td>
+        </tr>
+        <tr>
+          <td><strong>0002_add_security.sql</strong></td>
+          <td>Fév 2025</td>
+          <td>Ajout de la colonne <code>password_encrypted</code> dans la table users pour permettre à l'administrateur de consulter les mots de passe via le bouton œil.</td>
+          <td>users (ALTER TABLE ADD COLUMN)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>10.1 Commandes de migration</h3>
+  <div class="code-block">
+<span class="sql-cmt"># Appliquer toutes les migrations en local</span>
+npx wrangler d1 migrations apply timetrack-production --local
+
+<span class="sql-cmt"># Appliquer les migrations en production (après déploiement Cloudflare)</span>
+npx wrangler d1 migrations apply timetrack-production
+
+<span class="sql-cmt"># Vérifier l'état des migrations</span>
+npx wrangler d1 migrations list timetrack-production --local
+
+<span class="sql-cmt"># Vérifier le schéma d'une table</span>
+npx wrangler d1 execute timetrack-production --local \
+  --command="SELECT sql FROM sqlite_master WHERE type='table'"
+  </div>
+
+  <h3>10.2 Ajout d'une nouvelle migration</h3>
+  <div class="code-block">
+<span class="sql-cmt"># Créer le fichier de migration suivant</span>
+touch migrations/0003_nom_de_la_migration.sql
+
+<span class="sql-cmt"># Exemple : ajouter un champ "phone" dans users</span>
+<span class="sql-kw">ALTER TABLE</span> <span class="sql-tbl">users</span> <span class="sql-kw">ADD COLUMN</span> <span class="sql-col">phone</span> <span class="sql-kw">TEXT DEFAULT</span> <span class="sql-str">NULL</span><span class="sql-op">;</span>
+
+<span class="sql-cmt"># Appliquer</span>
+npx wrangler d1 migrations apply timetrack-production --local
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- ANNEXE A — GLOSSAIRE                        -->
+<!-- ============================================ -->
+<div class="content-page">
+  <div class="section-header">
+    <span class="section-num">Annexe A</span>
+    <h2>Glossaire</h2>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Terme</th><th>Définition</th></tr></thead>
+      <tbody>
+        <tr><td><strong>API REST</strong></td><td>Interface de programmation basée sur HTTP permettant la communication entre le frontend et le backend via des ressources JSON.</td></tr>
+        <tr><td><strong>AUTOINCREMENT</strong></td><td>Propriété SQLite qui génère automatiquement un identifiant unique croissant pour chaque nouvelle ligne.</td></tr>
+        <tr><td><strong>CASE WHEN</strong></td><td>Expression conditionnelle SQL équivalente à un IF/ELSE, utilisée ici pour simuler la fonction GREATEST() absente de SQLite.</td></tr>
+        <tr><td><strong>COALESCE</strong></td><td>Fonction SQL qui retourne le premier argument non-NULL. Utilisée pour remplacer les NULL par 0 dans les sommes.</td></tr>
+        <tr><td><strong>D1</strong></td><td>Service de base de données SQLite de Cloudflare. Dans ce projet, utilisé en mode local (--local) avec le fichier SQLite géré par Wrangler.</td></tr>
+        <tr><td><strong>Dénormalisation</strong></td><td>Technique consistant à dupliquer des données (ici : objective_id et department_id dans work_sessions) pour améliorer les performances des requêtes.</td></tr>
+        <tr><td><strong>FK (Foreign Key)</strong></td><td>Clé étrangère — colonne qui référence la clé primaire d'une autre table, garantissant l'intégrité référentielle.</td></tr>
+        <tr><td><strong>GROUP BY</strong></td><td>Clause SQL qui regroupe les lignes partageant des valeurs identiques pour appliquer des fonctions d'agrégation (SUM, COUNT, AVG…).</td></tr>
+        <tr><td><strong>Hono</strong></td><td>Framework web TypeScript ultra-léger optimisé pour les environnements Edge (Cloudflare Workers, Deno, Bun).</td></tr>
+        <tr><td><strong>JWT (JSON Web Token)</strong></td><td>Standard ouvert (RFC 7519) pour la transmission sécurisée d'informations entre parties sous forme de token signé.</td></tr>
+        <tr><td><strong>LEFT JOIN</strong></td><td>Type de jointure SQL qui retourne toutes les lignes de la table gauche, même si aucune correspondance n'existe dans la table droite (NULL dans ce cas).</td></tr>
+        <tr><td><strong>Migration</strong></td><td>Fichier SQL versionné décrivant une modification structurelle de la base de données, permettant une évolution contrôlée du schéma.</td></tr>
+        <tr><td><strong>PK (Primary Key)</strong></td><td>Clé primaire — identifiant unique obligatoire de chaque enregistrement dans une table.</td></tr>
+        <tr><td><strong>PM2</strong></td><td>Process Manager 2 — gestionnaire de processus Node.js permettant de maintenir l'application active en arrière-plan avec redémarrage automatique.</td></tr>
+        <tr><td><strong>Rate Limiting</strong></td><td>Mécanisme de limitation du nombre de requêtes autorisées par client dans un intervalle de temps donné, pour protéger contre les abus.</td></tr>
+        <tr><td><strong>RBAC</strong></td><td>Role-Based Access Control — modèle de contrôle d'accès où les permissions sont attribuées selon le rôle de l'utilisateur (Admin, Chef, Agent).</td></tr>
+        <tr><td><strong>SHA-256</strong></td><td>Algorithme de hachage cryptographique produisant une empreinte de 256 bits (64 caractères hexadécimaux). Irréversible — permet de vérifier un mot de passe sans le stocker en clair.</td></tr>
+        <tr><td><strong>SPA</strong></td><td>Single-Page Application — application web dont le contenu est rendu côté client sans rechargement complet de la page.</td></tr>
+        <tr><td><strong>SQLite</strong></td><td>Système de gestion de base de données relationnelle embarqué, stockant l'intégralité de la base dans un seul fichier .sqlite.</td></tr>
+        <tr><td><strong>Wrangler</strong></td><td>CLI officiel de Cloudflare pour développer, tester et déployer des Workers et Pages. Gère également la base de données D1 locale.</td></tr>
+        <tr><td><strong>XOR</strong></td><td>Opération logique bit à bit utilisée ici pour l'obfuscation réversible des mots de passe (chiffrement symétrique léger).</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:50px;border-top:2px solid #1e3a5f;padding-top:20px;text-align:center;color:#6b7280;font-size:9.5pt">
+    <div style="font-size:22px;margin-bottom:8px">🏦</div>
+    <strong style="color:#1e3a5f">BGFIBank — Direction des Systèmes d'Information</strong><br>
+    TimeTrack v1.2.0 — Cahier Technique — Mars 2025<br>
+    <em>Document à usage interne uniquement — Reproduction interdite sans autorisation</em><br><br>
+    GitHub : <span style="color:#1d4ed8">https://github.com/kobafayolr-prog/PROJET-FINALE-CONTROLE</span>
+  </div>
+</div>
+
+<script>
+  // Bouton d'impression
+  const printBtn = document.createElement('button');
+  printBtn.innerHTML = '🖨️ Imprimer / Enregistrer en PDF';
+  printBtn.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1e3a5f;color:#fff;border:none;padding:12px 20px;border-radius:8px;cursor:pointer;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,0.25);z-index:9999;font-family:Segoe UI,Arial,sans-serif';
+  printBtn.onclick = () => window.print();
+  document.body.appendChild(printBtn);
+</script>
+</body>
+</html>
