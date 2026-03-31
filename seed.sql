@@ -69,6 +69,16 @@ INSERT OR IGNORE INTO tasks (id, name, description, department_id, process_id, o
 (20, 'Analyse des risques crédit', 'Évaluation des risques de crédit', 8, 8, 4, 'Productive', 'Actif'),
 (21, 'Reporting risques', 'Préparation des rapports de risques', 8, 8, 4, 'Productive', 'Actif');
 
--- Utilisateur Admin par défaut (password: Admin2024)
-INSERT OR IGNORE INTO users (id, first_name, last_name, email, password_hash, role, department_id, status) VALUES
-(1, 'Fayelle', 'KOBA', 'admin@bgfibank.com', '16387b09507b019016e1fb92dd9bb92d8700abf415d728a64f80094942f6dd5c', 'Administrateur', NULL, 'Actif');
+-- Utilisateurs par défaut (mot de passe en clair entre parenthèses)
+-- Hash SHA-256 hex, chiffrement XOR base64 pour affichage admin
+INSERT OR IGNORE INTO users (id, first_name, last_name, email, password_hash, password_encrypted, role, department_id, status) VALUES
+-- Admin (admin123)
+(1, 'Fayolle', 'KOBA', 'admin@bgfibank.com', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'AwMLAAxQXFg=', 'Administrateur', NULL, 'Actif'),
+-- Chef Commercial (Chef@2024)
+(2, 'Marc', 'NZOGHE', 'chef.commercial@bgfibank.com', '918f02a543a249b93ea3a00571a8ef19c036dd27e06d499c92845f9209c8a6a8', 'IQ8DDyJTXlkG', 'Chef de Département', 1, 'Actif'),
+-- Agent Commercial (Agent@2024)
+(3, 'Sandra', 'MBOUMBA', 'agent.commercial@bgfibank.com', 'd8755e51a259f6ac6c2301c54f502589b326b98051982d90aa747f8c35f83236', 'IwADBxYhXFsABA==', 'Agent', 1, 'Actif'),
+-- Agent Risques (Agent@2024)
+(4, 'Eliel', 'KAPOU', 'eliel@bgfi.com', 'd8755e51a259f6ac6c2301c54f502589b326b98051982d90aa747f8c35f83236', 'IwADBxYhXFsABA==', 'Agent', 8, 'Actif'),
+-- Chef Risques (Chef@2024)
+(5, 'Ingara', 'MAIDOU', 'maidou@bgfi.com', '918f02a543a249b93ea3a00571a8ef19c036dd27e06d499c92845f9209c8a6a8', 'IQ8DDyJTXlkG', 'Chef de Département', 8, 'Actif');
