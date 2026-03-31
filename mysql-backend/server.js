@@ -1062,9 +1062,9 @@ function getLoginHTML () {
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{width:100%;height:100%;overflow:hidden;}
-#bg-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;}
+#bg-video{position:fixed;inset:0;width:100%;height:100%;z-index:0;object-fit:cover;pointer-events:none;}
 .scene{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;padding:16px;}
-.login-card{position:relative;width:100%;max-width:420px;background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.22);border-radius:24px;padding:40px 36px 36px;backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);box-shadow:0 8px 48px rgba(0,0,0,0.45),inset 0 1px 0 rgba(255,255,255,0.18);animation:cardIn .7s cubic-bezier(.22,1,.36,1) both;}
+.login-card{position:relative;width:100%;max-width:420px;background:rgba(255,255,255,0.20);border:1px solid rgba(255,255,255,0.45);border-radius:24px;padding:40px 36px 36px;backdrop-filter:blur(28px) saturate(1.6) brightness(1.05);-webkit-backdrop-filter:blur(28px) saturate(1.6) brightness(1.05);box-shadow:0 8px 48px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.5);animation:cardIn .7s cubic-bezier(.22,1,.36,1) both;}
 @keyframes cardIn{from{opacity:0;transform:translateY(28px) scale(.97);}to{opacity:1;transform:none;}}
 .logo-wrapper{background:rgba(255,255,255,0.95);border-radius:14px;padding:14px 22px;display:inline-block;box-shadow:0 4px 24px rgba(0,0,0,0.18);margin-bottom:18px;}
 .logo-wrapper img{height:56px;width:auto;display:block;}
@@ -1091,7 +1091,7 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </style>
 </head>
 <body>
-<canvas id="bg-canvas"></canvas>
+<video id="bg-video" autoplay muted loop playsinline><source src="/static/bg-video.mp4" type="video/mp4"></video>
 <div class="scene">
 <div class="login-card">
   <div style="text-align:center;margin-bottom:20px;">
@@ -1120,74 +1120,7 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </div>
 </div>
 <script>
-(function(){
-  const canvas=document.getElementById('bg-canvas');
-  const ctx=canvas.getContext('2d');
-  let W,H,mouse={x:-9999,y:-9999};
-  const COLORS=['#1e3a5f','#2563eb','#3b82f6','#7fa8d4','#c8a96e','#e8c97a'];
-  function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
-  window.addEventListener('resize',resize);resize();
-  const N=Math.min(110,Math.floor(W*H/12000));
-  const particles=Array.from({length:N},()=>({
-    x:Math.random()*W,y:Math.random()*H,
-    vx:(Math.random()-.5)*.45,vy:(Math.random()-.5)*.45,
-    r:1.5+Math.random()*3.5,base_r:0,
-    color:COLORS[Math.floor(Math.random()*COLORS.length)],
-    alpha:.35+Math.random()*.55,
-    pulse:Math.random()*Math.PI*2,pulseSpeed:.008+Math.random()*.014
-  }));
-  particles.forEach(p=>p.base_r=p.r);
-  const BLOBS=[
-    {x:.15,y:.2,r:.28,c:'rgba(30,58,95,',spd:.00018,ang:0},
-    {x:.78,y:.15,r:.22,c:'rgba(37,99,235,',spd:.00024,ang:1.2},
-    {x:.5,y:.78,r:.32,c:'rgba(59,130,246,',spd:.00015,ang:2.5},
-    {x:.85,y:.7,r:.18,c:'rgba(200,169,110,',spd:.00031,ang:.7}
-  ];
-  const LINK_DIST=130;
-  let tick=0;
-  function draw(){
-    tick++;
-    ctx.clearRect(0,0,W,H);
-    const gr=ctx.createLinearGradient(W*.5+Math.sin(tick*.0005)*W*.3,0,W*.5+Math.cos(tick*.0004)*W*.3,H);
-    gr.addColorStop(0,'#050e1f');gr.addColorStop(.45,'#0c1f3d');gr.addColorStop(1,'#071428');
-    ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);
-    BLOBS.forEach(b=>{
-      b.ang+=b.spd*tick*.015;
-      const bx=(b.x+Math.sin(b.ang)*.06)*W,by=(b.y+Math.cos(b.ang*.7)*.05)*H,br=b.r*Math.min(W,H);
-      const rg=ctx.createRadialGradient(bx,by,0,bx,by,br);
-      rg.addColorStop(0,b.c+'0.13)');rg.addColorStop(.6,b.c+'0.055)');rg.addColorStop(1,b.c+'0)');
-      ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.fillStyle=rg;ctx.fill();
-    });
-    for(let i=0;i<N;i++){for(let j=i+1;j<N;j++){
-      const dx=particles[i].x-particles[j].x,dy=particles[i].y-particles[j].y;
-      const dist=Math.sqrt(dx*dx+dy*dy);
-      if(dist<LINK_DIST){
-        ctx.beginPath();ctx.moveTo(particles[i].x,particles[i].y);ctx.lineTo(particles[j].x,particles[j].y);
-        ctx.strokeStyle='rgba(100,160,230,'+(1-dist/LINK_DIST)*.18+')';ctx.lineWidth=.8;ctx.stroke();
-      }
-    }}
-    particles.forEach(p=>{
-      p.pulse+=p.pulseSpeed;
-      const pr=p.base_r+Math.sin(p.pulse)*.8;
-      const mdx=mouse.x-p.x,mdy=mouse.y-p.y,md=Math.sqrt(mdx*mdx+mdy*mdy);
-      if(md<180&&md>0){const f=(1-md/180)*.008;p.vx+=mdx/md*f;p.vy+=mdy/md*f;}
-      p.vx*=.988;p.vy*=.988;p.x+=p.vx;p.y+=p.vy;
-      if(p.x<0){p.x=0;p.vx*=-1;}if(p.x>W){p.x=W;p.vx*=-1;}
-      if(p.y<0){p.y=0;p.vy*=-1;}if(p.y>H){p.y=H;p.vy*=-1;}
-      ctx.beginPath();ctx.arc(p.x,p.y,pr,0,Math.PI*2);
-      const rg2=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,pr*4);rg2.addColorStop(0,p.color+'bb');rg2.addColorStop(0.4,p.color+'55');rg2.addColorStop(1,p.color+'00');ctx.beginPath();ctx.arc(p.x,p.y,pr*4,0,Math.PI*2);ctx.fillStyle=rg2;ctx.fill();ctx.beginPath();ctx.arc(p.x,p.y,pr,0,Math.PI*2);ctx.fillStyle=p.color+'ee';ctx.shadowColor=p.color;ctx.shadowBlur=10;ctx.fill();ctx.shadowBlur=0;
-    });
-    particles.forEach(p=>{
-      const dx=p.x-mouse.x,dy=p.y-mouse.y,d=Math.sqrt(dx*dx+dy*dy);
-      if(d<100){ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(mouse.x,mouse.y);ctx.strokeStyle='rgba(180,140,60,'+(1-d/100)*.35+')';ctx.lineWidth=1;ctx.stroke();}
-    });
-    requestAnimationFrame(draw);
-  }
-  window.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;});
-  window.addEventListener('touchmove',e=>{if(e.touches[0]){mouse.x=e.touches[0].clientX;mouse.y=e.touches[0].clientY;}},{passive:true});
-  window.addEventListener('mouseleave',()=>{mouse.x=-9999;mouse.y=-9999;});
-  draw();
-})();
+
 function togglePwd(){const p=document.getElementById('password'),i=document.getElementById('eye-icon');if(p.type==='password'){p.type='text';i.className='fas fa-eye-slash';}else{p.type='password';i.className='fas fa-eye';}}
 function showError(msg){const b=document.getElementById('error-msg');document.getElementById('error-text').textContent=msg;b.classList.add('show');}
 function hideError(){document.getElementById('error-msg').classList.remove('show');}

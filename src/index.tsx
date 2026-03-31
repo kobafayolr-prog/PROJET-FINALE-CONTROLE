@@ -1253,7 +1253,7 @@ function getLoginHTML(): string {
 html,body{width:100%;height:100%;overflow:hidden;}
 
 /* ── Fond canvas plein écran ── */
-#bg-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;}
+#bg-video{position:fixed;inset:0;width:100%;height:100%;z-index:0;object-fit:cover;pointer-events:none;}
 
 /* ── Overlay verre dépoli global ── */
 .scene{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;padding:16px;}
@@ -1262,13 +1262,13 @@ html,body{width:100%;height:100%;overflow:hidden;}
 .login-card{
   position:relative;
   width:100%;max-width:420px;
-  background:rgba(255,255,255,0.10);
-  border:1px solid rgba(255,255,255,0.22);
+  background:rgba(255,255,255,0.20);
+  border:1px solid rgba(255,255,255,0.45);
   border-radius:24px;
   padding:40px 36px 36px;
-  backdrop-filter:blur(22px) saturate(1.4);
-  -webkit-backdrop-filter:blur(22px) saturate(1.4);
-  box-shadow:0 8px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.18);
+  backdrop-filter:blur(28px) saturate(1.6) brightness(1.05);
+  -webkit-backdrop-filter:blur(28px) saturate(1.6) brightness(1.05);
+  box-shadow:0 8px 48px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.5);
   animation:cardIn .7s cubic-bezier(.22,1,.36,1) both;
 }
 @keyframes cardIn{from{opacity:0;transform:translateY(28px) scale(.97);}to{opacity:1;transform:none;}}
@@ -1367,8 +1367,10 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </head>
 <body>
 
-<!-- Canvas fond animé -->
-<canvas id="bg-canvas"></canvas>
+<!-- Vidéo fond plein écran -->
+<video id="bg-video" autoplay muted loop playsinline>
+  <source src="/static/bg-video.mp4" type="video/mp4">
+</video>
 
 <!-- Carte login -->
 <div class="scene">
@@ -1415,170 +1417,6 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </div>
 
 <script>
-/* ═══════════════════════════════════════════════
-   FOND ANIMÉ — Particules en réseau + sphères
-   Couleurs BGFIBank : bleu nuit / bleu roi / or
-═══════════════════════════════════════════════ */
-(function(){
-  const canvas = document.getElementById('bg-canvas');
-  const ctx    = canvas.getContext('2d');
-  let W, H, mouse = {x:-9999,y:-9999};
-
-  /* Palette BGFIBank */
-  const COLORS = ['#1e3a5f','#2563eb','#3b82f6','#7fa8d4','#c8a96e','#e8c97a'];
-
-  /* ── Resize ── */
-  function resize(){
-    W = canvas.width  = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-  }
-  window.addEventListener('resize', resize);
-  resize();
-
-  /* ── Particules ── */
-  const N = Math.min(110, Math.floor(W*H/12000));
-  const particles = Array.from({length:N}, ()=>mkParticle());
-
-  function mkParticle(){
-    const r = 1.5 + Math.random()*3.5;
-    return {
-      x: Math.random()*W, y: Math.random()*H,
-      vx:(Math.random()-.5)*.45, vy:(Math.random()-.5)*.45,
-      r, base_r:r,
-      color: COLORS[Math.floor(Math.random()*COLORS.length)],
-      alpha: .35 + Math.random()*.55,
-      pulse: Math.random()*Math.PI*2,
-      pulseSpeed: .008 + Math.random()*.014
-    };
-  }
-
-  /* ── Grandes sphères flottantes (arrière-plan) ── */
-  const BLOBS = [
-    {x:.15,y:.2, r:.28, c:'rgba(30,58,95,',  spd:.00018, ang:0},
-    {x:.78,y:.15,r:.22, c:'rgba(37,99,235,',  spd:.00024, ang:1.2},
-    {x:.5, y:.78,r:.32, c:'rgba(59,130,246,', spd:.00015, ang:2.5},
-    {x:.85,y:.7, r:.18, c:'rgba(200,169,110,',spd:.00031, ang:.7},
-  ];
-
-  /* ── Connexion entre particules proches ── */
-  const LINK_DIST = 130;
-
-  /* ── Boucle d'animation ── */
-  let tick = 0;
-  function draw(){
-    tick++;
-    ctx.clearRect(0,0,W,H);
-
-    /* Fond blanc pur */
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0,0,W,H);
-
-    /* Sphères flottantes en arrière-plan */
-    BLOBS.forEach(b=>{
-      b.ang += b.spd * tick * .015;
-      const bx = (b.x + Math.sin(b.ang)*.06)*W;
-      const by = (b.y + Math.cos(b.ang*.7)*.05)*H;
-      const br = b.r * Math.min(W,H);
-      const rg = ctx.createRadialGradient(bx,by,0,bx,by,br);
-      rg.addColorStop(0, b.c+'0.28)');
-      rg.addColorStop(.6,b.c+'0.12)');
-      rg.addColorStop(1, b.c+'0)');
-      ctx.beginPath();
-      ctx.arc(bx,by,br,0,Math.PI*2);
-      ctx.fillStyle = rg;
-      ctx.fill();
-    });
-
-    /* Connexions */
-    for(let i=0;i<N;i++){
-      for(let j=i+1;j<N;j++){
-        const dx=particles[i].x-particles[j].x;
-        const dy=particles[i].y-particles[j].y;
-        const dist=Math.sqrt(dx*dx+dy*dy);
-        if(dist<LINK_DIST){
-          const alpha = (1-dist/LINK_DIST)*.18;
-          ctx.beginPath();
-          ctx.moveTo(particles[i].x,particles[i].y);
-          ctx.lineTo(particles[j].x,particles[j].y);
-          ctx.strokeStyle='rgba(30,58,95,'+alpha*2.5+')';
-          ctx.lineWidth=.8;
-          ctx.stroke();
-        }
-      }
-    }
-
-    /* Particules */
-    particles.forEach(p=>{
-      p.pulse += p.pulseSpeed;
-      const pr = p.base_r + Math.sin(p.pulse)*.8;
-
-      /* Attraction douce vers la souris */
-      const mdx = mouse.x - p.x, mdy = mouse.y - p.y;
-      const md  = Math.sqrt(mdx*mdx+mdy*mdy);
-      if(md < 180 && md > 0){
-        const f = (1-md/180)*.008;
-        p.vx += mdx/md*f;
-        p.vy += mdy/md*f;
-      }
-
-      /* Friction */
-      p.vx *= .988; p.vy *= .988;
-      p.x += p.vx;  p.y += p.vy;
-
-      /* Rebond bords */
-      if(p.x<0){p.x=0;p.vx*=-1;}
-      if(p.x>W){p.x=W;p.vx*=-1;}
-      if(p.y<0){p.y=0;p.vy*=-1;}
-      if(p.y>H){p.y=H;p.vy*=-1;}
-
-      /* Dessin particule avec halo radial propre */
-      const rg2 = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,pr*4);
-      rg2.addColorStop(0,   p.color + 'bb');
-      rg2.addColorStop(0.4, p.color + '55');
-      rg2.addColorStop(1,   p.color + '00');
-      ctx.beginPath();
-      ctx.arc(p.x,p.y,pr*4,0,Math.PI*2);
-      ctx.fillStyle = rg2;
-      ctx.fill();
-
-      /* Cercle plein central */
-      ctx.beginPath();
-      ctx.arc(p.x,p.y,pr,0,Math.PI*2);
-      ctx.fillStyle = p.color + 'ee';
-      ctx.shadowColor = p.color;
-      ctx.shadowBlur  = 10;
-      ctx.fill();
-      ctx.shadowBlur  = 0;
-    });
-
-    /* Lignes vers la souris (effet interactif) */
-    particles.forEach(p=>{
-      const dx=p.x-mouse.x, dy=p.y-mouse.y;
-      const d=Math.sqrt(dx*dx+dy*dy);
-      if(d<100){
-        const a=(1-d/100)*.35;
-        ctx.beginPath();
-        ctx.moveTo(p.x,p.y);
-        ctx.lineTo(mouse.x,mouse.y);
-        ctx.strokeStyle='rgba(180,140,60,'+a+')';
-        ctx.lineWidth=1;
-        ctx.stroke();
-      }
-    });
-
-    requestAnimationFrame(draw);
-  }
-
-  /* ── Suivi souris ── */
-  window.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;});
-  window.addEventListener('touchmove',e=>{
-    if(e.touches[0]){mouse.x=e.touches[0].clientX;mouse.y=e.touches[0].clientY;}
-  },{passive:true});
-  window.addEventListener('mouseleave',()=>{mouse.x=-9999;mouse.y=-9999;});
-
-  draw();
-})();
-
 /* ═══════════════════════════════════════════════
    FORMULAIRE LOGIN
 ═══════════════════════════════════════════════ */
