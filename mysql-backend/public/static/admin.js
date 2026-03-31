@@ -477,7 +477,7 @@ async function renderSessions() {
         <table>
           <thead><tr>
             <th>AGENT</th><th>DÉPARTEMENT</th><th>TÂCHE</th><th>OBJECTIF</th>
-            <th>DATE</th><th>DURÉE</th><th>STATUT</th>
+            <th>DATE</th><th>DURÉE</th><th>STATUT</th><th>MOTIF REJET</th>
           </tr></thead>
           <tbody>
             ${sessions.map(s => `<tr>
@@ -488,6 +488,7 @@ async function renderSessions() {
               <td>${formatDateShort(s.start_time)}</td>
               <td style="font-weight:700">${minutesToHours(s.duration_minutes || 0)}</td>
               <td>${getStatusBadge(s.status)}</td>
+              <td>${s.rejected_reason ? `<span style="background:#fef2f2;color:#dc2626;font-size:11px;padding:3px 8px;border-radius:5px;display:inline-block;max-width:200px;word-break:break-word"><i class="fas fa-comment-alt" style="margin-right:4px"></i>${s.rejected_reason}</span>` : '<span style="color:#d1d5db;font-size:11px">—</span>'}</td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -648,8 +649,8 @@ function showUserModal(userId = null) {
 }
 
 // Suppression processus + tâches
-async function deleteProcess(id, nameOrEvt) {
-  const name = (typeof nameOrEvt === 'string') ? nameOrEvt : (event && event.target && event.target.closest('[data-name]') ? event.target.closest('[data-name]').dataset.name : id);
+async function deleteProcess(id, name) {
+  name = name || id;
   if (!confirm(`Désactiver le processus "${name}" ?`)) return;
   const r = await api('/api/admin/processes/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
@@ -657,8 +658,8 @@ async function deleteProcess(id, nameOrEvt) {
   renderProcesses();
 }
 
-async function deleteTask(id, nameOrEvt) {
-  const name = (typeof nameOrEvt === 'string') ? nameOrEvt : (event && event.target && event.target.closest('[data-name]') ? event.target.closest('[data-name]').dataset.name : id);
+async function deleteTask(id, name) {
+  name = name || id;
   if (!confirm(`Désactiver la tâche "${name}" ?`)) return;
   const r = await api('/api/admin/tasks/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
@@ -781,7 +782,7 @@ async function renderDepartments() {
     <div class="dept-card">
       <div style="position:absolute;top:12px;right:12px;display:flex;gap:4px">
         <button onclick="showDeptModal(${d.id})" style="background:rgba(0,0,0,0.05);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#6b7280" title="Modifier"><i class="fas fa-edit" style="font-size:11px"></i></button>
-        <button onclick="deleteDept(${d.id})" data-name="${d.name}" style="background:rgba(239,68,68,0.1);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#ef4444" title="Désactiver"><i class="fas fa-trash" style="font-size:11px"></i></button>
+        <button class="btn-delete-dept" data-id="${d.id}" data-name="${d.name}" style="background:rgba(239,68,68,0.1);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#ef4444" title="Désactiver"><i class="fas fa-trash" style="font-size:11px;pointer-events:none"></i></button>
       </div>
       <h3 style="font-size:14px;font-weight:700;color:#1e3a5f;margin-bottom:4px;padding-right:36px">${d.name}</h3>
       <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Code: ${d.code}</p>
@@ -795,10 +796,15 @@ async function renderDepartments() {
     <button class="btn btn-primary" onclick="showDeptModal()"><i class="fas fa-plus"></i> Nouveau département</button>
   </div>
   <div class="grid-auto">${cards}</div>`;
+
+  // Attacher les événements de suppression après rendu DOM
+  document.querySelectorAll('.btn-delete-dept').forEach(btn => {
+    btn.addEventListener('click', () => deleteDept(btn.dataset.id, btn.dataset.name));
+  });
 }
 
-async function deleteDept(id, nameOrEvt) {
-  const name = (typeof nameOrEvt === 'string') ? nameOrEvt : (event && event.target && event.target.closest('[data-name]') ? event.target.closest('[data-name]').dataset.name : id);
+async function deleteDept(id, name) {
+  name = name || id;
   if (!confirm(`Désactiver le département "${name}" ?`)) return;
   const r = await api('/api/admin/departments/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
@@ -861,7 +867,7 @@ async function renderObjectives() {
     <div class="objective-card" style="border-left-color:${o.color}">
       <div style="position:absolute;top:12px;right:12px;display:flex;gap:4px">
         <button onclick="showObjModal(${o.id})" class="edit-btn" style="right:unset;top:unset;position:static"><i class="fas fa-edit"></i></button>
-        <button onclick="deleteObjective(${o.id})" data-name="${o.name}" style="background:rgba(239,68,68,0.1);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#ef4444;padding:0" title="Désactiver"><i class="fas fa-trash" style="font-size:11px"></i></button>
+        <button class="btn-delete-obj" data-id="${o.id}" data-name="${o.name}" style="background:rgba(239,68,68,0.1);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#ef4444;padding:0" title="Désactiver"><i class="fas fa-trash" style="font-size:11px;pointer-events:none"></i></button>
       </div>
       <h3 style="color:${o.color}">${o.name}</h3>
       <p>${o.description || ''}</p>
@@ -877,11 +883,16 @@ async function renderObjectives() {
     <div class="page-title"><i class="fas fa-bullseye"></i><h2>Objectifs Stratégiques</h2></div>
     <button class="btn btn-primary" onclick="showObjModal()"><i class="fas fa-plus"></i> Nouvel objectif</button>
   </div>
-  <div class="grid-auto">${cards}</div>`;
+  <div class="grid-auto">${cards}`;
+
+  // Attacher les événements après rendu DOM
+  document.querySelectorAll('.btn-delete-obj').forEach(btn => {
+    btn.addEventListener('click', () => deleteObjective(btn.dataset.id, btn.dataset.name));
+  });
 }
 
-async function deleteObjective(id, nameOrEvt) {
-  const name = (typeof nameOrEvt === 'string') ? nameOrEvt : (event && event.target && event.target.closest('[data-name]') ? event.target.closest('[data-name]').dataset.name : id);
+async function deleteObjective(id, name) {
+  name = name || id;
   if (!confirm(`Désactiver l'objectif "${name}" ?`)) return;
   const r = await api('/api/admin/objectives/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
@@ -960,7 +971,7 @@ async function renderProcesses() {
               <td><span class="badge ${p.status==='Actif'?'badge-active':'badge-inactive'}">${p.status}</span></td>
               <td style="white-space:nowrap">
                 <button class="btn btn-sm btn-outline" onclick="showProcModal(${p.id})" title="Modifier"><i class="fas fa-edit"></i></button>
-                <button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="deleteProcess(${p.id})" data-name="${p.name}" title="Désactiver"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm btn-danger btn-delete-proc" style="margin-left:4px" data-id="${p.id}" data-name="${p.name}" title="Désactiver"><i class="fas fa-trash" style="pointer-events:none"></i></button>
               </td>
             </tr>`).join('')}
           </tbody>
@@ -968,6 +979,10 @@ async function renderProcesses() {
       </div>
     </div>
   </div>`;
+
+  document.querySelectorAll('.btn-delete-proc').forEach(btn => {
+    btn.addEventListener('click', () => deleteProcess(btn.dataset.id, btn.dataset.name));
+  });
 }
 
 function showProcModal(id = null) {
@@ -1053,7 +1068,7 @@ async function renderTasks() {
               <td><span class="badge ${t.status==='Actif'?'badge-active':'badge-inactive'}">${t.status}</span></td>
               <td style="white-space:nowrap">
                 <button class="btn btn-sm btn-outline" onclick="showTaskModal(${t.id})" title="Modifier"><i class="fas fa-edit"></i></button>
-                <button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="deleteTask(${t.id})" data-name="${t.name}" title="Désactiver"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm btn-danger btn-delete-task" style="margin-left:4px" data-id="${t.id}" data-name="${t.name}" title="Désactiver"><i class="fas fa-trash" style="pointer-events:none"></i></button>
               </td>
             </tr>`).join('')}
           </tbody>
@@ -1061,6 +1076,10 @@ async function renderTasks() {
       </div>
     </div>
   </div>`;
+
+  document.querySelectorAll('.btn-delete-task').forEach(btn => {
+    btn.addEventListener('click', () => deleteTask(btn.dataset.id, btn.dataset.name));
+  });
 }
 
 function showTaskModal(id = null) {
@@ -1200,8 +1219,8 @@ async function renderReports() {
       <div id="report-summary" style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap"></div>
       <div class="table-wrapper">
         <table id="report-table">
-          <thead><tr><th>AGENT</th><th>DÉPARTEMENT</th><th>TÂCHE</th><th>PROCESSUS</th><th>OBJECTIF</th><th>DATE</th><th>HEURES</th><th>TYPE</th><th>STATUT</th></tr></thead>
-          <tbody id="report-tbody"><tr><td colspan="9" style="text-align:center;color:#9ca3af"><i class="fas fa-spinner fa-spin"></i> Chargement...</td></tr></tbody>
+          <thead><tr><th>AGENT</th><th>DÉPARTEMENT</th><th>TÂCHE</th><th>PROCESSUS</th><th>OBJECTIF</th><th>DATE</th><th>HEURES</th><th>TYPE</th><th>STATUT</th><th>MOTIF REJET</th></tr></thead>
+          <tbody id="report-tbody"><tr><td colspan="10" style="text-align:center;color:#9ca3af"><i class="fas fa-spinner fa-spin"></i> Chargement...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1249,7 +1268,7 @@ async function loadReportData() {
 
   const tbody = document.getElementById('report-tbody');
   if (tbody) tbody.innerHTML = data.length === 0
-    ? '<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:20px">Aucune session pour cette période</td></tr>'
+    ? '<tr><td colspan="10" style="text-align:center;color:#9ca3af;padding:20px">Aucune session pour cette période</td></tr>'
     : data.map(r => `<tr>
       <td style="font-weight:600;color:#1e3a5f">${r.agent_name}</td>
       <td>${r.department_name}</td>
@@ -1260,6 +1279,7 @@ async function loadReportData() {
       <td style="font-weight:700">${minutesToHours(r.duration_minutes || 0)}</td>
       <td><span class="badge ${r.session_type==='Manuelle'?'badge-warning':'badge-info'}">${r.session_type}</span></td>
       <td>${getStatusBadge(r.status)}</td>
+      <td>${r.rejected_reason ? `<span style="background:#fef2f2;color:#dc2626;font-size:11px;padding:3px 8px;border-radius:5px;display:inline-block"><i class="fas fa-comment-alt" style="margin-right:4px"></i>${r.rejected_reason}</span>` : '<span style="color:#d1d5db;font-size:11px">—</span>'}</td>
     </tr>`).join('');
 }
 

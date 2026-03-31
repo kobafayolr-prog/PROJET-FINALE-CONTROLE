@@ -519,12 +519,13 @@ app.put('/api/admin/tasks/:id', async (c) => {
 
 app.get('/api/admin/sessions', async (c) => {
   const sessions = await c.env.DB.prepare(
-    `SELECT ws.*, 
+    `SELECT ws.*,
      u.first_name || ' ' || u.last_name as agent_name,
      d.name as department_name,
      t.name as task_name,
      o.name as objective_name,
-     o.color as objective_color
+     o.color as objective_color,
+     ws.rejected_reason
      FROM work_sessions ws
      JOIN users u ON ws.user_id = u.id
      JOIN departments d ON ws.department_id = d.id
@@ -695,22 +696,46 @@ app.get('/api/admin/reports', async (c) => {
   const user = await getUser(c)
   if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
-  const reports = await c.env.DB.prepare(
-    `SELECT ws.*,
+  const { date_from, date_to, dept_id, status, export: exportFmt } = c.req.query() as any
+
+  let query = `SELECT ws.*,
      u.first_name || ' ' || u.last_name as agent_name,
      d.name as department_name,
      t.name as task_name,
      p.name as process_name,
      o.name as objective_name,
-     o.color as objective_color
+     o.color as objective_color,
+     ws.rejected_reason
      FROM work_sessions ws
      JOIN users u ON ws.user_id = u.id
      JOIN departments d ON ws.department_id = d.id
      JOIN tasks t ON ws.task_id = t.id
      JOIN processes p ON t.process_id = p.id
      JOIN strategic_objectives o ON ws.objective_id = o.id
-     ORDER BY ws.start_time DESC`
-  ).all()
+     WHERE 1=1`
+  const params: any[] = []
+  if (date_from) { query += ' AND date(ws.start_time) >= ?'; params.push(date_from) }
+  if (date_to)   { query += ' AND date(ws.start_time) <= ?'; params.push(date_to) }
+  if (dept_id)   { query += ' AND ws.department_id = ?';     params.push(dept_id) }
+  if (status)    { query += ' AND ws.status = ?';            params.push(status) }
+  query += ' ORDER BY ws.start_time DESC'
+
+  let stmt = c.env.DB.prepare(query)
+  if (params.length) stmt = stmt.bind(...params)
+  const reports = await stmt.all()
+
+  // Export CSV
+  if (exportFmt === 'csv') {
+    const rows = reports.results as any[]
+    const header = 'Agent,Département,Tâche,Processus,Objectif,Date début,Date fin,Durée (min),Type,Statut,Motif rejet\n'
+    const csv = header + rows.map((r: any) =>
+      [r.agent_name, r.department_name, r.task_name, r.process_name, r.objective_name,
+       r.start_time, r.end_time, r.duration_minutes, r.session_type, r.status,
+       (r.rejected_reason || '').replace(/,/g, ';')].join(',')
+    ).join('\n')
+    return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="rapports_admin.csv"' } })
+  }
+
   return c.json(reports.results)
 })
 

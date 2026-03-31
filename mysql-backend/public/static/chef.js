@@ -469,48 +469,97 @@ async function validateSession(id) {
 }
 
 async function rejectSession(id) {
-  // Afficher modal avec commentaire OBLIGATOIRE
+  // Supprimer tout modal existant
+  document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
+
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
+  modal.id = 'reject-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `
-  <div class="modal" style="max-width:420px">
-    <div class="modal-header">
-      <span class="modal-title"><i class="fas fa-times-circle mr-2" style="color:#ef4444"></i>Rejeter la session</span>
-      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">x</button>
-    </div>
-    <div style="padding:20px">
-      <div style="margin-bottom:12px;font-size:14px;color:#374151">
-        Vous devez indiquer le motif du rejet. Ce motif sera communique a l agent.
+  <div style="background:#fff;border-radius:14px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;animation:fadeIn .2s ease">
+    <!-- En-tête rouge -->
+    <div style="background:linear-gradient(135deg,#dc2626,#ef4444);padding:18px 20px;display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:36px;height:36px;background:rgba(255,255,255,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center">
+          <i class="fas fa-times-circle" style="color:#fff;font-size:18px"></i>
+        </div>
+        <div>
+          <div style="color:#fff;font-size:15px;font-weight:700">Rejeter la session</div>
+          <div style="color:rgba(255,255,255,0.75);font-size:11px">Session #${id}</div>
+        </div>
       </div>
-      <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px">Motif du rejet <span style="color:#ef4444">*</span></label>
-      <textarea id="reject-reason" rows="3" placeholder="Ex: Duree incorrecte, tache non autorisee..." style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:10px;font-size:13px;resize:vertical;outline:none;font-family:inherit"></textarea>
-      <div id="reject-err" style="display:none;color:#ef4444;font-size:12px;margin-top:6px"></div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
-        <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Annuler</button>
-        <button class="btn btn-danger" onclick="confirmReject(` + id + `, this)">
-          <i class="fas fa-times mr-1"></i>Confirmer le rejet
+      <button onclick="document.getElementById('reject-modal').remove()" style="background:rgba(255,255,255,0.2);border:none;border-radius:6px;width:30px;height:30px;cursor:pointer;color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center">&times;</button>
+    </div>
+    <!-- Corps -->
+    <div style="padding:24px">
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-bottom:18px;display:flex;gap:10px;align-items:flex-start">
+        <i class="fas fa-exclamation-triangle" style="color:#dc2626;margin-top:2px"></i>
+        <div style="font-size:13px;color:#7f1d1d;line-height:1.5">
+          Le motif du rejet est <strong>obligatoire</strong>. Il sera visible par l'agent concerné et dans les rapports de l'administrateur.
+        </div>
+      </div>
+      <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:8px">
+        <i class="fas fa-comment-alt" style="color:#dc2626;margin-right:6px"></i>
+        Motif du rejet <span style="color:#ef4444">*</span>
+      </label>
+      <textarea id="reject-reason" rows="4"
+        placeholder="Expliquez clairement la raison du rejet&#10;Ex : Durée incorrecte, la session dépasse 8h&#10;Ex : Tâche non autorisée pour cet agent..."
+        style="width:100%;border:2px solid #e5e7eb;border-radius:8px;padding:12px;font-size:13px;resize:vertical;outline:none;font-family:inherit;line-height:1.5;transition:border-color .2s"
+        onfocus="this.style.borderColor='#dc2626'"
+        onblur="this.style.borderColor='#e5e7eb'"></textarea>
+      <div id="reject-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;color:#dc2626;font-size:12px;margin-top:8px">
+        <i class="fas fa-exclamation-circle mr-1"></i><span id="reject-err-msg"></span>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+        <button onclick="document.getElementById('reject-modal').remove()"
+          style="padding:9px 18px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;font-size:13px;cursor:pointer;font-weight:500">
+          <i class="fas fa-arrow-left" style="margin-right:6px"></i>Annuler
+        </button>
+        <button id="reject-confirm-btn" onclick="confirmReject(${id}, this)"
+          style="padding:9px 18px;border:none;border-radius:8px;background:linear-gradient(135deg,#dc2626,#ef4444);color:#fff;font-size:13px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:6px">
+          <i class="fas fa-times-circle"></i> Confirmer le rejet
         </button>
       </div>
     </div>
   </div>`;
   document.body.appendChild(modal);
-  setTimeout(() => document.getElementById('reject-reason') && document.getElementById('reject-reason').focus(), 100);
+  setTimeout(() => { const ta = document.getElementById('reject-reason'); if (ta) ta.focus(); }, 150);
 }
 
 async function confirmReject(id, btn) {
-  const reason = document.getElementById('reject-reason') ? document.getElementById('reject-reason').value.trim() : '';
+  const ta    = document.getElementById('reject-reason');
   const errEl = document.getElementById('reject-err');
-  if (!reason || reason.length < 3) {
-    if (errEl) { errEl.textContent = 'Le motif est obligatoire (minimum 3 caracteres)'; errEl.style.display = 'block'; }
+  const errMsg= document.getElementById('reject-err-msg');
+  const reason = ta ? ta.value.trim() : '';
+
+  if (!reason || reason.length < 5) {
+    if (errEl)  errEl.style.display = 'flex';
+    if (errMsg) errMsg.textContent = 'Le motif est obligatoire (minimum 5 caractères).';
+    if (ta)     ta.focus();
     return;
   }
-  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Rejet...';
+  if (errEl) errEl.style.display = 'none';
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Rejet en cours...';
+
   const r = await api('/api/chef/reject/' + id, { method: 'POST', body: JSON.stringify({ reason }) });
-  if (r.error) { toast(r.error, 'error'); btn.disabled = false; btn.textContent = 'Confirmer le rejet'; return; }
-  toast('Session rejetee - motif enregistre', 'error');
-  btn.closest('.modal-overlay').remove();
+  if (r.error) {
+    toast(r.error, 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-times-circle"></i> Confirmer le rejet';
+    return;
+  }
+  toast('Session rejetée — motif enregistré et visible par l\'admin', 'error');
+  const modal = document.getElementById('reject-modal');
+  if (modal) modal.remove();
   const row = document.getElementById('row-' + id);
-  if (row) row.remove();
+  if (row) {
+    row.style.transition = 'opacity 0.3s';
+    row.style.opacity = '0';
+    setTimeout(() => row.remove(), 300);
+  }
 }
 
 async function validateAll() {
