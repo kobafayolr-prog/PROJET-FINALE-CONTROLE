@@ -1055,25 +1055,33 @@ function getLoginHTML () {
 <html lang="fr"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TimeTrack - BGFIBank</title>
+<link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
 <style>
   body { background: linear-gradient(135deg, #0f2544 0%, #1e3a5f 50%, #0f2544 100%); min-height: 100vh; }
-  .login-card { background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+  .login-card { background: white; border-radius: 16px; box-shadow: 0 24px 64px rgba(0,0,0,0.35); }
   .btn-primary { background: #1e3a5f; color: white; transition: all 0.2s; }
-  .btn-primary:hover { background: #0f2544; }
-  .input-field { border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 14px; width: 100%; outline: none; transition: border 0.2s; }
-  .input-field:focus { border-color: #1e3a5f; box-shadow: 0 0 0 2px rgba(30,58,95,0.1); }
+  .btn-primary:hover { background: #0f2544; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(30,58,95,0.4); }
+  .input-field { border: 1px solid #d1d5db; border-radius: 8px; padding: 11px 14px; width: 100%; outline: none; transition: border 0.2s; font-size: 14px; }
+  .input-field:focus { border-color: #1e3a5f; box-shadow: 0 0 0 3px rgba(30,58,95,0.12); }
+  .logo-wrapper { background: #fff; border-radius: 12px; padding: 16px 24px; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.10); margin-bottom: 20px; }
+  .logo-wrapper img { height: 64px; width: auto; display: block; }
+  .divider { height: 1px; background: linear-gradient(to right, transparent, #e5e7eb, transparent); margin: 20px 0; }
+  .app-badge { display: inline-flex; align-items: center; gap: 6px; background: #f0f4f8; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #4b6080; font-weight: 500; }
 </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
 <div class="login-card w-full max-w-md p-8">
-  <div class="text-center mb-8">
-    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4" style="background:#1e3a5f">
-      <i class="fas fa-star text-yellow-400 text-2xl"></i>
+  <div class="text-center mb-6">
+    <div class="logo-wrapper">
+      <img src="/static/bgfibank-logo.png" alt="BGFIBank - Votre partenaire pour l'avenir">
     </div>
-    <h1 class="text-2xl font-bold text-gray-800">TimeTrack</h1>
-    <p class="text-gray-500 text-sm">BGFIBank</p>
+    <div class="divider"></div>
+    <div class="app-badge">
+      <i class="fas fa-clock" style="color:#1e3a5f"></i>
+      <span>TimeTrack &mdash; Suivi du temps</span>
+    </div>
   </div>
   <div id="error-msg" class="hidden bg-red-50 border border-red-200 text-red-600 rounded-lg p-3 mb-4 text-sm"></div>
   <form id="login-form">
