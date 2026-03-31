@@ -398,6 +398,15 @@ app.put('/api/admin/departments/:id', async (c) => {
   return c.json({ message: 'Département mis à jour' })
 })
 
+app.delete('/api/admin/departments/:id', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+  const id = c.req.param('id')
+  await c.env.DB.prepare('UPDATE departments SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
+    .bind('Inactif', id).run()
+  return c.json({ message: 'Département désactivé' })
+})
+
 // ============================================
 // ADMIN - OBJECTIVES
 // ============================================
@@ -430,6 +439,15 @@ app.put('/api/admin/objectives/:id', async (c) => {
   ).bind(name, description || '', color || '#1e3a5f', target_percentage || 0, status, id).run()
 
   return c.json({ message: 'Objectif mis à jour' })
+})
+
+app.delete('/api/admin/objectives/:id', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+  const id = c.req.param('id')
+  await c.env.DB.prepare('UPDATE strategic_objectives SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
+    .bind('Inactif', id).run()
+  return c.json({ message: 'Objectif désactivé' })
 })
 
 // ============================================
@@ -472,6 +490,15 @@ app.put('/api/admin/processes/:id', async (c) => {
   return c.json({ message: 'Processus mis à jour' })
 })
 
+app.delete('/api/admin/processes/:id', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+  const id = c.req.param('id')
+  await c.env.DB.prepare('UPDATE processes SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
+    .bind('Inactif', id).run()
+  return c.json({ message: 'Processus désactivé' })
+})
+
 // ============================================
 // ADMIN - TASKS
 // ============================================
@@ -511,6 +538,15 @@ app.put('/api/admin/tasks/:id', async (c) => {
   ).bind(name, description || '', department_id, process_id, objective_id, task_type || 'Productive', status, id).run()
 
   return c.json({ message: 'Tâche mise à jour' })
+})
+
+app.delete('/api/admin/tasks/:id', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+  const id = c.req.param('id')
+  await c.env.DB.prepare('UPDATE tasks SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
+    .bind('Inactif', id).run()
+  return c.json({ message: 'Tâche désactivée' })
 })
 
 // ============================================
