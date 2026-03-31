@@ -1058,7 +1058,7 @@ function getLoginHTML () {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TimeTrack - BGFIBank</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
-<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{width:100%;height:100%;overflow:hidden;}
@@ -1150,9 +1150,9 @@ document.getElementById('login-form').addEventListener('submit',async(e)=>{
 }
 
 app.get('/login', (req, res) => res.send(getLoginHTML()))
-app.get('/admin*', (req, res) => res.send(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TimeTrack Admin - BGFIBank</title><script src="https://cdn.tailwindcss.com"></script><link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"><script src="https://cdn.jsdelivr.net/npm/chart.js"></script><link rel="stylesheet" href="/static/admin.css"></head><body><div id="app"></div><script src="/static/admin.js"></script></body></html>`))
-app.get('/agent*', (req, res) => res.send(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TimeTrack Agent - BGFIBank</title><script src="https://cdn.tailwindcss.com"></script><link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"><script src="https://cdn.jsdelivr.net/npm/chart.js"></script><link rel="stylesheet" href="/static/agent.css"></head><body><div id="app"></div><script src="/static/agent.js"></script></body></html>`))
-app.get('/chef*', (req, res) => res.send(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TimeTrack Chef - BGFIBank</title><script src="https://cdn.tailwindcss.com"></script><link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"><script src="https://cdn.jsdelivr.net/npm/chart.js"></script><link rel="stylesheet" href="/static/chef.css"></head><body><div id="app"></div><script src="/static/chef.js"></script></body></html>`))
+app.get('/admin*', (req, res) => res.send(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TimeTrack Admin - BGFIBank</title><script src="/static/libs/tailwind.min.js"></script><link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet"><script src="/static/libs/chart.min.js"></script><link rel="stylesheet" href="/static/admin.css"></head><body><div id="app"></div><script src="/static/admin.js"></script></body></html>`))
+app.get('/agent*', (req, res) => res.send(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TimeTrack Agent - BGFIBank</title><script src="/static/libs/tailwind.min.js"></script><link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet"><script src="/static/libs/chart.min.js"></script><link rel="stylesheet" href="/static/agent.css"></head><body><div id="app"></div><script src="/static/agent.js"></script></body></html>`))
+app.get('/chef*', (req, res) => res.send(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TimeTrack Chef - BGFIBank</title><script src="/static/libs/tailwind.min.js"></script><link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet"><script src="/static/libs/chart.min.js"></script><link rel="stylesheet" href="/static/chef.css"></head><body><div id="app"></div><script src="/static/chef.js"></script></body></html>`))
 app.get('/', (req, res) => res.redirect('/login'))
 
 // ============================================

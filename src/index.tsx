@@ -1247,7 +1247,7 @@ function getLoginHTML(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TimeTrack - BGFIBank</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
-<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+<link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{width:100%;height:100%;overflow:hidden;}
@@ -1501,9 +1501,9 @@ function getAdminHTML(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TimeTrack Admin - BGFIBank</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
-<script src="https://cdn.tailwindcss.com"></script>
-<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/libs/tailwind.min.js"></script>
+<link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
+<script src="/static/libs/chart.min.js"></script>
 <link rel="stylesheet" href="/static/admin.css">
 </head>
 <body>
@@ -1521,9 +1521,9 @@ function getAgentHTML(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TimeTrack Agent - BGFIBank</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
-<script src="https://cdn.tailwindcss.com"></script>
-<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/libs/tailwind.min.js"></script>
+<link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
+<script src="/static/libs/chart.min.js"></script>
 <link rel="stylesheet" href="/static/agent.css">
 </head>
 <body>
@@ -1541,9 +1541,9 @@ function getChefHTML(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TimeTrack Chef - BGFIBank</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
-<script src="https://cdn.tailwindcss.com"></script>
-<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/libs/tailwind.min.js"></script>
+<link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
+<script src="/static/libs/chart.min.js"></script>
 <link rel="stylesheet" href="/static/chef.css">
 </head>
 <body>
