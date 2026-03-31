@@ -33,11 +33,12 @@ function api(path, opts = {}) {
 }
 
 function toast(msg, type = 'success') {
+  const icons = { success: 'check-circle', error: 'exclamation-circle', info: 'info-circle', warning: 'exclamation-triangle' };
   const t = document.createElement('div');
   t.className = 'toast ' + type;
-  t.innerHTML = '<i class="fas fa-' + (type === 'success' ? 'check' : 'exclamation') + '-circle mr-2"></i>' + msg;
+  t.innerHTML = '<i class="fas fa-' + (icons[type] || 'check-circle') + ' mr-2"></i>' + msg;
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3000);
+  setTimeout(() => t.remove(), 4000);
 }
 
 function getInitials(name) {
@@ -73,9 +74,41 @@ function getPctClass(pct, target) {
   return 'pct-danger';
 }
 
-function logout() {
+async function logout() {
+  try { await fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }); } catch(e) {}
   localStorage.clear();
   window.location = '/login';
+}
+
+// ============================================
+// NOTIFICATIONS (polling toutes les 30s)
+// ============================================
+let _notifSince = new Date().toISOString();
+let _notifInterval = null;
+
+function startNotifPolling() {
+  if (_notifInterval) return;
+  _notifInterval = setInterval(pollNotifications, 30000);
+}
+
+async function pollNotifications() {
+  try {
+    const r = await fetch('/api/notifications?since=' + encodeURIComponent(_notifSince), { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!r.ok) return;
+    const items = await r.json();
+    _notifSince = new Date().toISOString();
+    items.forEach(n => {
+      if (n.status === 'Terminé') {
+        toast(`Nouvelle session à valider — ${n.agent_name}: ${n.task_name}`, 'info');
+      }
+    });
+    if (items.length > 0) updateNotifBadge(items.length);
+  } catch(e) {}
+}
+
+function updateNotifBadge(count) {
+  const badge = document.getElementById('notif-badge');
+  if (badge) { badge.textContent = count; badge.style.display = 'inline-block'; }
 }
 
 // ============================================
@@ -485,9 +518,10 @@ async function renderUsers() {
                 <td>${u.department_name || '-'}</td>
                 <td><span class="badge ${u.status==='Actif'?'badge-active':'badge-inactive'}">${u.status}</span></td>
                 <td>${formatDate(u.last_login)}</td>
-                <td>
+                <td style="white-space:nowrap">
                   <button class="btn btn-sm btn-outline" onclick="showUserModal(${u.id})" title="Modifier"><i class="fas fa-edit"></i></button>
-                  <button class="btn btn-sm" style="margin-left:4px;background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1" onclick="showUserPassword(${u.id}, '${u.first_name} ${u.last_name}')" title="Voir le mot de passe"><i class="fas fa-eye"></i></button>
+                  <button class="btn btn-sm" style="margin-left:4px;background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1" onclick="showUserPassword(${u.id}, '${u.first_name} ${u.last_name}')" title="Voir mot de passe"><i class="fas fa-eye"></i></button>
+                  <button class="btn btn-sm" style="margin-left:4px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d" onclick="showResetCodeModal(${u.id}, '${u.first_name} ${u.last_name}')" title="Générer code reset"><i class="fas fa-key"></i></button>
                   ${u.id !== currentUser.id ? `<button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})" style="margin-left:4px" title="Supprimer"><i class="fas fa-trash"></i></button>` : ''}
                 </td>
               </tr>`;
@@ -580,11 +614,64 @@ function showUserModal(userId = null) {
   });
 }
 
+// Suppression processus + tâches
+async function deleteProcess(id, name) {
+  if (!confirm(`Désactiver le processus "${name}" ?`)) return;
+  const r = await api('/api/admin/processes/' + id, { method: 'DELETE' });
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast('Processus désactivé');
+  renderProcesses();
+}
+
+async function deleteTask(id, name) {
+  if (!confirm(`Désactiver la tâche "${name}" ?`)) return;
+  const r = await api('/api/admin/tasks/' + id, { method: 'DELETE' });
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast('Tâche désactivée');
+  renderTasks();
+}
+
 async function deleteUser(id) {
-  if (!confirm('Supprimer cet utilisateur ?')) return;
+  if (!confirm('Supprimer définitivement cet utilisateur ?')) return;
   await api('/api/admin/users/' + id, { method: 'DELETE' });
   toast('Utilisateur supprimé');
   renderUsers();
+}
+
+// Générer un code de réinitialisation de mot de passe
+async function showResetCodeModal(userId, userName) {
+  const result = await api('/api/auth/reset-request', { method: 'POST', body: JSON.stringify({ user_id: userId }) });
+  if (result.error) { toast(result.error, 'error'); return; }
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title"><i class="fas fa-key mr-2"></i>Code de réinitialisation</span>
+      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+    </div>
+    <div style="padding:20px">
+      <div style="margin-bottom:12px;font-size:14px;color:#374151">
+        Transmettez ce code à <strong>${result.user_name}</strong> :<br>
+        <span style="font-size:12px;color:#6b7280">(valable 30 minutes)</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:16px;background:#f0fdf4;border:2px solid #22c55e;border-radius:10px;margin-bottom:14px">
+        <span id="reset-code-val" style="font-size:28px;font-weight:900;letter-spacing:6px;color:#15803d;font-family:monospace">${result.code}</span>
+        <button onclick="navigator.clipboard.writeText('${result.code}').then(()=>toast('Code copié !'))" style="background:none;border:none;cursor:pointer;color:#15803d;font-size:18px" title="Copier">
+          <i class="fas fa-copy"></i>
+        </button>
+      </div>
+      <div style="padding:10px;background:#fef3c7;border-radius:6px;font-size:12px;color:#92400e;margin-bottom:14px">
+        <i class="fas fa-info-circle mr-1"></i>
+        L'utilisateur devra entrer ce code + son nouveau mot de passe sur la page de connexion.
+      </div>
+      <div style="text-align:right">
+        <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Fermer</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
 }
 
 // Afficher le mot de passe d'un utilisateur
@@ -657,9 +744,10 @@ async function renderDepartments() {
 
   const cards = allDeptsData.map(d => `
     <div class="dept-card">
-      <button class="edit-btn" onclick="showDeptModal(${d.id})" style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.05);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6b7280">
-        <i class="fas fa-edit" style="font-size:12px"></i>
-      </button>
+      <div style="position:absolute;top:12px;right:12px;display:flex;gap:4px">
+        <button onclick="showDeptModal(${d.id})" style="background:rgba(0,0,0,0.05);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#6b7280" title="Modifier"><i class="fas fa-edit" style="font-size:11px"></i></button>
+        <button onclick="deleteDept(${d.id}, '${d.name.replace(/'/g,'\\'')}')" style="background:rgba(239,68,68,0.1);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#ef4444" title="Désactiver"><i class="fas fa-trash" style="font-size:11px"></i></button>
+      </div>
       <h3 style="font-size:14px;font-weight:700;color:#1e3a5f;margin-bottom:4px;padding-right:36px">${d.name}</h3>
       <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Code: ${d.code}</p>
       ${d.description ? `<p style="font-size:11px;color:#9ca3af;margin-bottom:8px">${d.description}</p>` : ''}
@@ -672,6 +760,17 @@ async function renderDepartments() {
     <button class="btn btn-primary" onclick="showDeptModal()"><i class="fas fa-plus"></i> Nouveau département</button>
   </div>
   <div class="grid-auto">${cards}</div>`;
+}
+
+async function deleteDept(id, name) {
+  if (!confirm(`Désactiver le département "${name}" ?`)) return;
+  const r = await api('/api/admin/departments/' + id, { method: 'DELETE' });
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast('Département désactivé');
+  renderDepartments();
+}
+
+function _keepRenderDepartments() { // alias factice pour éviter doublon
 }
 
 function showDeptModal(id = null) {
@@ -724,7 +823,10 @@ async function renderObjectives() {
 
   const cards = allObjsData.map(o => `
     <div class="objective-card" style="border-left-color:${o.color}">
-      <button class="edit-btn" onclick="showObjModal(${o.id})"><i class="fas fa-edit"></i></button>
+      <div style="position:absolute;top:12px;right:12px;display:flex;gap:4px">
+        <button onclick="showObjModal(${o.id})" class="edit-btn" style="right:unset;top:unset;position:static"><i class="fas fa-edit"></i></button>
+        <button onclick="deleteObjective(${o.id}, '${o.name.replace(/'/g,'\\'')}')" style="background:rgba(239,68,68,0.1);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#ef4444;padding:0" title="Désactiver"><i class="fas fa-trash" style="font-size:11px"></i></button>
+      </div>
       <h3 style="color:${o.color}">${o.name}</h3>
       <p>${o.description || ''}</p>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -740,6 +842,16 @@ async function renderObjectives() {
     <button class="btn btn-primary" onclick="showObjModal()"><i class="fas fa-plus"></i> Nouvel objectif</button>
   </div>
   <div class="grid-auto">${cards}</div>`;
+}
+
+async function deleteObjective(id, name) {
+  if (!confirm(`Désactiver l'objectif "${name}" ?`)) return;
+  const r = await api('/api/admin/objectives/' + id, { method: 'DELETE' });
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast('Objectif désactivé');
+  renderObjectives();
+}
+function _keepRenderObjectives() {
 }
 
 function showObjModal(id = null) {
@@ -809,7 +921,10 @@ async function renderProcesses() {
               <td><a style="color:#1e3a5f">${p.department_name}</a></td>
               <td><span class="badge badge-obj" style="background:${p.objective_color}">${p.objective_name}</span></td>
               <td><span class="badge ${p.status==='Actif'?'badge-active':'badge-inactive'}">${p.status}</span></td>
-              <td><button class="btn btn-sm btn-outline" onclick="showProcModal(${p.id})"><i class="fas fa-edit"></i></button></td>
+              <td style="white-space:nowrap">
+                <button class="btn btn-sm btn-outline" onclick="showProcModal(${p.id})" title="Modifier"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="deleteProcess(${p.id}, '${p.name.replace(/'/g,'\\'')}')" title="Désactiver"><i class="fas fa-trash"></i></button>
+              </td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -899,7 +1014,10 @@ async function renderTasks() {
               <td><span class="badge badge-obj" style="background:${t.objective_color}">${t.objective_name}</span></td>
               <td><span class="badge ${t.task_type==='Productive'?'badge-active':'badge-inactive'}">${t.task_type}</span></td>
               <td><span class="badge ${t.status==='Actif'?'badge-active':'badge-inactive'}">${t.status}</span></td>
-              <td><button class="btn btn-sm btn-outline" onclick="showTaskModal(${t.id})"><i class="fas fa-edit"></i></button></td>
+              <td style="white-space:nowrap">
+                <button class="btn btn-sm btn-outline" onclick="showTaskModal(${t.id})" title="Modifier"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="deleteTask(${t.id}, '${t.name.replace(/'/g,'\\'')}')" title="Désactiver"><i class="fas fa-trash"></i></button>
+              </td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -977,82 +1095,292 @@ function filterProcessesByDept(deptId) {
 }
 
 // ============================================
-// REPORTS
+// REPORTS (avec filtres période + export CSV)
 // ============================================
+let _reportsDateFrom = '', _reportsDateTo = '', _reportsDept = '', _reportsStatus = '';
+
 async function renderReports() {
   renderLayout('Rapports & Export', '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i></div>');
-  const data = await api('/api/admin/reports');
+  const depts = await api('/api/admin/departments');
+
+  const today = new Date().toISOString().split('T')[0];
+  const firstDay = new Date(); firstDay.setDate(1);
+  const firstDayStr = firstDay.toISOString().split('T')[0];
+  if (!_reportsDateFrom) _reportsDateFrom = firstDayStr;
+  if (!_reportsDateTo)   _reportsDateTo   = today;
 
   document.getElementById('content').innerHTML = `
   <div class="page-header">
     <div class="page-title"><i class="fas fa-chart-bar"></i><h2>Rapports & Export</h2></div>
-    <button class="btn btn-primary" onclick="exportCSV(window.reportsData,'rapports')">
-      <i class="fas fa-file-csv"></i> Exporter CSV
-    </button>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="downloadReportCSV()" title="Télécharger les données filtrées en CSV">
+        <i class="fas fa-file-csv"></i> Exporter CSV
+      </button>
+      <button class="btn btn-outline" onclick="printReport()" title="Imprimer le rapport">
+        <i class="fas fa-print"></i> Imprimer
+      </button>
+    </div>
+  </div>
+  <!-- FILTRES -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-body" style="padding:14px 20px">
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Du</label>
+          <input type="date" id="r_from" value="${_reportsDateFrom}" class="form-control" style="width:140px">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Au</label>
+          <input type="date" id="r_to" value="${_reportsDateTo}" class="form-control" style="width:140px">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Département</label>
+          <select id="r_dept" class="form-control" style="width:200px">
+            <option value="">Tous</option>
+            ${depts.map(d => `<option value="${d.id}" ${_reportsDept==d.id?'selected':''}>${d.name}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Statut</label>
+          <select id="r_status" class="form-control" style="width:130px">
+            <option value="">Tous</option>
+            <option value="Validé" ${_reportsStatus==='Validé'?'selected':''}>Validé</option>
+            <option value="Terminé" ${_reportsStatus==='Terminé'?'selected':''}>Terminé</option>
+            <option value="Rejeté" ${_reportsStatus==='Rejeté'?'selected':''}>Rejeté</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="applyReportFilters()" style="height:38px">
+          <i class="fas fa-filter"></i> Filtrer
+        </button>
+        <button class="btn btn-outline" onclick="resetReportFilters()" style="height:38px">
+          <i class="fas fa-times"></i> Réinitialiser
+        </button>
+      </div>
+    </div>
   </div>
   <div class="card">
     <div class="card-body">
+      <div id="report-summary" style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap"></div>
       <div class="table-wrapper">
-        <table>
-          <thead><tr><th>AGENT</th><th>DÉPARTEMENT</th><th>TÂCHE</th><th>PROCESSUS</th><th>OBJECTIF</th><th>DATE</th><th>HEURES</th><th>STATUT</th></tr></thead>
-          <tbody>
-            ${data.map(r => `<tr>
-              <td style="font-weight:600;color:#1e3a5f">${r.agent_name}</td>
-              <td>${r.department_name}</td>
-              <td>${r.task_name}</td>
-              <td>${r.process_name}</td>
-              <td><span class="badge badge-obj" style="background:${r.objective_color}">${r.objective_name}</span></td>
-              <td>${formatDateShort(r.start_time)}</td>
-              <td style="font-weight:700">${minutesToHours(r.duration_minutes || 0)}</td>
-              <td>${getStatusBadge(r.status)}</td>
-            </tr>`).join('')}
-          </tbody>
+        <table id="report-table">
+          <thead><tr><th>AGENT</th><th>DÉPARTEMENT</th><th>TÂCHE</th><th>PROCESSUS</th><th>OBJECTIF</th><th>DATE</th><th>HEURES</th><th>TYPE</th><th>STATUT</th></tr></thead>
+          <tbody id="report-tbody"><tr><td colspan="9" style="text-align:center;color:#9ca3af"><i class="fas fa-spinner fa-spin"></i> Chargement...</td></tr></tbody>
         </table>
       </div>
     </div>
   </div>`;
+
+  loadReportData();
+}
+
+async function loadReportData() {
+  _reportsDateFrom = document.getElementById('r_from')?.value || _reportsDateFrom;
+  _reportsDateTo   = document.getElementById('r_to')?.value   || _reportsDateTo;
+  _reportsDept     = document.getElementById('r_dept')?.value  || '';
+  _reportsStatus   = document.getElementById('r_status')?.value || '';
+
+  let url = '/api/admin/reports?';
+  if (_reportsDateFrom) url += 'date_from=' + _reportsDateFrom + '&';
+  if (_reportsDateTo)   url += 'date_to='   + _reportsDateTo   + '&';
+  if (_reportsDept)     url += 'dept_id='   + _reportsDept     + '&';
+  if (_reportsStatus)   url += 'status='    + encodeURIComponent(_reportsStatus) + '&';
+
+  const data = await api(url);
   window.reportsData = data;
+
+  // Résumé
+  const totalH = data.reduce((s, r) => s + (r.duration_minutes || 0), 0);
+  const validatedH = data.filter(r => r.status === 'Validé').reduce((s, r) => s + (r.duration_minutes || 0), 0);
+  const summary = document.getElementById('report-summary');
+  if (summary) summary.innerHTML = `
+    <div style="padding:10px 16px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0">
+      <div style="font-size:20px;font-weight:800;color:#16a34a">${data.length}</div>
+      <div style="font-size:11px;color:#6b7280">Sessions</div>
+    </div>
+    <div style="padding:10px 16px;background:#eff6ff;border-radius:8px;border:1px solid #bfdbfe">
+      <div style="font-size:20px;font-weight:800;color:#1d4ed8">${minutesToHours(totalH)}</div>
+      <div style="font-size:11px;color:#6b7280">Heures totales</div>
+    </div>
+    <div style="padding:10px 16px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0">
+      <div style="font-size:20px;font-weight:800;color:#16a34a">${minutesToHours(validatedH)}</div>
+      <div style="font-size:11px;color:#6b7280">Heures validées</div>
+    </div>
+    <div style="padding:10px 16px;background:#fef3c7;border-radius:8px;border:1px solid #fde68a">
+      <div style="font-size:20px;font-weight:800;color:#d97706">${data.filter(r=>r.status==='Rejeté').length}</div>
+      <div style="font-size:11px;color:#6b7280">Rejetées</div>
+    </div>`;
+
+  const tbody = document.getElementById('report-tbody');
+  if (tbody) tbody.innerHTML = data.length === 0
+    ? '<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:20px">Aucune session pour cette période</td></tr>'
+    : data.map(r => `<tr>
+      <td style="font-weight:600;color:#1e3a5f">${r.agent_name}</td>
+      <td>${r.department_name}</td>
+      <td>${r.task_name}</td>
+      <td>${r.process_name}</td>
+      <td><span class="badge badge-obj" style="background:${r.objective_color}">${r.objective_name}</span></td>
+      <td>${formatDateShort(r.start_time)}</td>
+      <td style="font-weight:700">${minutesToHours(r.duration_minutes || 0)}</td>
+      <td><span class="badge ${r.session_type==='Manuelle'?'badge-warning':'badge-info'}">${r.session_type}</span></td>
+      <td>${getStatusBadge(r.status)}</td>
+    </tr>`).join('');
+}
+
+function applyReportFilters() { loadReportData(); }
+function resetReportFilters() {
+  _reportsDateFrom = ''; _reportsDateTo = ''; _reportsDept = ''; _reportsStatus = '';
+  renderReports();
+}
+
+function downloadReportCSV() {
+  let url = '/api/admin/reports?export=csv&';
+  if (_reportsDateFrom) url += 'date_from=' + _reportsDateFrom + '&';
+  if (_reportsDateTo)   url += 'date_to='   + _reportsDateTo   + '&';
+  if (_reportsDept)     url += 'dept_id='   + _reportsDept     + '&';
+  if (_reportsStatus)   url += 'status='    + encodeURIComponent(_reportsStatus) + '&';
+  // Téléchargement via lien avec token
+  fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(r => r.blob())
+    .then(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'rapport_timetrack_' + new Date().toISOString().split('T')[0] + '.csv';
+      a.click();
+    });
+}
+
+function printReport() {
+  const table = document.getElementById('report-table');
+  if (!table) return;
+  const win = window.open('', '_blank');
+  win.document.write(`<html><head><title>Rapport TimeTrack – BGFIBank</title>
+    <style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px}h2{color:#1e3a5f}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e3a5f;color:white;padding:8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:11px}.footer{margin-top:20px;font-size:11px;color:#9ca3af;text-align:center}</style></head><body>
+    <h2><img src="/static/bgfibank-logo.png" height="40" style="vertical-align:middle;margin-right:10px"> Rapport TimeTrack BGFIBank</h2>
+    <p style="color:#6b7280">Période : ${_reportsDateFrom || '—'} au ${_reportsDateTo || '—'} — Généré le ${new Date().toLocaleDateString('fr-FR')}</p>
+    ${table.outerHTML}
+    <div class="footer">© ${new Date().getFullYear()} BGFIBank — Document confidentiel — TimeTrack</div>
+  </body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
 }
 
 // ============================================
-// AUDIT
+// AUDIT (avec filtres, export CSV)
 // ============================================
 async function renderAudit() {
   renderLayout("Journal d'Audit", '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i></div>');
-  const logs = await api('/api/admin/audit');
+
+  const today = new Date().toISOString().split('T')[0];
+  const weekAgo = new Date(Date.now() - 7*24*3600*1000).toISOString().split('T')[0];
 
   document.getElementById('content').innerHTML = `
   <div class="page-header">
-    <div class="page-title"><i class="fas fa-file-alt"></i><h2>Journal d'Audit</h2></div>
+    <div class="page-title"><i class="fas fa-shield-alt"></i><h2>Journal d'Audit Sécurité</h2></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline" onclick="downloadAuditCSV()">
+        <i class="fas fa-file-csv"></i> Exporter CSV
+      </button>
+    </div>
+  </div>
+  <!-- Filtres -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-body" style="padding:14px 20px">
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Du</label>
+          <input type="date" id="a_from" value="${weekAgo}" class="form-control" style="width:140px">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Au</label>
+          <input type="date" id="a_to" value="${today}" class="form-control" style="width:140px">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Action</label>
+          <select id="a_action" class="form-control" style="width:160px">
+            <option value="">Toutes</option>
+            <option>LOGIN</option><option>LOGIN_FAILED</option><option>LOGOUT</option>
+            <option>VALIDATION</option><option>REJET</option>
+            <option>CREATE_USER</option><option>UPDATE_USER</option><option>DELETE</option>
+            <option>RESET_PASSWORD_REQUEST</option><option>VIEW_PASSWORD</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="loadAuditData()" style="height:38px">
+          <i class="fas fa-filter"></i> Filtrer
+        </button>
+      </div>
+    </div>
   </div>
   <div class="card">
     <div class="card-body">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>DATE/HEURE</th><th>UTILISATEUR</th><th>ACTION</th><th>DÉTAILS</th></tr></thead>
-          <tbody>
-            ${logs.map(l => `<tr>
-              <td style="font-size:12px;color:#1e3a5f">${formatDate(l.created_at)}</td>
-              <td style="font-weight:600;color:#1e3a5f">${l.user_name || '-'}</td>
-              <td>${getAuditBadge(l.action)}</td>
-              <td style="font-size:12px;color:#6b7280">${l.details || ''}</td>
-            </tr>`).join('')}
-          </tbody>
+          <thead><tr><th>DATE/HEURE</th><th>UTILISATEUR</th><th>ACTION</th><th>DÉTAILS</th><th>IP</th></tr></thead>
+          <tbody id="audit-tbody"><tr><td colspan="5" style="text-align:center;color:#9ca3af"><i class="fas fa-spinner fa-spin"></i></td></tr></tbody>
         </table>
       </div>
     </div>
   </div>`;
+
+  loadAuditData();
+}
+
+async function loadAuditData() {
+  const from   = document.getElementById('a_from')?.value   || '';
+  const to     = document.getElementById('a_to')?.value     || '';
+  const action = document.getElementById('a_action')?.value || '';
+
+  let url = '/api/admin/audit?';
+  if (from)   url += 'date_from=' + from + '&';
+  if (to)     url += 'date_to='   + to   + '&';
+  if (action) url += 'action='    + encodeURIComponent(action) + '&';
+
+  const logs = await api(url);
+  window.auditData = { from, to, action };
+
+  const tbody = document.getElementById('audit-tbody');
+  if (tbody) tbody.innerHTML = logs.length === 0
+    ? '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:20px">Aucune entrée pour cette période</td></tr>'
+    : logs.map(l => `<tr>
+      <td style="font-size:12px;color:#1e3a5f;white-space:nowrap">${formatDate(l.created_at)}</td>
+      <td style="font-weight:600;color:#1e3a5f">${l.user_name || '<span style="color:#9ca3af">Système</span>'}</td>
+      <td>${getAuditBadge(l.action)}</td>
+      <td style="font-size:12px;color:#6b7280;max-width:320px;overflow:hidden;text-overflow:ellipsis" title="${(l.details||'').replace(/"/g,'&quot;')}">${l.details || ''}</td>
+      <td style="font-size:11px;color:#9ca3af;font-family:monospace">${l.ip_address || '-'}</td>
+    </tr>`).join('');
+}
+
+function downloadAuditCSV() {
+  const d = window.auditData || {};
+  let url = '/api/admin/audit?export=csv&';
+  if (d.from)   url += 'date_from=' + d.from + '&';
+  if (d.to)     url += 'date_to='   + d.to   + '&';
+  if (d.action) url += 'action='    + encodeURIComponent(d.action) + '&';
+  fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(r => r.blob())
+    .then(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'audit_timetrack_' + new Date().toISOString().split('T')[0] + '.csv';
+      a.click();
+    });
 }
 
 function getAuditBadge(action) {
   const map = {
-    'LOGIN': ['action-login', 'LOGIN'],
-    'LOGIN_FAILED': ['action-rejet', 'ÉCHEC'],
-    'VALIDATION': ['action-validation', 'VALIDATION'],
-    'REJET': ['action-rejet', 'REJET'],
-    'CREATE_USER': ['action-create', 'CRÉATION'],
-    'UPDATE_USER': ['action-update', 'MODIF.'],
-    'DELETE': ['action-delete', 'SUPPRESSION']
+    'LOGIN':                     ['action-login',      'LOGIN'],
+    'LOGOUT':                    ['action-update',     'LOGOUT'],
+    'LOGIN_FAILED':              ['action-rejet',      'ÉCHEC LOGIN'],
+    'VALIDATION':                ['action-validation', 'VALIDATION'],
+    'REJET':                     ['action-rejet',      'REJET'],
+    'CREATE_USER':               ['action-create',     'CRÉATION'],
+    'UPDATE_USER':               ['action-update',     'MODIF. USER'],
+    'DELETE_DEPT':               ['action-delete',     'SUPPR. DEPT'],
+    'DELETE_OBJECTIVE':          ['action-delete',     'SUPPR. OBJECTIF'],
+    'DELETE_PROCESS':            ['action-delete',     'SUPPR. PROCESSUS'],
+    'DELETE_TASK':               ['action-delete',     'SUPPR. TÂCHE'],
+    'RESET_PASSWORD_REQUEST':    ['action-update',     'RESET MDP'],
+    'RESET_PASSWORD_DONE':       ['action-create',     'MDP CHANGÉ'],
+    'VIEW_PASSWORD':             ['action-login',      'VUE MDP']
   };
   const [cls, label] = map[action] || ['action-login', action];
   return `<span class="status-badge ${cls}">${label}</span>`;
@@ -1079,3 +1407,53 @@ function renderPage(page) {
 // Init
 renderPage();
 window.addEventListener('popstate', () => renderPage());
+startNotifPolling();
+
+// Page de reset mot de passe (pour les agents qui ont un code)
+function renderResetPassword() {
+  // Cette fonction est accessible depuis la page login via un lien
+  renderLayout('Réinitialisation du mot de passe', `
+  <div style="max-width:440px;margin:40px auto">
+    <div class="card">
+      <div class="card-body">
+        <h3 style="font-size:16px;font-weight:700;color:#1e3a5f;margin-bottom:16px">
+          <i class="fas fa-key mr-2"></i>Changer votre mot de passe
+        </h3>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-control" type="email" id="rp_email" placeholder="votre@email.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Code temporaire (fourni par l'admin)</label>
+          <input class="form-control" id="rp_code" placeholder="ex: AB1C2D" style="letter-spacing:4px;font-weight:700">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nouveau mot de passe</label>
+          <input class="form-control" type="password" id="rp_newpwd" placeholder="Minimum 4 caractères">
+        </div>
+        <div id="rp_error" style="display:none;background:#fee2e2;border:1px solid #fecaca;border-radius:8px;padding:10px;font-size:13px;color:#dc2626;margin-bottom:12px"></div>
+        <div id="rp_ok" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#16a34a;margin-bottom:12px"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-outline" onclick="window.location='/login'">Annuler</button>
+          <button class="btn btn-primary" onclick="submitResetPassword()">
+            <i class="fas fa-check mr-1"></i>Confirmer
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>`);
+}
+
+async function submitResetPassword() {
+  const email  = document.getElementById('rp_email')?.value?.trim();
+  const code   = document.getElementById('rp_code')?.value?.trim();
+  const newpwd = document.getElementById('rp_newpwd')?.value;
+  const err    = document.getElementById('rp_error');
+  const ok     = document.getElementById('rp_ok');
+  err.style.display = 'none'; ok.style.display = 'none';
+  if (!email || !code || !newpwd) { err.textContent = 'Tous les champs sont requis'; err.style.display = 'block'; return; }
+  const r = await fetch('/api/auth/reset-confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code, new_password: newpwd }) });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error || 'Erreur'; err.style.display = 'block'; }
+  else { ok.textContent = 'Mot de passe modifié avec succès ! Redirection...'; ok.style.display = 'block'; setTimeout(() => window.location = '/login', 2000); }
+}

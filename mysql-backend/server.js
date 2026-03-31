@@ -137,6 +137,25 @@ function decryptPassword (encrypted) {
   }
 }
 
+// ============================================
+// JWT BLACKLIST (logout serveur)
+// ============================================
+const tokenBlacklist = new Set()
+// Nettoyage automatique toutes les heures (tokens expirés)
+setInterval(() => {
+  // On garde la blacklist bornée — on purge si elle grossit trop
+  if (tokenBlacklist.size > 10000) tokenBlacklist.clear()
+}, 60 * 60 * 1000)
+
+// ============================================
+// CODES RESET MOT DE PASSE (en mémoire)
+// ============================================
+const resetCodes = new Map() // email → { code, expiresAt, userId }
+
+function generateResetCode () {
+  return Math.random().toString(36).substring(2, 8).toUpperCase()
+}
+
 // JWT manuel HMAC-SHA256 (compatible avec le frontend existant)
 function base64url (buf) {
   return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
@@ -166,8 +185,16 @@ function getUser (req) {
   try {
     const auth = req.headers.authorization
     if (!auth || !auth.startsWith('Bearer ')) return null
-    return verifyJWT(auth.slice(7))
+    const token = auth.slice(7)
+    if (tokenBlacklist.has(token)) return null
+    return verifyJWT(token)
   } catch { return null }
+}
+
+function getRawToken (req) {
+  const auth = req.headers.authorization
+  if (!auth || !auth.startsWith('Bearer ')) return null
+  return auth.slice(7)
 }
 
 // Helper pour exécuter une requête et retourner les lignes
@@ -262,6 +289,99 @@ app.get('/api/auth/me', (req, res) => {
   const user = getUser(req)
   if (!user) return res.status(401).json({ error: 'Non autorisé' })
   res.json({ user })
+})
+
+// Logout : met le token en blacklist
+app.post('/api/auth/logout', (req, res) => {
+  const token = getRawToken(req)
+  if (token) tokenBlacklist.add(token)
+  res.json({ message: 'Déconnecté avec succès' })
+})
+
+// Admin génère un code temporaire (6 car., valide 30 min) pour réinitialiser le mot de passe d'un user
+app.post('/api/auth/reset-request', async (req, res) => {
+  const currentUser = getUser(req)
+  if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
+  try {
+    const { user_id } = req.body
+    if (!user_id) return res.status(400).json({ error: 'user_id requis' })
+    const rows = await query('SELECT id, email, first_name, last_name FROM users WHERE id = ?', [user_id])
+    if (!rows[0]) return res.status(404).json({ error: 'Utilisateur non trouvé' })
+    const target = rows[0]
+    const code = generateResetCode()
+    const expiresAt = Date.now() + 30 * 60 * 1000 // 30 min
+    resetCodes.set(target.email, { code, expiresAt, userId: target.id })
+    await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+      [currentUser.id, 'RESET_PASSWORD_REQUEST', `Code de réinitialisation généré pour ${target.first_name} ${target.last_name} (ID ${target.id})`])
+    res.json({
+      message: 'Code généré',
+      code,
+      user_name: `${target.first_name} ${target.last_name}`,
+      email: target.email,
+      expires_in_minutes: 30
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Appliquer le code de réinitialisation + nouveau mot de passe
+app.post('/api/auth/reset-confirm', async (req, res) => {
+  try {
+    const { email, code, new_password } = req.body
+    if (!email || !code || !new_password) return res.status(400).json({ error: 'email, code et new_password requis' })
+    if (new_password.length < 4) return res.status(400).json({ error: 'Mot de passe trop court (min 4 caractères)' })
+    const entry = resetCodes.get(email)
+    if (!entry) return res.status(400).json({ error: 'Aucun code en attente pour cet email' })
+    if (Date.now() > entry.expiresAt) {
+      resetCodes.delete(email)
+      return res.status(400).json({ error: 'Code expiré. Demandez un nouveau code à l\'administrateur.' })
+    }
+    if (entry.code !== code.toUpperCase()) return res.status(400).json({ error: 'Code incorrect' })
+    const passwordHash      = hashPassword(new_password)
+    const passwordEncrypted = encryptPassword(new_password)
+    await run('UPDATE users SET password_hash=?, password_encrypted=?, updated_at=NOW() WHERE id=?',
+      [passwordHash, passwordEncrypted, entry.userId])
+    resetCodes.delete(email)
+    await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+      [entry.userId, 'RESET_PASSWORD_DONE', `Mot de passe réinitialisé via code temporaire`])
+    res.json({ message: 'Mot de passe réinitialisé avec succès' })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Notifications : retourne les dernières validations/rejets pour l'utilisateur connecté
+app.get('/api/notifications', async (req, res) => {
+  const user = getUser(req)
+  if (!user) return res.status(401).json({ error: 'Non autorisé' })
+  try {
+    const since = req.query.since || new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    let rows = []
+    if (user.role === 'Agent') {
+      rows = await query(
+        `SELECT ws.id, ws.status, ws.rejected_reason, ws.updated_at,
+         t.name as task_name, o.name as objective_name,
+         CONCAT(uv.first_name, ' ', uv.last_name) as validated_by_name
+         FROM work_sessions ws
+         JOIN tasks t ON ws.task_id = t.id
+         JOIN strategic_objectives o ON ws.objective_id = o.id
+         LEFT JOIN users uv ON ws.validated_by = uv.id
+         WHERE ws.user_id = ? AND ws.status IN ('Validé','Rejeté') AND ws.updated_at >= ?
+         ORDER BY ws.updated_at DESC LIMIT 10`,
+        [user.id, since]
+      )
+    } else if (user.role === 'Chef de Département' || user.role === 'Administrateur') {
+      rows = await query(
+        `SELECT ws.id, ws.status, ws.updated_at,
+         CONCAT(u.first_name, ' ', u.last_name) as agent_name,
+         t.name as task_name
+         FROM work_sessions ws
+         JOIN users u ON ws.user_id = u.id
+         JOIN tasks t ON ws.task_id = t.id
+         WHERE ws.department_id = ? AND ws.status = 'Terminé' AND ws.updated_at >= ?
+         ORDER BY ws.updated_at DESC LIMIT 10`,
+        [user.department_id, since]
+      )
+    }
+    res.json(rows)
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ============================================
@@ -372,7 +492,19 @@ app.put('/api/admin/departments/:id', async (req, res) => {
     'UPDATE departments SET name=?, code=?, description=?, status=?, updated_at=NOW() WHERE id=?',
     [name, code, description || '', status, req.params.id]
   )
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+    [currentUser.id, 'UPDATE_DEPT', `Département ID ${req.params.id} mis à jour`])
   res.json({ message: 'Département mis à jour' })
+})
+
+// Suppression logique département (passe en Inactif)
+app.delete('/api/admin/departments/:id', async (req, res) => {
+  const currentUser = getUser(req)
+  if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
+  await run('UPDATE departments SET status=?, updated_at=NOW() WHERE id=?', ['Inactif', req.params.id])
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+    [currentUser.id, 'DELETE_DEPT', `Département ID ${req.params.id} désactivé`])
+  res.json({ message: 'Département désactivé' })
 })
 
 // ============================================
@@ -403,7 +535,19 @@ app.put('/api/admin/objectives/:id', async (req, res) => {
     'UPDATE strategic_objectives SET name=?, description=?, color=?, target_percentage=?, status=?, updated_at=NOW() WHERE id=?',
     [name, description || '', color || '#1e3a5f', target_percentage || 0, status, req.params.id]
   )
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+    [currentUser.id, 'UPDATE_OBJECTIVE', `Objectif ID ${req.params.id} mis à jour`])
   res.json({ message: 'Objectif mis à jour' })
+})
+
+// Suppression logique objectif
+app.delete('/api/admin/objectives/:id', async (req, res) => {
+  const currentUser = getUser(req)
+  if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
+  await run('UPDATE strategic_objectives SET status=?, updated_at=NOW() WHERE id=?', ['Inactif', req.params.id])
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+    [currentUser.id, 'DELETE_OBJECTIVE', `Objectif ID ${req.params.id} désactivé`])
+  res.json({ message: 'Objectif désactivé' })
 })
 
 // ============================================
@@ -440,7 +584,19 @@ app.put('/api/admin/processes/:id', async (req, res) => {
     'UPDATE processes SET name=?, description=?, department_id=?, objective_id=?, status=?, updated_at=NOW() WHERE id=?',
     [name, description || '', department_id, objective_id, status, req.params.id]
   )
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+    [currentUser.id, 'UPDATE_PROCESS', `Processus ID ${req.params.id} mis à jour`])
   res.json({ message: 'Processus mis à jour' })
+})
+
+// Suppression logique processus
+app.delete('/api/admin/processes/:id', async (req, res) => {
+  const currentUser = getUser(req)
+  if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
+  await run('UPDATE processes SET status=?, updated_at=NOW() WHERE id=?', ['Inactif', req.params.id])
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+    [currentUser.id, 'DELETE_PROCESS', `Processus ID ${req.params.id} désactivé`])
+  res.json({ message: 'Processus désactivé' })
 })
 
 // ============================================
@@ -478,7 +634,19 @@ app.put('/api/admin/tasks/:id', async (req, res) => {
     'UPDATE tasks SET name=?, description=?, department_id=?, process_id=?, objective_id=?, task_type=?, status=?, updated_at=NOW() WHERE id=?',
     [name, description || '', department_id, process_id, objective_id, task_type || 'Productive', status, req.params.id]
   )
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+    [currentUser.id, 'UPDATE_TASK', `Tâche ID ${req.params.id} mise à jour`])
   res.json({ message: 'Tâche mise à jour' })
+})
+
+// Suppression logique tâche
+app.delete('/api/admin/tasks/:id', async (req, res) => {
+  const currentUser = getUser(req)
+  if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
+  await run('UPDATE tasks SET status=?, updated_at=NOW() WHERE id=?', ['Inactif', req.params.id])
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+    [currentUser.id, 'DELETE_TASK', `Tâche ID ${req.params.id} désactivée`])
+  res.json({ message: 'Tâche désactivée' })
 })
 
 // ============================================
@@ -604,8 +772,9 @@ app.get('/api/admin/stats', async (req, res) => {
 app.get('/api/admin/reports', async (req, res) => {
   const user = getUser(req)
   if (!user || user.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
-  const rows = await query(
-    `SELECT ws.*,
+  // Filtres optionnels : date_from, date_to, dept_id, status, export=csv
+  const { date_from, date_to, dept_id, status: statusFilter, export: exportType } = req.query
+  let sql = `SELECT ws.*,
      CONCAT(u.first_name, ' ', u.last_name) as agent_name,
      d.name as department_name,
      t.name as task_name,
@@ -618,20 +787,58 @@ app.get('/api/admin/reports', async (req, res) => {
      JOIN tasks t ON ws.task_id = t.id
      JOIN processes p ON t.process_id = p.id
      JOIN strategic_objectives o ON ws.objective_id = o.id
-     ORDER BY ws.start_time DESC`
-  )
+     WHERE 1=1`
+  const params = []
+  if (date_from)     { sql += ' AND DATE(ws.start_time) >= ?'; params.push(date_from) }
+  if (date_to)       { sql += ' AND DATE(ws.start_time) <= ?'; params.push(date_to) }
+  if (dept_id)       { sql += ' AND ws.department_id = ?';     params.push(dept_id) }
+  if (statusFilter)  { sql += ' AND ws.status = ?';            params.push(statusFilter) }
+  sql += ' ORDER BY ws.start_time DESC'
+  const rows = await query(sql, params)
+
+  if (exportType === 'csv') {
+    const header = 'ID,Agent,Département,Tâche,Processus,Objectif,Type,Statut,Début,Fin,Durée (min),Commentaire,Rejet\n'
+    const csvRows = rows.map(r => [
+      r.id, `"${r.agent_name}"`, `"${r.department_name}"`, `"${r.task_name}"`,
+      `"${r.process_name}"`, `"${r.objective_name}"`, r.session_type, r.status,
+      r.start_time ? new Date(r.start_time).toLocaleString('fr-FR') : '',
+      r.end_time   ? new Date(r.end_time).toLocaleString('fr-FR') : '',
+      r.duration_minutes, `"${r.comment || ''}"`, `"${r.rejected_reason || ''}"`
+    ].join(',')).join('\n')
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="rapport_timetrack_${new Date().toISOString().split('T')[0]}.csv"`)
+    return res.send('\uFEFF' + header + csvRows) // BOM utf-8 pour Excel
+  }
   res.json(rows)
 })
 
 app.get('/api/admin/audit', async (req, res) => {
   const user = getUser(req)
   if (!user || user.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
-  const rows = await query(
-    `SELECT al.*, CONCAT(u.first_name, ' ', u.last_name) as user_name
+  const { date_from, date_to, action: actionFilter, export: exportType } = req.query
+  let sql = `SELECT al.*, CONCAT(u.first_name, ' ', u.last_name) as user_name
      FROM audit_logs al
      LEFT JOIN users u ON al.user_id = u.id
-     ORDER BY al.created_at DESC LIMIT 100`
-  )
+     WHERE 1=1`
+  const params = []
+  if (date_from)    { sql += ' AND DATE(al.created_at) >= ?'; params.push(date_from) }
+  if (date_to)      { sql += ' AND DATE(al.created_at) <= ?'; params.push(date_to) }
+  if (actionFilter) { sql += ' AND al.action LIKE ?';         params.push(`%${actionFilter}%`) }
+  sql += ' ORDER BY al.created_at DESC LIMIT 500'
+  const rows = await query(sql, params)
+
+  if (exportType === 'csv') {
+    const header = 'ID,Utilisateur,Action,Détails,IP,Date\n'
+    const csvRows = rows.map(r => [
+      r.id, `"${r.user_name || 'Système'}"`, r.action,
+      `"${(r.details || '').replace(/"/g, "'")}"`,
+      r.ip_address || '',
+      r.created_at ? new Date(r.created_at).toLocaleString('fr-FR') : ''
+    ].join(',')).join('\n')
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="audit_timetrack_${new Date().toISOString().split('T')[0]}.csv"`)
+    return res.send('\uFEFF' + header + csvRows)
+  }
   res.json(rows)
 })
 
@@ -1002,8 +1209,11 @@ app.post('/api/chef/reject/:id', async (req, res) => {
   }
   const id = req.params.id
   const reason = req.body?.reason || ''
-  await run('UPDATE work_sessions SET status="Rejeté", rejected_reason=?, updated_at=NOW() WHERE id=?', [reason, id])
-  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)', [user.id, 'REJET', `Session #${id} rejetée`])
+  if (!reason || reason.trim().length < 3) {
+    return res.status(400).json({ error: 'Un commentaire de rejet est obligatoire (minimum 3 caractères)' })
+  }
+  await run('UPDATE work_sessions SET status="Rejeté", rejected_reason=?, updated_at=NOW() WHERE id=?', [reason.trim(), id])
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)', [user.id, 'REJET', `Session #${id} rejetée – Motif: ${reason}`])
   res.json({ message: 'Session rejetée' })
 })
 
@@ -1026,8 +1236,8 @@ app.get('/api/chef/reports', async (req, res) => {
   if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
     return res.status(401).json({ error: 'Non autorisé' })
   }
-  const rows = await query(
-    `SELECT ws.*, CONCAT(u.first_name, ' ', u.last_name) as agent_name,
+  const { date_from, date_to, agent_id, status: statusFilter, export: exportType } = req.query
+  let sql = `SELECT ws.*, CONCAT(u.first_name, ' ', u.last_name) as agent_name,
      t.name as task_name, p.name as process_name,
      o.name as objective_name, o.color as objective_color
      FROM work_sessions ws
@@ -1035,11 +1245,61 @@ app.get('/api/chef/reports', async (req, res) => {
      JOIN tasks t ON ws.task_id = t.id
      JOIN processes p ON t.process_id = p.id
      JOIN strategic_objectives o ON ws.objective_id = o.id
-     WHERE ws.department_id = ?
-     ORDER BY ws.start_time DESC`,
-    [user.department_id]
-  )
+     WHERE ws.department_id = ?`
+  const params = [user.department_id]
+  if (date_from)    { sql += ' AND DATE(ws.start_time) >= ?'; params.push(date_from) }
+  if (date_to)      { sql += ' AND DATE(ws.start_time) <= ?'; params.push(date_to) }
+  if (agent_id)     { sql += ' AND ws.user_id = ?';           params.push(agent_id) }
+  if (statusFilter) { sql += ' AND ws.status = ?';            params.push(statusFilter) }
+  sql += ' ORDER BY ws.start_time DESC'
+  const rows = await query(sql, params)
+
+  if (exportType === 'csv') {
+    const header = 'ID,Agent,Tâche,Processus,Objectif,Type,Statut,Début,Fin,Durée (min),Commentaire,Motif rejet\n'
+    const csvRows = rows.map(r => [
+      r.id, `"${r.agent_name}"`, `"${r.task_name}"`, `"${r.process_name}"`, `"${r.objective_name}"`,
+      r.session_type, r.status,
+      r.start_time ? new Date(r.start_time).toLocaleString('fr-FR') : '',
+      r.end_time   ? new Date(r.end_time).toLocaleString('fr-FR') : '',
+      r.duration_minutes, `"${r.comment || ''}"`, `"${r.rejected_reason || ''}"`
+    ].join(',')).join('\n')
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="rapport_chef_${new Date().toISOString().split('T')[0]}.csv"`)
+    return res.send('\uFEFF' + header + csvRows)
+  }
   res.json(rows)
+})
+
+// Productivité équipe par période (graphique chef)
+app.get('/api/chef/productivity-trend', async (req, res) => {
+  const user = getUser(req)
+  if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
+    return res.status(401).json({ error: 'Non autorisé' })
+  }
+  const { period = '30' } = req.query // nombre de jours
+  const days = Math.min(parseInt(period) || 30, 90)
+  const rows = await query(
+    `SELECT DATE(ws.start_time) as jour,
+     CONCAT(u.first_name, ' ', u.last_name) as agent_name,
+     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
+     FROM work_sessions ws
+     JOIN users u ON ws.user_id = u.id
+     WHERE ws.department_id = ? AND ws.status IN ('Validé','Terminé')
+     AND DATE(ws.start_time) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+     GROUP BY DATE(ws.start_time), ws.user_id, u.first_name, u.last_name
+     ORDER BY jour ASC, agent_name`,
+    [user.department_id, days]
+  )
+  // Pivot : dates × agents
+  const dates = [...new Set(rows.map(r => r.jour instanceof Date ? r.jour.toISOString().split('T')[0] : String(r.jour)))]
+  const agents = [...new Set(rows.map(r => r.agent_name))]
+  const pivot = {}
+  for (const r of rows) {
+    const jour = r.jour instanceof Date ? r.jour.toISOString().split('T')[0] : String(r.jour)
+    if (!pivot[r.agent_name]) pivot[r.agent_name] = {}
+    pivot[r.agent_name][jour] = r.total_minutes
+  }
+  res.json({ dates, agents, pivot })
 })
 
 // ============================================

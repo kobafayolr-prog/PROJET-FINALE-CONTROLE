@@ -37,11 +37,12 @@ function api(path, opts = {}) {
 }
 
 function toast(msg, type = 'success') {
+  const icons = { success: 'check-circle', error: 'exclamation-circle', info: 'info-circle', warning: 'exclamation-triangle' };
   const t = document.createElement('div');
   t.className = 'toast ' + type;
-  t.innerHTML = '<i class="fas fa-' + (type === 'success' ? 'check' : 'exclamation') + '-circle" style="margin-right:6px"></i>' + msg;
+  t.innerHTML = '<i class="fas fa-' + (icons[type] || 'check-circle') + '" style="margin-right:6px"></i>' + msg;
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3000);
+  setTimeout(() => t.remove(), 4500);
 }
 
 function getInitials(name) {
@@ -77,9 +78,34 @@ function formatChrono(seconds) {
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
 }
 
-function logout() {
+async function logout() {
+  try { await fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }); } catch(e) {}
   localStorage.clear();
   window.location = '/login';
+}
+
+// ============================================
+// NOTIFICATIONS AGENT (polling 20s)
+// ============================================
+let _agentNotifSince = new Date().toISOString();
+
+function startAgentNotifPolling() {
+  setInterval(async () => {
+    try {
+      const r = await fetch('/api/notifications?since=' + encodeURIComponent(_agentNotifSince), { headers: { 'Authorization': 'Bearer ' + token } });
+      if (!r.ok) return;
+      const items = await r.json();
+      _agentNotifSince = new Date().toISOString();
+      items.forEach(n => {
+        if (n.status === 'Valid\u00e9') {
+          toast('\u2713 Session valid\u00e9e : ' + n.task_name, 'success');
+        } else if (n.status === 'Rejet\u00e9') {
+          const reason = n.rejected_reason ? ' \u2014 Motif : ' + n.rejected_reason : '';
+          toast('\u2717 Session rejet\u00e9e : ' + n.task_name + reason, 'error');
+        }
+      });
+    } catch(e) {}
+  }, 20000);
 }
 
 // ============================================
@@ -542,3 +568,4 @@ function renderPage(page) {
 
 renderPage();
 window.addEventListener('popstate', () => renderPage());
+startAgentNotifPolling();

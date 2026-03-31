@@ -32,11 +32,12 @@ function api(path, opts = {}) {
 }
 
 function toast(msg, type = 'success') {
+  const icons = { success: 'check-circle', error: 'exclamation-circle', info: 'info-circle', warning: 'exclamation-triangle' };
   const t = document.createElement('div');
   t.className = 'toast ' + type;
-  t.innerHTML = '<i class="fas fa-' + (type === 'success' ? 'check' : 'exclamation') + '-circle" style="margin-right:6px"></i>' + msg;
+  t.innerHTML = '<i class="fas fa-' + (icons[type] || 'check-circle') + '" style="margin-right:6px"></i>' + msg;
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3000);
+  setTimeout(() => t.remove(), 4000);
 }
 
 function getInitials(name) {
@@ -65,9 +66,31 @@ function minutesToHours(min) {
   return h + 'h ' + String(m).padStart(2, '0') + 'm';
 }
 
-function logout() {
+async function logout() {
+  try { await fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }); } catch(e) {}
   localStorage.clear();
   window.location = '/login';
+}
+
+// ============================================
+// NOTIFICATIONS (polling 30s)
+// ============================================
+let _chefNotifSince = new Date().toISOString();
+
+function startChefNotifPolling() {
+  setInterval(async () => {
+    try {
+      const r = await fetch('/api/notifications?since=' + encodeURIComponent(_chefNotifSince), { headers: { 'Authorization': 'Bearer ' + token } });
+      if (!r.ok) return;
+      const items = await r.json();
+      _chefNotifSince = new Date().toISOString();
+      items.forEach(n => {
+        if (n.status === 'Termine') {
+          toast('Nouvelle session a valider - ' + n.agent_name + ' : ' + n.task_name, 'info');
+        }
+      });
+    } catch(e) {}
+  }, 30000);
 }
 
 function destroyCharts() {
@@ -429,9 +452,46 @@ async function validateSession(id) {
 }
 
 async function rejectSession(id) {
-  const r = await api('/api/chef/reject/' + id, { method: 'POST', body: JSON.stringify({ reason: '' }) });
-  if (r.error) { toast(r.error, 'error'); return; }
-  toast('Session rejetée', 'error');
+  // Afficher modal avec commentaire OBLIGATOIRE
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title"><i class="fas fa-times-circle mr-2" style="color:#ef4444"></i>Rejeter la session</span>
+      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">x</button>
+    </div>
+    <div style="padding:20px">
+      <div style="margin-bottom:12px;font-size:14px;color:#374151">
+        Vous devez indiquer le motif du rejet. Ce motif sera communique a l agent.
+      </div>
+      <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px">Motif du rejet <span style="color:#ef4444">*</span></label>
+      <textarea id="reject-reason" rows="3" placeholder="Ex: Duree incorrecte, tache non autorisee..." style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:10px;font-size:13px;resize:vertical;outline:none;font-family:inherit"></textarea>
+      <div id="reject-err" style="display:none;color:#ef4444;font-size:12px;margin-top:6px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Annuler</button>
+        <button class="btn btn-danger" onclick="confirmReject(` + id + `, this)">
+          <i class="fas fa-times mr-1"></i>Confirmer le rejet
+        </button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  setTimeout(() => document.getElementById('reject-reason') && document.getElementById('reject-reason').focus(), 100);
+}
+
+async function confirmReject(id, btn) {
+  const reason = document.getElementById('reject-reason') ? document.getElementById('reject-reason').value.trim() : '';
+  const errEl = document.getElementById('reject-err');
+  if (!reason || reason.length < 3) {
+    if (errEl) { errEl.textContent = 'Le motif est obligatoire (minimum 3 caracteres)'; errEl.style.display = 'block'; }
+    return;
+  }
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Rejet...';
+  const r = await api('/api/chef/reject/' + id, { method: 'POST', body: JSON.stringify({ reason }) });
+  if (r.error) { toast(r.error, 'error'); btn.disabled = false; btn.textContent = 'Confirmer le rejet'; return; }
+  toast('Session rejetee - motif enregistre', 'error');
+  btn.closest('.modal-overlay').remove();
   const row = document.getElementById('row-' + id);
   if (row) row.remove();
 }
@@ -445,54 +505,223 @@ async function validateAll() {
 }
 
 // ============================================
-// RAPPORTS
+// RAPPORTS (filtres periode, export CSV, print)
 // ============================================
+let _chefRptFrom = '', _chefRptTo = '', _chefRptAgent = '', _chefRptStatus = '';
+
 async function renderRapports() {
   renderLayout('Rapports', '<div style="text-align:center;padding:32px"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:#9ca3af"></i></div>');
-  const data = await api('/api/chef/reports');
+  const team = await api('/api/chef/team');
+
+  const today = new Date().toISOString().split('T')[0];
+  const firstDay = new Date(); firstDay.setDate(1);
+  const firstDayStr = firstDay.toISOString().split('T')[0];
+  if (!_chefRptFrom) _chefRptFrom = firstDayStr;
+  if (!_chefRptTo)   _chefRptTo   = today;
+
+  const teamOptions = team.map(m => `<option value="${m.id}" ${_chefRptAgent==m.id?'selected':''}>${m.first_name} ${m.last_name}</option>`).join('');
+  const statusVal = (v, label) => `<option value="${v}" ${_chefRptStatus===v?'selected':''}>${label}</option>`;
 
   document.getElementById('content').innerHTML = `
   <div class="page-header">
-    <div class="page-title"><i class="fas fa-chart-bar"></i><h2>Rapports de mon département</h2></div>
-    <button class="btn btn-primary" onclick="exportCSV(window.chefReportsData,'rapports_dept')">
-      <i class="fas fa-file-csv"></i> Exporter CSV
-    </button>
+    <div class="page-title"><i class="fas fa-chart-bar"></i><h2>Rapports de mon departement</h2></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="downloadChefCSV()">
+        <i class="fas fa-file-csv"></i> Exporter CSV
+      </button>
+      <button class="btn btn-outline" onclick="printChefReport()">
+        <i class="fas fa-print"></i> Imprimer
+      </button>
+    </div>
+  </div>
+  <!-- Filtres -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-body" style="padding:14px 20px">
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div><label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Du</label>
+          <input type="date" id="cr_from" value="${_chefRptFrom}" class="form-control" style="width:140px"></div>
+        <div><label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Au</label>
+          <input type="date" id="cr_to" value="${_chefRptTo}" class="form-control" style="width:140px"></div>
+        <div><label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Agent</label>
+          <select id="cr_agent" class="form-control" style="width:180px">
+            <option value="">Tous</option>${teamOptions}
+          </select></div>
+        <div><label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">Statut</label>
+          <select id="cr_status" class="form-control" style="width:130px">
+            <option value="">Tous</option>
+            ${statusVal('Valide','Valide')}
+            ${statusVal('Termine','Termine')}
+            ${statusVal('Rejete','Rejete')}
+          </select></div>
+        <button class="btn btn-primary" onclick="loadChefReports()" style="height:38px"><i class="fas fa-filter"></i> Filtrer</button>
+        <button class="btn btn-outline" onclick="resetChefFilters()" style="height:38px"><i class="fas fa-times"></i> Reinitialiser</button>
+      </div>
+    </div>
+  </div>
+  <!-- Graphique tendance + KPI -->
+  <div class="grid-2" style="margin-bottom:16px">
+    <div class="chart-card">
+      <div class="chart-title"><i class="fas fa-chart-line" style="color:#1e3a5f"></i> Productivite de l equipe par periode</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <select id="trend-period" class="form-control" style="width:120px">
+          <option value="7">7 jours</option>
+          <option value="30" selected>30 jours</option>
+          <option value="60">60 jours</option>
+          <option value="90">90 jours</option>
+        </select>
+        <button class="btn btn-outline" onclick="loadTrendChart()" style="height:34px"><i class="fas fa-sync-alt"></i></button>
+      </div>
+      <canvas id="chartTrend" height="200"></canvas>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="card-body" style="padding:16px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="padding:14px;background:#eff6ff;border-radius:8px;text-align:center">
+            <div style="font-size:22px;font-weight:800;color:#1d4ed8" id="cr-total">0</div>
+            <div style="font-size:11px;color:#6b7280">Sessions totales</div>
+          </div>
+          <div style="padding:14px;background:#f0fdf4;border-radius:8px;text-align:center">
+            <div style="font-size:22px;font-weight:800;color:#16a34a" id="cr-validated">0h</div>
+            <div style="font-size:11px;color:#6b7280">Heures validees</div>
+          </div>
+          <div style="padding:14px;background:#fef3c7;border-radius:8px;text-align:center">
+            <div style="font-size:22px;font-weight:800;color:#d97706" id="cr-total-h">0h</div>
+            <div style="font-size:11px;color:#6b7280">Heures totales</div>
+          </div>
+          <div style="padding:14px;background:#fee2e2;border-radius:8px;text-align:center">
+            <div style="font-size:22px;font-weight:800;color:#dc2626" id="cr-rejected">0</div>
+            <div style="font-size:11px;color:#6b7280">Rejetees</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="card">
     <div class="card-body">
       <div class="table-wrapper">
-        <table>
-          <thead><tr>
-            <th>AGENT</th><th>TÂCHE</th><th>PROCESSUS</th><th>OBJECTIF</th>
-            <th>DATE</th><th>DURÉE</th><th>STATUT</th>
-          </tr></thead>
-          <tbody>
-            ${data.map(r => `<tr>
-              <td style="font-weight:600;color:#1e3a5f">${r.agent_name}</td>
-              <td>${r.task_name}</td>
-              <td>${r.process_name}</td>
-              <td><span class="badge-obj" style="background:${r.objective_color}">${r.objective_name}</span></td>
-              <td style="font-size:12px;color:#6b7280">${formatDate(r.start_time)}</td>
-              <td style="font-weight:700">${minutesToHours(r.duration_minutes || 0)}</td>
-              <td>${getStatusBadge(r.status)}</td>
-            </tr>`).join('')}
-            ${data.length === 0 ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:#9ca3af">Aucune donnée</td></tr>` : ''}
-          </tbody>
+        <table id="chef-report-table">
+          <thead><tr><th>AGENT</th><th>TACHE</th><th>PROCESSUS</th><th>OBJECTIF</th><th>DATE</th><th>DUREE</th><th>TYPE</th><th>STATUT</th><th>MOTIF REJET</th></tr></thead>
+          <tbody id="chef-rpt-tbody"><tr><td colspan="9" style="text-align:center;color:#9ca3af"><i class="fas fa-spinner fa-spin"></i></td></tr></tbody>
         </table>
       </div>
     </div>
   </div>`;
-  window.chefReportsData = data;
+
+  loadChefReports();
+  loadTrendChart();
+}
+
+async function loadChefReports() {
+  _chefRptFrom   = document.getElementById('cr_from') ? document.getElementById('cr_from').value : _chefRptFrom;
+  _chefRptTo     = document.getElementById('cr_to')   ? document.getElementById('cr_to').value   : _chefRptTo;
+  _chefRptAgent  = document.getElementById('cr_agent')  ? document.getElementById('cr_agent').value  : '';
+  _chefRptStatus = document.getElementById('cr_status') ? document.getElementById('cr_status').value : '';
+
+  let url = '/api/chef/reports?';
+  if (_chefRptFrom)   url += 'date_from=' + _chefRptFrom + '&';
+  if (_chefRptTo)     url += 'date_to='   + _chefRptTo   + '&';
+  if (_chefRptAgent)  url += 'agent_id='  + _chefRptAgent + '&';
+  if (_chefRptStatus) url += 'status='    + encodeURIComponent(_chefRptStatus) + '&';
+
+  const data = await api(url);
+  window.chefReportsData = { url, data };
+
+  const totalH     = data.reduce((s, r) => s + (r.duration_minutes || 0), 0);
+  const validatedH = data.filter(r => r.status === 'Valide').reduce((s, r) => s + (r.duration_minutes || 0), 0);
+  const dom = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  dom('cr-total',     data.length);
+  dom('cr-validated', minutesToHours(validatedH));
+  dom('cr-total-h',   minutesToHours(totalH));
+  dom('cr-rejected',  data.filter(r => r.status === 'Rejete').length);
+
+  const tbody = document.getElementById('chef-rpt-tbody');
+  if (tbody) tbody.innerHTML = data.length === 0
+    ? '<tr><td colspan="9" style="text-align:center;padding:30px;color:#9ca3af">Aucune session pour cette periode</td></tr>'
+    : data.map(r => '<tr>' +
+      '<td style="font-weight:600;color:#1e3a5f">' + r.agent_name + '</td>' +
+      '<td>' + r.task_name + '</td>' +
+      '<td>' + r.process_name + '</td>' +
+      '<td><span class="badge-obj" style="background:' + r.objective_color + '">' + r.objective_name + '</span></td>' +
+      '<td style="font-size:12px;color:#6b7280">' + formatDate(r.start_time) + '</td>' +
+      '<td style="font-weight:700">' + minutesToHours(r.duration_minutes || 0) + '</td>' +
+      '<td><span class="badge-auto" style="font-size:10px">' + (r.session_type || 'Auto') + '</span></td>' +
+      '<td>' + getStatusBadge(r.status) + '</td>' +
+      '<td style="font-size:11px;color:#ef4444">' + (r.rejected_reason || '') + '</td>' +
+      '</tr>').join('');
+}
+
+function resetChefFilters() { _chefRptFrom = ''; _chefRptTo = ''; _chefRptAgent = ''; _chefRptStatus = ''; renderRapports(); }
+
+function downloadChefCSV() {
+  const d = window.chefReportsData || {};
+  let url = (d.url || '/api/chef/reports?').replace('export=csv&', '');
+  if (!url.includes('?')) url += '?';
+  url += 'export=csv&';
+  fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(r => r.blob())
+    .then(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'rapport_dept_' + new Date().toISOString().split('T')[0] + '.csv';
+      a.click();
+    });
+}
+
+function printChefReport() {
+  const table = document.getElementById('chef-report-table');
+  if (!table) return;
+  const win = window.open('', '_blank');
+  win.document.write('<html><head><title>Rapport Chef - BGFIBank</title><style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px}h2{color:#1e3a5f}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e3a5f;color:white;padding:8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:11px}</style></head><body><h2>Rapport Departement - BGFIBank</h2><p style="color:#6b7280">Periode : ' + (_chefRptFrom || '-') + ' au ' + (_chefRptTo || '-') + ' | Genere le ' + new Date().toLocaleDateString('fr-FR') + '</p>' + table.outerHTML + '</body></html>');
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+
+async function loadTrendChart() {
+  const period = document.getElementById('trend-period') ? document.getElementById('trend-period').value : '30';
+  const trendData = await api('/api/chef/productivity-trend?period=' + period);
+  if (!trendData.dates || trendData.dates.length === 0) return;
+
+  if (chefCharts.trend) { try { chefCharts.trend.destroy(); } catch(e){} }
+
+  const colors = ['#1e3a5f','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316'];
+  const datasets = trendData.agents.map(function(agent, i) {
+    return {
+      label: agent.split(' ')[1] || agent,
+      data: trendData.dates.map(function(d) { return ((trendData.pivot[agent] || {})[d] || 0) / 60; }),
+      borderColor: colors[i % colors.length],
+      backgroundColor: colors[i % colors.length] + '20',
+      tension: 0.3,
+      fill: false,
+      pointRadius: 3
+    };
+  });
+
+  const canvas = document.getElementById('chartTrend');
+  if (!canvas) return;
+  chefCharts.trend = new Chart(canvas, {
+    type: 'line',
+    data: { labels: trendData.dates, datasets: datasets },
+    options: {
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } },
+      scales: {
+        x: { ticks: { font: { size: 9 }, maxTicksLimit: 12 } },
+        y: { ticks: { callback: function(v) { return v.toFixed(1) + 'h'; } } }
+      }
+    }
+  });
 }
 
 function getStatusBadge(status) {
-  const cls = { 'Validé': 'status-valide', 'Terminé': 'status-termine', 'Rejeté': 'status-rejete', 'En cours': 'status-en-cours' };
+  const cls = { 'Valide': 'status-valide', 'Termine': 'status-termine', 'Rejete': 'status-rejete', 'En cours': 'status-en-cours' };
+  // Normalize accents for class lookup
+  const key = (status || '').replace(/é/g,'e').replace(/è/g,'e').replace(/à/g,'a');
   const icon = status === 'Validé' ? '✓ ' : status === 'Terminé' ? '✓ ' : status === 'Rejeté' ? '✗ ' : '';
-  return `<span class="status-badge ${cls[status]||'status-en-cours'}">${icon}${status}</span>`;
+  const sc = { 'Validé': 'status-valide', 'Terminé': 'status-termine', 'Rejeté': 'status-rejete', 'En cours': 'status-en-cours' };
+  return '<span class="status-badge ' + (sc[status]||'status-en-cours') + '">' + icon + status + '</span>';
 }
 
 function exportCSV(data, name) {
-  if (!data || !data.length) { toast('Aucune donnée', 'error'); return; }
+  if (!data || !data.length) { toast('Aucune donnee', 'error'); return; }
   const headers = Object.keys(data[0]).join(',');
   const rows = data.map(r => Object.values(r).map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(','));
   const csv = [headers, ...rows].join('\n');
@@ -502,6 +731,8 @@ function exportCSV(data, name) {
   a.download = name + '_' + new Date().toISOString().split('T')[0] + '.csv';
   a.click();
 }
+
+// Removed - replaced above
 
 // ============================================
 // RENDER
@@ -518,3 +749,4 @@ function renderPage(page) {
 
 renderPage();
 window.addEventListener('popstate', () => renderPage());
+startChefNotifPolling();
