@@ -597,7 +597,7 @@ async function renderUsers() {
                   <button class="btn btn-sm btn-outline" onclick="showUserModal(${u.id})" title="Modifier"><i class="fas fa-edit"></i></button>
                   <button class="btn btn-sm" style="margin-left:4px;background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1" onclick="showUserPassword(${u.id}, '${u.first_name} ${u.last_name}')" title="Voir mot de passe"><i class="fas fa-eye"></i></button>
                   <button class="btn btn-sm" style="margin-left:4px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d" onclick="showResetCodeModal(${u.id}, '${u.first_name} ${u.last_name}')" title="Générer code reset"><i class="fas fa-key"></i></button>
-                  ${u.id !== currentUser.id ? `<button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})" style="margin-left:4px" title="Supprimer"><i class="fas fa-trash"></i></button>` : ''}
+                  ${u.id !== currentUser.id ? `<button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id}, '${u.first_name} ${u.last_name}')" style="margin-left:4px" title="D\u00e9sactiver"><i class="fas fa-trash"></i></button>` : ''}
                 </td>
               </tr>`;
             }).join('')}
@@ -710,11 +710,12 @@ async function deleteTask(id, name) {
   renderTasks();
 }
 
-async function deleteUser(id) {
-  const ok = await showConfirmDialog('Voulez-vous vraiment supprimer cet utilisateur ?', '');
+async function deleteUser(id, name) {
+  const ok = await showConfirmDialog('Voulez-vous vraiment désactiver cet utilisateur ?', name || '');
   if (!ok) return;
-  await api('/api/admin/users/' + id, { method: 'DELETE' });
-  toast('Utilisateur supprimé');
+  const r = await api('/api/admin/users/' + id, { method: 'DELETE' });
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast('Utilisateur désactivé');
   renderUsers();
 }
 

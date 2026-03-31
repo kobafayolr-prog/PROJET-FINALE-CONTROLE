@@ -263,7 +263,7 @@ app.get('/api/admin/users', async (c) => {
   if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
   const users = await c.env.DB.prepare(
-    'SELECT u.*, d.name as department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.created_at DESC'
+    "SELECT u.*, d.name as department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE u.status = 'Actif' ORDER BY u.created_at DESC"
   ).all()
   return c.json(users.results)
 })
@@ -356,8 +356,11 @@ app.delete('/api/admin/users/:id', async (c) => {
   if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
   const id = c.req.param('id')
-  await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run()
-  return c.json({ message: 'Utilisateur supprimé' })
+  // Protection : ne pas supprimer son propre compte
+  if (String(currentUser.id) === String(id)) return c.json({ error: 'Impossible de supprimer votre propre compte' }, 400)
+
+  await c.env.DB.prepare("UPDATE users SET status='Inactif', updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run()
+  return c.json({ message: 'Utilisateur désactivé' })
 })
 
 // ============================================
