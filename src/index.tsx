@@ -262,10 +262,16 @@ app.get('/api/admin/users', async (c) => {
   const user = await getUser(c)
   if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
+  const page  = Math.max(1, parseInt(c.req.query('page')  || '1'))
+  const limit = Math.min(50, Math.max(1, parseInt(c.req.query('limit') || '20')))
+  const offset = (page - 1) * limit
+
+  const total = (await c.env.DB.prepare("SELECT COUNT(*) as n FROM users WHERE status='Actif'").first() as any).n
   const users = await c.env.DB.prepare(
-    "SELECT u.*, d.name as department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE u.status = 'Actif' ORDER BY u.created_at DESC"
-  ).all()
-  return c.json(users.results)
+    "SELECT u.*, d.name as department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE u.status = 'Actif' ORDER BY u.created_at DESC LIMIT ? OFFSET ?"
+  ).bind(limit, offset).all()
+
+  return c.json({ data: users.results, total, page, limit, pages: Math.ceil(total / limit) })
 })
 
 app.post('/api/admin/users', async (c) => {
@@ -559,6 +565,11 @@ app.delete('/api/admin/tasks/:id', async (c) => {
 // ============================================
 
 app.get('/api/admin/sessions', async (c) => {
+  const page  = Math.max(1, parseInt(c.req.query('page')  || '1'))
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '25')))
+  const offset = (page - 1) * limit
+
+  const total = (await c.env.DB.prepare('SELECT COUNT(*) as n FROM work_sessions').first() as any).n
   const sessions = await c.env.DB.prepare(
     `SELECT ws.*,
      u.first_name || ' ' || u.last_name as agent_name,
@@ -573,9 +584,10 @@ app.get('/api/admin/sessions', async (c) => {
      JOIN tasks t ON ws.task_id = t.id
      JOIN strategic_objectives o ON ws.objective_id = o.id
      ORDER BY ws.created_at DESC
-     LIMIT 200`
-  ).all()
-  return c.json(sessions.results)
+     LIMIT ? OFFSET ?`
+  ).bind(limit, offset).all()
+
+  return c.json({ data: sessions.results, total, page, limit, pages: Math.ceil(total / limit) })
 })
 
 // ============================================
@@ -738,16 +750,11 @@ app.get('/api/admin/reports', async (c) => {
   if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
   const { date_from, date_to, dept_id, status, export: exportFmt } = c.req.query() as any
+  const page  = Math.max(1, parseInt(c.req.query('page')  || '1'))
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '25')))
+  const offset = (page - 1) * limit
 
-  let query = `SELECT ws.*,
-     u.first_name || ' ' || u.last_name as agent_name,
-     d.name as department_name,
-     t.name as task_name,
-     p.name as process_name,
-     o.name as objective_name,
-     o.color as objective_color,
-     ws.rejected_reason
-     FROM work_sessions ws
+  const baseWhere = `FROM work_sessions ws
      JOIN users u ON ws.user_id = u.id
      JOIN departments d ON ws.department_id = d.id
      JOIN tasks t ON ws.task_id = t.id
@@ -755,19 +762,21 @@ app.get('/api/admin/reports', async (c) => {
      JOIN strategic_objectives o ON ws.objective_id = o.id
      WHERE 1=1`
   const params: any[] = []
-  if (date_from) { query += ' AND date(ws.start_time) >= ?'; params.push(date_from) }
-  if (date_to)   { query += ' AND date(ws.start_time) <= ?'; params.push(date_to) }
-  if (dept_id)   { query += ' AND ws.department_id = ?';     params.push(dept_id) }
-  if (status)    { query += ' AND ws.status = ?';            params.push(status) }
-  query += ' ORDER BY ws.start_time DESC'
+  let filters = ''
+  if (date_from) { filters += ' AND date(ws.start_time) >= ?'; params.push(date_from) }
+  if (date_to)   { filters += ' AND date(ws.start_time) <= ?'; params.push(date_to) }
+  if (dept_id)   { filters += ' AND ws.department_id = ?';     params.push(dept_id) }
+  if (status)    { filters += ' AND ws.status = ?';            params.push(status) }
 
-  let stmt = c.env.DB.prepare(query)
-  if (params.length) stmt = stmt.bind(...params)
-  const reports = await stmt.all()
-
-  // Export CSV
+  // Export CSV — pas de pagination
   if (exportFmt === 'csv') {
-    const rows = reports.results as any[]
+    const csvQuery = `SELECT ws.*, u.first_name || ' ' || u.last_name as agent_name,
+       d.name as department_name, t.name as task_name, p.name as process_name,
+       o.name as objective_name, o.color as objective_color, ws.rejected_reason
+       ${baseWhere}${filters} ORDER BY ws.start_time DESC`
+    let stmt = c.env.DB.prepare(csvQuery)
+    if (params.length) stmt = stmt.bind(...params)
+    const rows = (await stmt.all()).results as any[]
     const header = 'Agent,Département,Tâche,Processus,Objectif,Date début,Date fin,Durée (min),Type,Statut,Motif rejet\n'
     const csv = header + rows.map((r: any) =>
       [r.agent_name, r.department_name, r.task_name, r.process_name, r.objective_name,
@@ -777,7 +786,21 @@ app.get('/api/admin/reports', async (c) => {
     return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="rapports_admin.csv"' } })
   }
 
-  return c.json(reports.results)
+  // Total pour pagination
+  let countStmt = c.env.DB.prepare(`SELECT COUNT(*) as n ${baseWhere}${filters}`)
+  if (params.length) countStmt = countStmt.bind(...params)
+  const total = (await countStmt.first() as any).n
+
+  const dataQuery = `SELECT ws.*, u.first_name || ' ' || u.last_name as agent_name,
+     d.name as department_name, t.name as task_name, p.name as process_name,
+     o.name as objective_name, o.color as objective_color, ws.rejected_reason
+     ${baseWhere}${filters} ORDER BY ws.start_time DESC LIMIT ? OFFSET ?`
+  let stmt = c.env.DB.prepare(dataQuery)
+  const allParams = params.length ? [...params, limit, offset] : [limit, offset]
+  stmt = stmt.bind(...allParams)
+  const reports = await stmt.all()
+
+  return c.json({ data: reports.results, total, page, limit, pages: Math.ceil(total / limit) })
 })
 
 // ============================================
@@ -788,13 +811,43 @@ app.get('/api/admin/audit', async (c) => {
   const user = await getUser(c)
   if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
-  const logs = await c.env.DB.prepare(
-    `SELECT al.*, u.first_name || ' ' || u.last_name as user_name, u.last_name || ' ' || u.first_name as user_name_rev
-     FROM audit_logs al
-     LEFT JOIN users u ON al.user_id = u.id
-     ORDER BY al.created_at DESC LIMIT 100`
-  ).all()
-  return c.json(logs.results)
+  const { date_from, date_to, action: actionFilter, export: exportFmt } = c.req.query() as any
+  const page  = Math.max(1, parseInt(c.req.query('page')  || '1'))
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '25')))
+  const offset = (page - 1) * limit
+
+  const params: any[] = []
+  let filters = ''
+  if (date_from)     { filters += " AND date(al.created_at) >= ?"; params.push(date_from) }
+  if (date_to)       { filters += " AND date(al.created_at) <= ?"; params.push(date_to) }
+  if (actionFilter)  { filters += " AND al.action = ?";           params.push(actionFilter) }
+
+  const baseQuery = `FROM audit_logs al LEFT JOIN users u ON al.user_id = u.id WHERE 1=1${filters}`
+
+  // Export CSV
+  if (exportFmt === 'csv') {
+    let stmt = c.env.DB.prepare(`SELECT al.*, u.first_name || ' ' || u.last_name as user_name ${baseQuery} ORDER BY al.created_at DESC`)
+    if (params.length) stmt = stmt.bind(...params)
+    const rows = (await stmt.all()).results as any[]
+    const header = 'Date/Heure,Utilisateur,Action,Détails,IP\n'
+    const csv = header + rows.map((r: any) =>
+      [r.created_at, r.user_name || 'Système', r.action, (r.details || '').replace(/,/g, ';'), r.ip_address || ''].join(',')
+    ).join('\n')
+    return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="audit_logs.csv"' } })
+  }
+
+  let countStmt = c.env.DB.prepare(`SELECT COUNT(*) as n ${baseQuery}`)
+  if (params.length) countStmt = countStmt.bind(...params)
+  const total = (await countStmt.first() as any).n
+
+  let stmt = c.env.DB.prepare(
+    `SELECT al.*, u.first_name || ' ' || u.last_name as user_name ${baseQuery} ORDER BY al.created_at DESC LIMIT ? OFFSET ?`
+  )
+  const allParams = params.length ? [...params, limit, offset] : [limit, offset]
+  stmt = stmt.bind(...allParams)
+  const logs = await stmt.all()
+
+  return c.json({ data: logs.results, total, page, limit, pages: Math.ceil(total / limit) })
 })
 
 // ============================================

@@ -563,16 +563,26 @@ function exportCSV(data, name) {
 // ============================================
 let allUsers = [], allDepts = [];
 
-async function renderUsers() {
-  renderLayout('Gestion des Utilisateurs', '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i></div>');
-  [allUsers, allDepts] = await Promise.all([api('/api/admin/users'), api('/api/admin/departments')]);
+let _usersPage = 1;
+async function renderUsers(page) {
+  _usersPage = page || _usersPage;
+  renderLayout('Gestion des Utilisateurs', '<div style="text-align:center;padding:40px"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:#9ca3af"></i></div>');
+  const [res, deptsRaw] = await Promise.all([
+    api(`/api/admin/users?page=${_usersPage}&limit=20`),
+    api('/api/admin/departments')
+  ]);
+  allUsers = res.data || [];
+  allDepts = deptsRaw;
 
   document.getElementById('content').innerHTML = `
   <div class="page-header">
     <div class="page-title"><i class="fas fa-users"></i><h2>Gestion des Utilisateurs</h2></div>
-    <button class="btn btn-primary" onclick="showUserModal()">
-      <i class="fas fa-plus"></i> Nouvel utilisateur
-    </button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:13px;color:#6b7280">${res.total || 0} utilisateur(s)</span>
+      <button class="btn btn-primary" onclick="showUserModal()">
+        <i class="fas fa-plus"></i> Nouvel utilisateur
+      </button>
+    </div>
   </div>
   <div class="card">
     <div class="card-body">
@@ -604,8 +614,11 @@ async function renderUsers() {
           </tbody>
         </table>
       </div>
+      <div id="users-pagination"></div>
     </div>
   </div>`;
+
+  renderPagination('users-pagination', res.page || 1, res.pages || 1, 'renderUsers');
 }
 
 function getRoleBadge(role) {
