@@ -29,7 +29,7 @@ const JWT_SECRET = (globalThis as any).JWT_SECRET || 'timetrack-bgfibank-secret-
 // Rate limiting - stockage en mémoire des tentatives
 const loginAttempts = new Map<string, { count: number, blockedUntil: number }>()
 const MAX_ATTEMPTS = 3
-const BLOCK_DURATION = 15 * 60 * 1000 // 15 minutes
+const BLOCK_DURATION = 2 * 60 * 1000 // 2 minutes
 
 function checkRateLimit(ip: string): { blocked: boolean, remaining: number, minutesLeft: number } {
   const now = Date.now()
@@ -199,9 +199,9 @@ app.post('/api/auth/login', async (c) => {
       
       if (result.blocked) {
         return c.json({ 
-          error: `Trop de tentatives échouées. Compte bloqué pendant 15 minutes.`,
+          error: `Trop de tentatives échouées. Accès bloqué pendant 2 minutes. Vous pouvez utiliser un code de réinitialisation si vous en avez un.`,
           blocked: true,
-          minutesLeft: 15
+          minutesLeft: 2
         }, 429)
       }
       return c.json({ 
@@ -252,6 +252,75 @@ app.get('/api/auth/me', async (c) => {
   const user = await getUser(c)
   if (!user) return c.json({ error: 'Non autorisé' }, 401)
   return c.json({ user })
+})
+
+// ============================================
+// AUTH - RESET CODE (mot de passe oublié)
+// ============================================
+
+// Stockage en mémoire des codes reset : userId → { code, expiresAt }
+const resetCodes = new Map<number, { code: string, expiresAt: number }>()
+
+app.post('/api/auth/reset-request', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const { user_id } = await c.req.json()
+  const target = await c.env.DB.prepare('SELECT id, first_name, last_name, email FROM users WHERE id = ? AND status = \'Actif\'').bind(user_id).first() as any
+  if (!target) return c.json({ error: 'Utilisateur non trouvé' }, 404)
+
+  // Générer code à 6 chiffres
+  const code = String(Math.floor(100000 + Math.random() * 900000))
+  const expiresAt = Date.now() + 30 * 60 * 1000 // 30 minutes
+  resetCodes.set(target.id, { code, expiresAt })
+
+  await c.env.DB.prepare(
+    'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
+  ).bind(currentUser.id, 'RESET_PASSWORD_REQUEST', `Code reset généré pour ${target.first_name} ${target.last_name}`).run()
+
+  return c.json({ code, user_name: `${target.first_name} ${target.last_name}`, email: target.email })
+})
+
+app.post('/api/auth/reset-confirm', async (c) => {
+  try {
+    const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown'
+    const { email, code, new_password } = await c.req.json()
+
+    if (!email || !code || !new_password) return c.json({ error: 'Tous les champs sont requis' }, 400)
+    if (new_password.length < 4) return c.json({ error: 'Mot de passe trop court (minimum 4 caractères)' }, 400)
+
+    const user = await c.env.DB.prepare('SELECT id, first_name, last_name FROM users WHERE email = ? AND status = \'Actif\'').bind(email).first() as any
+    if (!user) return c.json({ error: 'Email introuvable' }, 404)
+
+    const entry = resetCodes.get(user.id)
+    if (!entry) return c.json({ error: 'Aucun code actif pour cet utilisateur. Demandez un nouveau code à l\'administrateur.' }, 400)
+    if (Date.now() > entry.expiresAt) {
+      resetCodes.delete(user.id)
+      return c.json({ error: 'Code expiré. Demandez un nouveau code à l\'administrateur.' }, 400)
+    }
+    if (entry.code !== String(code).trim()) return c.json({ error: 'Code incorrect' }, 400)
+
+    // Code valide — mettre à jour le mot de passe
+    const passwordHash = await hashPassword(new_password)
+    const passwordEncrypted = encryptPassword(new_password)
+    await c.env.DB.prepare(
+      'UPDATE users SET password_hash=?, password_encrypted=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+    ).bind(passwordHash, passwordEncrypted, user.id).run()
+
+    // Supprimer le code utilisé
+    resetCodes.delete(user.id)
+
+    // LEVER LE BLOCAGE IP — le code reset prouve l'identité
+    resetAttempts(ip)
+
+    await c.env.DB.prepare(
+      'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
+    ).bind(user.id, 'RESET_PASSWORD_CONFIRM', `Mot de passe réinitialisé pour ${user.first_name} ${user.last_name}`).run()
+
+    return c.json({ message: 'Mot de passe modifié avec succès' })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
 })
 
 // ============================================
@@ -1497,6 +1566,14 @@ html,body{width:100%;height:100%;overflow:hidden;}
 /* ── Pied de carte ── */
 .card-footer{margin-top:18px;text-align:center;font-size:11px;color:rgba(255,255,255,0.35);}
 
+/* ── Lien reset ── */
+.reset-link{display:block;text-align:center;margin-top:14px;font-size:13px;color:rgba(255,255,255,0.6);cursor:pointer;transition:color .2s;}
+.reset-link:hover{color:rgba(255,255,255,0.95);}
+
+/* ── Panel reset ── */
+#reset-panel{display:none;margin-top:16px;border-top:1px solid rgba(255,255,255,0.2);padding-top:16px;}
+.success-box{display:none;background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);border-radius:10px;padding:10px 14px;color:#86efac;font-size:13px;margin-bottom:12px;}
+
 /* ── Champs espacés ── */
 .field-group{margin-bottom:16px;}
 </style>
@@ -1546,6 +1623,35 @@ html,body{width:100%;height:100%;overflow:hidden;}
     </button>
   </form>
 
+  <!-- Lien mot de passe oublié -->
+  <span class="reset-link" onclick="toggleResetPanel()">
+    <i class="fas fa-key" style="margin-right:5px;"></i>J'ai un code de réinitialisation
+  </span>
+
+  <!-- Formulaire reset (caché par défaut) -->
+  <div id="reset-panel">
+    <p style="font-size:12px;color:rgba(255,255,255,0.55);margin-bottom:12px;">
+      Saisissez votre email, le code fourni par l'administrateur et votre nouveau mot de passe.
+    </p>
+    <div class="field-group">
+      <label class="field-label">Email</label>
+      <input type="email" id="rp_email" class="input-field" placeholder="email@bgfibank.com">
+    </div>
+    <div class="field-group">
+      <label class="field-label">Code temporaire (6 chiffres)</label>
+      <input type="text" id="rp_code" class="input-field" placeholder="ex: 482917" maxlength="6" style="letter-spacing:6px;font-weight:700;font-size:18px;text-align:center;">
+    </div>
+    <div class="field-group">
+      <label class="field-label">Nouveau mot de passe</label>
+      <input type="password" id="rp_pwd" class="input-field" placeholder="Minimum 4 caractères">
+    </div>
+    <div id="rp_error" class="error-box"><i class="fas fa-exclamation-circle"></i><span id="rp_error_text"></span></div>
+    <div id="rp_ok" class="success-box"><i class="fas fa-check-circle" style="margin-right:6px;"></i><span id="rp_ok_text"></span></div>
+    <button class="btn-primary" onclick="submitReset()" id="reset-btn">
+      <i class="fas fa-check" style="margin-right:8px;"></i>Confirmer le nouveau mot de passe
+    </button>
+  </div>
+
   <div class="card-footer">
     &copy; ${new Date().getFullYear()} BGFIBank &mdash; Accès réservé au personnel autorisé
   </div>
@@ -1561,6 +1667,70 @@ function togglePwd(){
   const i=document.getElementById('eye-icon');
   if(p.type==='password'){p.type='text';i.className='fas fa-eye-slash';}
   else{p.type='password';i.className='fas fa-eye';}
+}
+
+function toggleResetPanel(){
+  const panel=document.getElementById('reset-panel');
+  const isVisible=panel.style.display==='block';
+  panel.style.display=isVisible?'none':'block';
+}
+
+async function submitReset(){
+  const email=document.getElementById('rp_email').value.trim();
+  const code=document.getElementById('rp_code').value.trim();
+  const pwd=document.getElementById('rp_pwd').value;
+  const errBox=document.getElementById('rp_error');
+  const errTxt=document.getElementById('rp_error_text');
+  const okBox=document.getElementById('rp_ok');
+  const okTxt=document.getElementById('rp_ok_text');
+  const btn=document.getElementById('reset-btn');
+
+  errBox.style.display='none'; okBox.style.display='none';
+
+  if(!email||!code||!pwd){
+    errTxt.textContent='Tous les champs sont requis';
+    errBox.style.display='flex'; return;
+  }
+  if(pwd.length<4){
+    errTxt.textContent='Mot de passe trop court (minimum 4 caractères)';
+    errBox.style.display='flex'; return;
+  }
+
+  btn.disabled=true;
+  btn.innerHTML='<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Vérification...';
+
+  try{
+    const r=await fetch('/api/auth/reset-confirm',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,code,new_password:pwd})
+    });
+    const d=await r.json();
+    if(!r.ok){
+      errTxt.textContent=d.error||'Erreur';
+      errBox.style.display='flex';
+      btn.disabled=false;
+      btn.innerHTML='<i class="fas fa-check" style="margin-right:8px;"></i>Confirmer le nouveau mot de passe';
+    } else {
+      okTxt.textContent='Mot de passe modifié avec succès ! Vous pouvez maintenant vous connecter.';
+      okBox.style.display='block';
+      // Remplir automatiquement l'email dans le formulaire de login
+      document.getElementById('email').value=email;
+      document.getElementById('rp_email').value='';
+      document.getElementById('rp_code').value='';
+      document.getElementById('rp_pwd').value='';
+      // Débloquer le bouton de login
+      const loginBtn=document.getElementById('login-btn');
+      loginBtn.disabled=false;
+      loginBtn.innerHTML='<i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter';
+      setTimeout(()=>{ document.getElementById('reset-panel').style.display='none'; okBox.style.display='none'; },3000);
+    }
+  }catch(err){
+    errTxt.textContent='Erreur réseau';
+    errBox.style.display='flex';
+    btn.disabled=false;
+    btn.innerHTML='<i class="fas fa-check" style="margin-right:8px;"></i>Confirmer le nouveau mot de passe';
+  }
 }
 
 function showError(msg){
@@ -1589,9 +1759,11 @@ document.getElementById('login-form').addEventListener('submit',async(e)=>{
     if(!r.ok){
       if(d.blocked){
         showError(d.error);
-        btn.innerHTML='<i class="fas fa-lock" style="margin-right:8px;"></i>Compte bloqué';
+        btn.innerHTML='<i class="fas fa-lock" style="margin-right:8px;"></i>Accès bloqué (2 min)';
         btn.disabled=true;
-        setTimeout(()=>{btn.innerHTML='<i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter';btn.disabled=false;},d.minutesLeft*60*1000);
+        // Ouvrir automatiquement le panel reset pour guider l'utilisateur
+        document.getElementById('reset-panel').style.display='block';
+        setTimeout(()=>{btn.innerHTML='<i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter';btn.disabled=false;hideError();},2*60*1000);
       } else {
         showError(d.error||'Email ou mot de passe incorrect');
         btn.innerHTML='<i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter';
