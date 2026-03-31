@@ -10,10 +10,66 @@ const app = new Hono<{ Bindings: Bindings }>()
 
 app.use('/api/*', cors())
 
+// Headers de sécurité
+app.use('*', async (c, next) => {
+  await next()
+  c.header('X-Content-Type-Options', 'nosniff')
+  c.header('X-Frame-Options', 'DENY')
+  c.header('X-XSS-Protection', '1; mode=block')
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
+  c.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+})
+
 // ============================================
 // UTILITIES
 // ============================================
-const JWT_SECRET = 'timetrack-bgfibank-secret-2024'
+// JWT Secret - utiliser variable d'environnement si disponible
+const JWT_SECRET = (globalThis as any).JWT_SECRET || 'timetrack-bgfibank-secret-2024-x9k2p7m'
+
+// Rate limiting - stockage en mémoire des tentatives
+const loginAttempts = new Map<string, { count: number, blockedUntil: number }>()
+const MAX_ATTEMPTS = 3
+const BLOCK_DURATION = 15 * 60 * 1000 // 15 minutes
+
+function checkRateLimit(ip: string): { blocked: boolean, remaining: number, minutesLeft: number } {
+  const now = Date.now()
+  const attempts = loginAttempts.get(ip)
+  if (!attempts) return { blocked: false, remaining: MAX_ATTEMPTS, minutesLeft: 0 }
+  if (attempts.blockedUntil > now) {
+    const minutesLeft = Math.ceil((attempts.blockedUntil - now) / 60000)
+    return { blocked: true, remaining: 0, minutesLeft }
+  }
+  if (attempts.blockedUntil > 0 && attempts.blockedUntil <= now) {
+    loginAttempts.delete(ip)
+    return { blocked: false, remaining: MAX_ATTEMPTS, minutesLeft: 0 }
+  }
+  return { blocked: false, remaining: MAX_ATTEMPTS - attempts.count, minutesLeft: 0 }
+}
+
+function recordFailedAttempt(ip: string): { blocked: boolean, remaining: number } {
+  const now = Date.now()
+  const attempts = loginAttempts.get(ip) || { count: 0, blockedUntil: 0 }
+  attempts.count += 1
+  if (attempts.count >= MAX_ATTEMPTS) {
+    attempts.blockedUntil = now + BLOCK_DURATION
+  }
+  loginAttempts.set(ip, attempts)
+  return { blocked: attempts.count >= MAX_ATTEMPTS, remaining: Math.max(0, MAX_ATTEMPTS - attempts.count) }
+}
+
+function resetAttempts(ip: string): void {
+  loginAttempts.delete(ip)
+}
+
+// Validation des entrées
+function sanitizeString(str: string): string {
+  if (typeof str !== 'string') return ''
+  return str.trim().replace(/[<>"'%;()&+]/g, '')
+}
+
+function validateEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
 
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder()
@@ -62,15 +118,63 @@ function minutesToHours(minutes: number): string {
   return `${h}h ${m.toString().padStart(2, '0')}m`
 }
 
+// Chiffrement simple (XOR + base64) pour stocker les mots de passe lisibles par l'admin
+function encryptPassword(password: string): string {
+  const key = 'bgfibank2024'
+  let result = ''
+  for (let i = 0; i < password.length; i++) {
+    result += String.fromCharCode(password.charCodeAt(i) ^ key.charCodeAt(i % key.length))
+  }
+  return btoa(result)
+}
+
+function decryptPassword(encrypted: string): string {
+  try {
+    const key = 'bgfibank2024'
+    const decoded = atob(encrypted)
+    let result = ''
+    for (let i = 0; i < decoded.length; i++) {
+      result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length))
+    }
+    return result
+  } catch {
+    return '••••••••'
+  }
+}
+
 // ============================================
 // AUTH ROUTES
 // ============================================
 
 app.post('/api/auth/login', async (c) => {
   try {
-    const { email, password } = await c.req.json()
+    // Récupérer l'IP du client
+    const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || c.req.header('X-Real-IP') || 'unknown'
+
+    // Vérifier le rate limiting
+    const rateCheck = checkRateLimit(ip)
+    if (rateCheck.blocked) {
+      return c.json({ 
+        error: `Compte temporairement bloqué suite à ${MAX_ATTEMPTS} tentatives échouées. Réessayez dans ${rateCheck.minutesLeft} minute(s).`,
+        blocked: true,
+        minutesLeft: rateCheck.minutesLeft
+      }, 429)
+    }
+
+    const body = await c.req.json()
+    const email = sanitizeString(body.email || '')
+    const password = body.password || ''
+
     if (!email || !password) {
       return c.json({ error: 'Email et mot de passe requis' }, 400)
+    }
+
+    if (!validateEmail(email)) {
+      return c.json({ error: 'Format email invalide' }, 400)
+    }
+
+    if (password.length < 4 || password.length > 100) {
+      return c.json({ error: 'Mot de passe invalide' }, 400)
     }
 
     const user = await c.env.DB.prepare(
@@ -78,16 +182,36 @@ app.post('/api/auth/login', async (c) => {
     ).bind(email).first() as any
 
     if (!user) {
-      return c.json({ error: 'Email ou mot de passe incorrect' }, 401)
+      recordFailedAttempt(ip)
+      const remaining = MAX_ATTEMPTS - (loginAttempts.get(ip)?.count || 0)
+      return c.json({ 
+        error: `Email ou mot de passe incorrect. ${Math.max(0, remaining)} tentative(s) restante(s).`,
+        remaining: Math.max(0, remaining)
+      }, 401)
     }
 
     const passwordHash = await hashPassword(password)
     if (passwordHash !== user.password_hash) {
+      const result = recordFailedAttempt(ip)
       await c.env.DB.prepare(
         'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
-      ).bind(user.id, 'LOGIN_FAILED', `Tentative de connexion échouée pour ${user.first_name} ${user.last_name}`).run()
-      return c.json({ error: 'Email ou mot de passe incorrect' }, 401)
+      ).bind(user.id, 'LOGIN_FAILED', `Tentative de connexion échouée pour ${user.first_name} ${user.last_name} depuis IP ${ip}`).run()
+      
+      if (result.blocked) {
+        return c.json({ 
+          error: `Trop de tentatives échouées. Compte bloqué pendant 15 minutes.`,
+          blocked: true,
+          minutesLeft: 15
+        }, 429)
+      }
+      return c.json({ 
+        error: `Email ou mot de passe incorrect. ${result.remaining} tentative(s) restante(s).`,
+        remaining: result.remaining
+      }, 401)
     }
+
+    // Connexion réussie - réinitialiser les tentatives
+    resetAttempts(ip)
 
     await c.env.DB.prepare(
       'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?'
@@ -149,16 +273,28 @@ app.post('/api/admin/users', async (c) => {
   if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
   try {
-    const { first_name, last_name, email, password, role, department_id, status } = await c.req.json()
+    const body = await c.req.json()
+    const first_name = sanitizeString(body.first_name || '')
+    const last_name = sanitizeString(body.last_name || '')
+    const email = sanitizeString(body.email || '')
+    const password = body.password || ''
+    const role = sanitizeString(body.role || '')
+    const department_id = body.department_id
+    const status = body.status || 'Actif'
+
+    if (!validateEmail(email)) return c.json({ error: 'Email invalide' }, 400)
+    if (password.length < 4) return c.json({ error: 'Mot de passe trop court (min 4 caractères)' }, 400)
+
     const passwordHash = await hashPassword(password)
+    const passwordEncrypted = encryptPassword(password)
 
     const result = await c.env.DB.prepare(
-      'INSERT INTO users (first_name, last_name, email, password_hash, role, department_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(first_name, last_name, email, passwordHash, role, department_id || null, status || 'Actif').run()
+      'INSERT INTO users (first_name, last_name, email, password_hash, password_encrypted, role, department_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(first_name, last_name, email, passwordHash, passwordEncrypted, role, department_id || null, status).run()
 
     await c.env.DB.prepare(
       'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
-    ).bind(currentUser.id, 'CREATE_USER', `Création de l'utilisateur ${first_name} ${last_name}`).run()
+    ).bind(currentUser.id, 'CREATE_USER', `Création de l\'utilisateur ${first_name} ${last_name}`).run()
 
     return c.json({ id: result.meta.last_row_id, message: 'Utilisateur créé avec succès' })
   } catch (e: any) {
@@ -176,9 +312,10 @@ app.put('/api/admin/users/:id', async (c) => {
 
     if (password) {
       const passwordHash = await hashPassword(password)
+      const passwordEncrypted = encryptPassword(password)
       await c.env.DB.prepare(
-        'UPDATE users SET first_name=?, last_name=?, email=?, password_hash=?, role=?, department_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
-      ).bind(first_name, last_name, email, passwordHash, role, department_id || null, status, id).run()
+        'UPDATE users SET first_name=?, last_name=?, email=?, password_hash=?, password_encrypted=?, role=?, department_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+      ).bind(first_name, last_name, email, passwordHash, passwordEncrypted, role, department_id || null, status, id).run()
     } else {
       await c.env.DB.prepare(
         'UPDATE users SET first_name=?, last_name=?, email=?, role=?, department_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
@@ -193,6 +330,25 @@ app.put('/api/admin/users/:id', async (c) => {
   } catch (e: any) {
     return c.json({ error: e.message }, 500)
   }
+})
+
+// Route pour voir le mot de passe d'un utilisateur (admin seulement)
+app.get('/api/admin/users/:id/password', async (c) => {
+  const currentUser = await getUser(c)
+  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
+
+  const id = c.req.param('id')
+  const user = await c.env.DB.prepare('SELECT password_encrypted FROM users WHERE id = ?').bind(id).first() as any
+
+  if (!user) return c.json({ error: 'Utilisateur non trouvé' }, 404)
+
+  const password = user.password_encrypted ? decryptPassword(user.password_encrypted) : '(mot de passe non disponible)'
+
+  await c.env.DB.prepare(
+    'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
+  ).bind(currentUser.id, 'VIEW_PASSWORD', `Consultation du mot de passe de l\'utilisateur ID ${id}`).run()
+
+  return c.json({ password })
 })
 
 app.delete('/api/admin/users/:id', async (c) => {
@@ -1147,14 +1303,28 @@ document.getElementById('login-form').addEventListener('submit',async(e)=>{
   try{
     const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})});
     const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'Erreur de connexion');
+    if(!r.ok){
+      if(d.blocked){
+        err.innerHTML='<i class="fas fa-lock mr-1"></i> '+d.error;
+        err.classList.remove('hidden');
+        btn.innerHTML='<i class="fas fa-lock mr-2"></i>Compte bloqué';
+        btn.disabled=true;
+        setTimeout(()=>{ btn.innerHTML='<i class="fas fa-sign-in-alt mr-2"></i>Se connecter'; btn.disabled=false; }, d.minutesLeft*60*1000);
+      } else {
+        err.innerHTML='<i class="fas fa-exclamation-circle mr-1"></i> '+(d.error||'Erreur de connexion');
+        err.classList.remove('hidden');
+        btn.innerHTML='<i class="fas fa-sign-in-alt mr-2"></i>Se connecter';
+        btn.disabled=false;
+      }
+      return;
+    }
     localStorage.setItem('token',d.token);
     localStorage.setItem('user',JSON.stringify(d.user));
     if(d.user.role==='Administrateur')window.location='/admin/dashboard';
     else if(d.user.role==='Chef de Département')window.location='/chef/dashboard';
     else window.location='/agent/dashboard';
   }catch(e){
-    err.textContent=e.message;
+    err.innerHTML='<i class="fas fa-exclamation-circle mr-1"></i> '+e.message;
     err.classList.remove('hidden');
     btn.innerHTML='<i class="fas fa-sign-in-alt mr-2"></i>Se connecter';
     btn.disabled=false;
