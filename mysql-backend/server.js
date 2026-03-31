@@ -1049,81 +1049,171 @@ app.get('/api/chef/reports', async (req, res) => {
 const staticDir = path.join(__dirname, 'public', 'static')
 app.use('/static', express.static(staticDir))
 
-// HTML templates (identiques à la version Cloudflare)
+// HTML templates - Login avec fond animé Canvas (particules en réseau)
 function getLoginHTML () {
+  const year = new Date().getFullYear()
   return `<!DOCTYPE html>
-<html lang="fr"><head>
+<html lang="fr">
+<head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TimeTrack - BGFIBank</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
-<script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
 <style>
-  body { background: linear-gradient(135deg, #0f2544 0%, #1e3a5f 50%, #0f2544 100%); min-height: 100vh; }
-  .login-card { background: white; border-radius: 16px; box-shadow: 0 24px 64px rgba(0,0,0,0.35); }
-  .btn-primary { background: #1e3a5f; color: white; transition: all 0.2s; }
-  .btn-primary:hover { background: #0f2544; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(30,58,95,0.4); }
-  .input-field { border: 1px solid #d1d5db; border-radius: 8px; padding: 11px 14px; width: 100%; outline: none; transition: border 0.2s; font-size: 14px; }
-  .input-field:focus { border-color: #1e3a5f; box-shadow: 0 0 0 3px rgba(30,58,95,0.12); }
-  .logo-wrapper { background: #fff; border-radius: 12px; padding: 16px 24px; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.10); margin-bottom: 20px; }
-  .logo-wrapper img { height: 64px; width: auto; display: block; }
-  .divider { height: 1px; background: linear-gradient(to right, transparent, #e5e7eb, transparent); margin: 20px 0; }
-  .app-badge { display: inline-flex; align-items: center; gap: 6px; background: #f0f4f8; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #4b6080; font-weight: 500; }
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;}
+#bg-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;}
+.scene{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;padding:16px;}
+.login-card{position:relative;width:100%;max-width:420px;background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.22);border-radius:24px;padding:40px 36px 36px;backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);box-shadow:0 8px 48px rgba(0,0,0,0.45),inset 0 1px 0 rgba(255,255,255,0.18);animation:cardIn .7s cubic-bezier(.22,1,.36,1) both;}
+@keyframes cardIn{from{opacity:0;transform:translateY(28px) scale(.97);}to{opacity:1;transform:none;}}
+.logo-wrapper{background:rgba(255,255,255,0.95);border-radius:14px;padding:14px 22px;display:inline-block;box-shadow:0 4px 24px rgba(0,0,0,0.18);margin-bottom:18px;}
+.logo-wrapper img{height:56px;width:auto;display:block;}
+.app-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:20px;padding:5px 14px;font-size:12px;color:rgba(255,255,255,0.85);font-weight:500;letter-spacing:.3px;}
+.divider{height:1px;background:linear-gradient(to right,transparent,rgba(255,255,255,0.25),transparent);margin:18px 0;}
+.field-label{display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,0.75);margin-bottom:6px;}
+.input-wrap{position:relative;}
+.input-field{width:100%;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);border-radius:10px;padding:12px 16px;font-size:14px;color:#fff;outline:none;transition:all .2s;}
+.input-field::placeholder{color:rgba(255,255,255,0.4);}
+.input-field:focus{border-color:rgba(255,255,255,0.55);background:rgba(255,255,255,0.18);box-shadow:0 0 0 3px rgba(255,255,255,0.10);}
+.input-field.has-icon{padding-right:44px;}
+.eye-btn{position:absolute;right:13px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:rgba(255,255,255,0.5);font-size:15px;transition:color .2s;}
+.eye-btn:hover{color:rgba(255,255,255,0.9);}
+.btn-primary{width:100%;background:linear-gradient(135deg,#2563eb,#1e3a5f);border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:600;color:#fff;cursor:pointer;transition:all .25s;box-shadow:0 4px 20px rgba(30,58,95,0.5);position:relative;overflow:hidden;}
+.btn-primary::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.15),transparent);opacity:0;transition:opacity .25s;}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(30,58,95,0.65);}
+.btn-primary:hover::before{opacity:1;}
+.btn-primary:active{transform:translateY(0);}
+.btn-primary:disabled{opacity:.65;cursor:not-allowed;transform:none;}
+.error-box{display:none;background:rgba(239,68,68,0.18);border:1px solid rgba(239,68,68,0.4);border-radius:10px;padding:10px 14px;color:#fca5a5;font-size:13px;margin-bottom:16px;}
+.error-box.show{display:flex;align-items:center;gap:8px;}
+.card-footer{margin-top:18px;text-align:center;font-size:11px;color:rgba(255,255,255,0.35);}
+.field-group{margin-bottom:16px;}
 </style>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4">
-<div class="login-card w-full max-w-md p-8">
-  <div class="text-center mb-6">
-    <div class="logo-wrapper">
-      <img src="/static/bgfibank-logo.png" alt="BGFIBank - Votre partenaire pour l'avenir">
-    </div>
+<body>
+<canvas id="bg-canvas"></canvas>
+<div class="scene">
+<div class="login-card">
+  <div style="text-align:center;margin-bottom:20px;">
+    <div class="logo-wrapper"><img src="/static/bgfibank-logo.png" alt="BGFIBank"></div>
     <div class="divider"></div>
-    <div class="app-badge">
-      <i class="fas fa-clock" style="color:#1e3a5f"></i>
-      <span>TimeTrack &mdash; Suivi du temps</span>
-    </div>
+    <div class="app-badge"><i class="fas fa-clock"></i><span>TimeTrack &mdash; Suivi du temps</span></div>
   </div>
-  <div id="error-msg" class="hidden bg-red-50 border border-red-200 text-red-600 rounded-lg p-3 mb-4 text-sm"></div>
+  <div id="error-msg" class="error-box"><i class="fas fa-exclamation-circle"></i><span id="error-text"></span></div>
   <form id="login-form">
-    <div class="mb-4">
-      <label class="block text-sm font-medium text-gray-700 mb-1">Adresse email</label>
-      <input type="email" id="email" class="input-field" placeholder="email@bgfibank.com" required>
+    <div class="field-group">
+      <label class="field-label" for="email">Adresse email</label>
+      <input type="email" id="email" class="input-field" placeholder="email@bgfibank.com" required autocomplete="username">
     </div>
-    <div class="mb-6">
-      <label class="block text-sm font-medium text-gray-700 mb-1">Mot de passe</label>
-      <div class="relative">
-        <input type="password" id="password" class="input-field pr-10" placeholder="••••••••" required>
-        <button type="button" onclick="togglePwd()" class="absolute right-3 top-3 text-gray-400">
-          <i class="fas fa-eye" id="eye-icon"></i>
-        </button>
+    <div class="field-group">
+      <label class="field-label" for="password">Mot de passe</label>
+      <div class="input-wrap">
+        <input type="password" id="password" class="input-field has-icon" placeholder="••••••••" required autocomplete="current-password">
+        <button type="button" class="eye-btn" onclick="togglePwd()" tabindex="-1"><i class="fas fa-eye" id="eye-icon"></i></button>
       </div>
     </div>
-    <button type="submit" class="btn-primary w-full py-3 rounded-lg font-semibold text-sm" id="login-btn">
-      <i class="fas fa-sign-in-alt mr-2"></i>Se connecter
+    <button type="submit" class="btn-primary" id="login-btn" style="margin-top:8px;">
+      <i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter
     </button>
   </form>
+  <div class="card-footer">&copy; ${year} BGFIBank &mdash; Accès réservé au personnel autorisé</div>
+</div>
 </div>
 <script>
-function togglePwd(){const p=document.getElementById('password');const i=document.getElementById('eye-icon');if(p.type==='password'){p.type='text';i.className='fas fa-eye-slash';}else{p.type='password';i.className='fas fa-eye';}}
+(function(){
+  const canvas=document.getElementById('bg-canvas');
+  const ctx=canvas.getContext('2d');
+  let W,H,mouse={x:-9999,y:-9999};
+  const COLORS=['#1e3a5f','#2563eb','#3b82f6','#7fa8d4','#c8a96e','#e8c97a'];
+  function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+  window.addEventListener('resize',resize);resize();
+  const N=Math.min(110,Math.floor(W*H/12000));
+  const particles=Array.from({length:N},()=>({
+    x:Math.random()*W,y:Math.random()*H,
+    vx:(Math.random()-.5)*.45,vy:(Math.random()-.5)*.45,
+    r:1.5+Math.random()*3.5,base_r:0,
+    color:COLORS[Math.floor(Math.random()*COLORS.length)],
+    alpha:.35+Math.random()*.55,
+    pulse:Math.random()*Math.PI*2,pulseSpeed:.008+Math.random()*.014
+  }));
+  particles.forEach(p=>p.base_r=p.r);
+  const BLOBS=[
+    {x:.15,y:.2,r:.28,c:'rgba(30,58,95,',spd:.00018,ang:0},
+    {x:.78,y:.15,r:.22,c:'rgba(37,99,235,',spd:.00024,ang:1.2},
+    {x:.5,y:.78,r:.32,c:'rgba(59,130,246,',spd:.00015,ang:2.5},
+    {x:.85,y:.7,r:.18,c:'rgba(200,169,110,',spd:.00031,ang:.7}
+  ];
+  const LINK_DIST=130;
+  let tick=0;
+  function draw(){
+    tick++;
+    ctx.clearRect(0,0,W,H);
+    const gr=ctx.createLinearGradient(W*.5+Math.sin(tick*.0005)*W*.3,0,W*.5+Math.cos(tick*.0004)*W*.3,H);
+    gr.addColorStop(0,'#050e1f');gr.addColorStop(.45,'#0c1f3d');gr.addColorStop(1,'#071428');
+    ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);
+    BLOBS.forEach(b=>{
+      b.ang+=b.spd*tick*.015;
+      const bx=(b.x+Math.sin(b.ang)*.06)*W,by=(b.y+Math.cos(b.ang*.7)*.05)*H,br=b.r*Math.min(W,H);
+      const rg=ctx.createRadialGradient(bx,by,0,bx,by,br);
+      rg.addColorStop(0,b.c+'0.13)');rg.addColorStop(.6,b.c+'0.055)');rg.addColorStop(1,b.c+'0)');
+      ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.fillStyle=rg;ctx.fill();
+    });
+    for(let i=0;i<N;i++){for(let j=i+1;j<N;j++){
+      const dx=particles[i].x-particles[j].x,dy=particles[i].y-particles[j].y;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<LINK_DIST){
+        ctx.beginPath();ctx.moveTo(particles[i].x,particles[i].y);ctx.lineTo(particles[j].x,particles[j].y);
+        ctx.strokeStyle='rgba(100,160,230,'+(1-dist/LINK_DIST)*.18+')';ctx.lineWidth=.8;ctx.stroke();
+      }
+    }}
+    particles.forEach(p=>{
+      p.pulse+=p.pulseSpeed;
+      const pr=p.base_r+Math.sin(p.pulse)*.8;
+      const mdx=mouse.x-p.x,mdy=mouse.y-p.y,md=Math.sqrt(mdx*mdx+mdy*mdy);
+      if(md<180&&md>0){const f=(1-md/180)*.008;p.vx+=mdx/md*f;p.vy+=mdy/md*f;}
+      p.vx*=.988;p.vy*=.988;p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0){p.x=0;p.vx*=-1;}if(p.x>W){p.x=W;p.vx*=-1;}
+      if(p.y<0){p.y=0;p.vy*=-1;}if(p.y>H){p.y=H;p.vy*=-1;}
+      ctx.beginPath();ctx.arc(p.x,p.y,pr,0,Math.PI*2);
+      const rg2=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,pr*4);rg2.addColorStop(0,p.color+'bb');rg2.addColorStop(0.4,p.color+'55');rg2.addColorStop(1,p.color+'00');ctx.beginPath();ctx.arc(p.x,p.y,pr*4,0,Math.PI*2);ctx.fillStyle=rg2;ctx.fill();ctx.beginPath();ctx.arc(p.x,p.y,pr,0,Math.PI*2);ctx.fillStyle=p.color+'ee';ctx.shadowColor=p.color;ctx.shadowBlur=10;ctx.fill();ctx.shadowBlur=0;
+    });
+    particles.forEach(p=>{
+      const dx=p.x-mouse.x,dy=p.y-mouse.y,d=Math.sqrt(dx*dx+dy*dy);
+      if(d<100){ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(mouse.x,mouse.y);ctx.strokeStyle='rgba(200,169,110,'+(1-d/100)*.35+')';ctx.lineWidth=1;ctx.stroke();}
+    });
+    requestAnimationFrame(draw);
+  }
+  window.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;});
+  window.addEventListener('touchmove',e=>{if(e.touches[0]){mouse.x=e.touches[0].clientX;mouse.y=e.touches[0].clientY;}},{passive:true});
+  window.addEventListener('mouseleave',()=>{mouse.x=-9999;mouse.y=-9999;});
+  draw();
+})();
+function togglePwd(){const p=document.getElementById('password'),i=document.getElementById('eye-icon');if(p.type==='password'){p.type='text';i.className='fas fa-eye-slash';}else{p.type='password';i.className='fas fa-eye';}}
+function showError(msg){const b=document.getElementById('error-msg');document.getElementById('error-text').textContent=msg;b.classList.add('show');}
+function hideError(){document.getElementById('error-msg').classList.remove('show');}
 document.getElementById('login-form').addEventListener('submit',async(e)=>{
-  e.preventDefault();const btn=document.getElementById('login-btn');const err=document.getElementById('error-msg');
-  btn.innerHTML='<i class="fas fa-spinner fa-spin mr-2"></i>Connexion...';btn.disabled=true;err.classList.add('hidden');
+  e.preventDefault();const btn=document.getElementById('login-btn');hideError();
+  btn.innerHTML='<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Connexion en cours...';btn.disabled=true;
   try{
     const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})});
     const d=await r.json();
     if(!r.ok){
-      if(d.blocked){err.innerHTML='<i class="fas fa-lock mr-1"></i> '+d.error;err.classList.remove('hidden');btn.innerHTML='<i class="fas fa-lock mr-2"></i>Compte bloqué';btn.disabled=true;setTimeout(()=>{btn.innerHTML='<i class="fas fa-sign-in-alt mr-2"></i>Se connecter';btn.disabled=false;},d.minutesLeft*60*1000);}
-      else{err.innerHTML='<i class="fas fa-exclamation-circle mr-1"></i> '+(d.error||'Erreur de connexion');err.classList.remove('hidden');btn.innerHTML='<i class="fas fa-sign-in-alt mr-2"></i>Se connecter';btn.disabled=false;}
+      if(d.blocked){showError(d.error);btn.innerHTML='<i class="fas fa-lock" style="margin-right:8px;"></i>Compte bloqué';btn.disabled=true;setTimeout(()=>{btn.innerHTML='<i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter';btn.disabled=false;},d.minutesLeft*60*1000);}
+      else{showError(d.error||'Email ou mot de passe incorrect');btn.innerHTML='<i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter';btn.disabled=false;}
       return;
     }
     localStorage.setItem('token',d.token);localStorage.setItem('user',JSON.stringify(d.user));
-    if(d.user.role==='Administrateur')window.location='/admin/dashboard';
-    else if(d.user.role==='Chef de Département')window.location='/chef/dashboard';
-    else window.location='/agent/dashboard';
-  }catch(e){err.innerHTML='<i class="fas fa-exclamation-circle mr-1"></i> '+e.message;err.classList.remove('hidden');btn.innerHTML='<i class="fas fa-sign-in-alt mr-2"></i>Se connecter';btn.disabled=false;}
+    btn.innerHTML='<i class="fas fa-check" style="margin-right:8px;"></i>Bienvenue !';
+    setTimeout(()=>{
+      if(d.user.role==='Administrateur')window.location='/admin/dashboard';
+      else if(d.user.role==='Chef de Département')window.location='/chef/dashboard';
+      else window.location='/agent/dashboard';
+    },400);
+  }catch(err){showError(err.message||'Erreur réseau');btn.innerHTML='<i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter';btn.disabled=false;}
 });
-const t=localStorage.getItem('token');if(t){const u=JSON.parse(localStorage.getItem('user')||'{}');if(u.role==='Administrateur')window.location='/admin/dashboard';else if(u.role==='Chef de Département')window.location='/chef/dashboard';else if(u.role==='Agent')window.location='/agent/dashboard';}
-</script></body></html>`
+(function(){const t=localStorage.getItem('token');if(t){const u=JSON.parse(localStorage.getItem('user')||'{}');if(u.role==='Administrateur')window.location='/admin/dashboard';else if(u.role==='Chef de Département')window.location='/chef/dashboard';else if(u.role==='Agent')window.location='/agent/dashboard';}})();
+</script>
+</body></html>`
 }
 
 app.get('/login', (req, res) => res.send(getLoginHTML()))
