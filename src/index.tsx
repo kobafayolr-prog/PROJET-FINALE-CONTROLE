@@ -1501,6 +1501,7 @@ function getAdminHTML(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TimeTrack Admin - BGFIBank</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
+<script>tailwind={config:{corePlugins:{preflight:false}}}</script>
 <script src="/static/libs/tailwind.min.js"></script>
 <link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
 <script src="/static/libs/chart.min.js"></script>
@@ -1521,6 +1522,7 @@ function getAgentHTML(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TimeTrack Agent - BGFIBank</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
+<script>tailwind={config:{corePlugins:{preflight:false}}}</script>
 <script src="/static/libs/tailwind.min.js"></script>
 <link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
 <script src="/static/libs/chart.min.js"></script>
@@ -1541,6 +1543,7 @@ function getChefHTML(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TimeTrack Chef - BGFIBank</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
+<script>tailwind={config:{corePlugins:{preflight:false}}}</script>
 <script src="/static/libs/tailwind.min.js"></script>
 <link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
 <script src="/static/libs/chart.min.js"></script>

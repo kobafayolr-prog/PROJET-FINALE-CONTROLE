@@ -615,7 +615,8 @@ function showUserModal(userId = null) {
 }
 
 // Suppression processus + tâches
-async function deleteProcess(id, name) {
+async function deleteProcess(id, nameOrEvt) {
+  const name = (typeof nameOrEvt === 'string') ? nameOrEvt : (event && event.target && event.target.closest('[data-name]') ? event.target.closest('[data-name]').dataset.name : id);
   if (!confirm(`Désactiver le processus "${name}" ?`)) return;
   const r = await api('/api/admin/processes/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
@@ -623,7 +624,8 @@ async function deleteProcess(id, name) {
   renderProcesses();
 }
 
-async function deleteTask(id, name) {
+async function deleteTask(id, nameOrEvt) {
+  const name = (typeof nameOrEvt === 'string') ? nameOrEvt : (event && event.target && event.target.closest('[data-name]') ? event.target.closest('[data-name]').dataset.name : id);
   if (!confirm(`Désactiver la tâche "${name}" ?`)) return;
   const r = await api('/api/admin/tasks/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
@@ -746,7 +748,7 @@ async function renderDepartments() {
     <div class="dept-card">
       <div style="position:absolute;top:12px;right:12px;display:flex;gap:4px">
         <button onclick="showDeptModal(${d.id})" style="background:rgba(0,0,0,0.05);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#6b7280" title="Modifier"><i class="fas fa-edit" style="font-size:11px"></i></button>
-        <button onclick="deleteDept(${d.id}, '${d.name.replace(/'/g,'\\'')}')" style="background:rgba(239,68,68,0.1);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#ef4444" title="Désactiver"><i class="fas fa-trash" style="font-size:11px"></i></button>
+        <button onclick="deleteDept(${d.id})" data-name="${d.name}" style="background:rgba(239,68,68,0.1);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#ef4444" title="Désactiver"><i class="fas fa-trash" style="font-size:11px"></i></button>
       </div>
       <h3 style="font-size:14px;font-weight:700;color:#1e3a5f;margin-bottom:4px;padding-right:36px">${d.name}</h3>
       <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Code: ${d.code}</p>
@@ -762,7 +764,8 @@ async function renderDepartments() {
   <div class="grid-auto">${cards}</div>`;
 }
 
-async function deleteDept(id, name) {
+async function deleteDept(id, nameOrEvt) {
+  const name = (typeof nameOrEvt === 'string') ? nameOrEvt : (event && event.target && event.target.closest('[data-name]') ? event.target.closest('[data-name]').dataset.name : id);
   if (!confirm(`Désactiver le département "${name}" ?`)) return;
   const r = await api('/api/admin/departments/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
@@ -825,7 +828,7 @@ async function renderObjectives() {
     <div class="objective-card" style="border-left-color:${o.color}">
       <div style="position:absolute;top:12px;right:12px;display:flex;gap:4px">
         <button onclick="showObjModal(${o.id})" class="edit-btn" style="right:unset;top:unset;position:static"><i class="fas fa-edit"></i></button>
-        <button onclick="deleteObjective(${o.id}, '${o.name.replace(/'/g,'\\'')}')" style="background:rgba(239,68,68,0.1);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#ef4444;padding:0" title="Désactiver"><i class="fas fa-trash" style="font-size:11px"></i></button>
+        <button onclick="deleteObjective(${o.id})" data-name="${o.name}" style="background:rgba(239,68,68,0.1);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#ef4444;padding:0" title="Désactiver"><i class="fas fa-trash" style="font-size:11px"></i></button>
       </div>
       <h3 style="color:${o.color}">${o.name}</h3>
       <p>${o.description || ''}</p>
@@ -844,7 +847,8 @@ async function renderObjectives() {
   <div class="grid-auto">${cards}</div>`;
 }
 
-async function deleteObjective(id, name) {
+async function deleteObjective(id, nameOrEvt) {
+  const name = (typeof nameOrEvt === 'string') ? nameOrEvt : (event && event.target && event.target.closest('[data-name]') ? event.target.closest('[data-name]').dataset.name : id);
   if (!confirm(`Désactiver l'objectif "${name}" ?`)) return;
   const r = await api('/api/admin/objectives/' + id, { method: 'DELETE' });
   if (r.error) { toast(r.error, 'error'); return; }
@@ -923,7 +927,7 @@ async function renderProcesses() {
               <td><span class="badge ${p.status==='Actif'?'badge-active':'badge-inactive'}">${p.status}</span></td>
               <td style="white-space:nowrap">
                 <button class="btn btn-sm btn-outline" onclick="showProcModal(${p.id})" title="Modifier"><i class="fas fa-edit"></i></button>
-                <button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="deleteProcess(${p.id}, '${p.name.replace(/'/g,'\\'')}')" title="Désactiver"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="deleteProcess(${p.id})" data-name="${p.name}" title="Désactiver"><i class="fas fa-trash"></i></button>
               </td>
             </tr>`).join('')}
           </tbody>
@@ -1016,7 +1020,7 @@ async function renderTasks() {
               <td><span class="badge ${t.status==='Actif'?'badge-active':'badge-inactive'}">${t.status}</span></td>
               <td style="white-space:nowrap">
                 <button class="btn btn-sm btn-outline" onclick="showTaskModal(${t.id})" title="Modifier"><i class="fas fa-edit"></i></button>
-                <button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="deleteTask(${t.id}, '${t.name.replace(/'/g,'\\'')}')" title="Désactiver"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="deleteTask(${t.id})" data-name="${t.name}" title="Désactiver"><i class="fas fa-trash"></i></button>
               </td>
             </tr>`).join('')}
           </tbody>
