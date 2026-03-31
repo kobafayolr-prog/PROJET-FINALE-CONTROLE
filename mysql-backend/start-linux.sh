@@ -41,6 +41,14 @@ fi
 # Créer le dossier logs si nécessaire
 mkdir -p logs
 
+# Vérifier la présence des fichiers statiques
+if [ ! -f "public/static/admin.js" ]; then
+    echo -e "${RED}  ERREUR: Fichiers statiques manquants dans public/static/${NC}"
+    echo "  Assurez-vous que le dossier public/static contient les fichiers .js et .css"
+    exit 1
+fi
+echo -e "${GREEN}  OK: Fichiers statiques présents${NC}"
+
 # Démarrage avec PM2 si disponible, sinon node direct
 if command -v pm2 &>/dev/null; then
     echo -e "${GREEN}  Démarrage avec PM2...${NC}"

@@ -11,13 +11,14 @@ echo.
 
 cd /d "%~dp0"
 
-:: Copier les fichiers statiques depuis le projet parent (si pas déjà fait)
+:: Vérifier la présence des fichiers statiques
 if not exist "public\static\admin.js" (
-    echo   Copie des fichiers statiques...
-    if not exist "public\static" mkdir public\static
-    xcopy /E /Y /Q "..\public\static\*" "public\static\" >nul 2>&1
-    echo   OK: Fichiers statiques copiés
+    echo   ATTENTION: Fichiers statiques manquants dans public\static\
+    echo   Assurez-vous que le dossier public\static contient les fichiers .js et .css
+    pause
+    exit /b 1
 )
+echo   OK: Fichiers statiques présents
 
 :: Récupérer l'IP locale
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /R "IPv4" ^| findstr /V "169.254"') do (
