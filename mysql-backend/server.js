@@ -1179,7 +1179,7 @@ html,body{width:100%;height:100%;overflow:hidden;}
     });
     particles.forEach(p=>{
       const dx=p.x-mouse.x,dy=p.y-mouse.y,d=Math.sqrt(dx*dx+dy*dy);
-      if(d<100){ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(mouse.x,mouse.y);ctx.strokeStyle='rgba(200,169,110,'+(1-d/100)*.35+')';ctx.lineWidth=1;ctx.stroke();}
+      if(d<100){ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(mouse.x,mouse.y);ctx.strokeStyle='rgba(180,140,60,'+(1-d/100)*.35+')';ctx.lineWidth=1;ctx.stroke();}
     });
     requestAnimationFrame(draw);
   }
