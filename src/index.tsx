@@ -365,7 +365,7 @@ app.delete('/api/admin/users/:id', async (c) => {
 // ============================================
 
 app.get('/api/admin/departments', async (c) => {
-  const depts = await c.env.DB.prepare('SELECT * FROM departments ORDER BY name').all()
+  const depts = await c.env.DB.prepare("SELECT * FROM departments WHERE status = 'Actif' ORDER BY name").all()
   return c.json(depts.results)
 })
 
@@ -412,7 +412,7 @@ app.delete('/api/admin/departments/:id', async (c) => {
 // ============================================
 
 app.get('/api/admin/objectives', async (c) => {
-  const objs = await c.env.DB.prepare('SELECT * FROM strategic_objectives ORDER BY name').all()
+  const objs = await c.env.DB.prepare("SELECT * FROM strategic_objectives WHERE status = 'Actif' ORDER BY name").all()
   return c.json(objs.results)
 })
 
@@ -460,6 +460,7 @@ app.get('/api/admin/processes', async (c) => {
      FROM processes p
      JOIN departments d ON p.department_id = d.id
      JOIN strategic_objectives o ON p.objective_id = o.id
+     WHERE p.status = 'Actif'
      ORDER BY p.name`
   ).all()
   return c.json(procs.results)
@@ -510,6 +511,7 @@ app.get('/api/admin/tasks', async (c) => {
      JOIN departments d ON t.department_id = d.id
      JOIN processes p ON t.process_id = p.id
      JOIN strategic_objectives o ON t.objective_id = o.id
+     WHERE t.status = 'Actif'
      ORDER BY t.name`
   ).all()
   return c.json(tasks.results)
