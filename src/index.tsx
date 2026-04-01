@@ -1457,8 +1457,8 @@ function getLoginHTML(): string {
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{width:100%;height:100%;overflow:hidden;}
 
-/* ── Fond canvas plein écran ── */
-#bg-video{position:fixed;inset:0;width:100%;height:100%;z-index:0;object-fit:cover;pointer-events:none;}
+/* ── Fond image plein écran ── */
+#bg-image{position:fixed;inset:0;width:100%;height:100%;z-index:0;object-fit:cover;object-position:left center;pointer-events:none;}
 
 /* ── Overlay verre dépoli global ── */
 .scene{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;padding:16px;}
@@ -1580,10 +1580,8 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </head>
 <body>
 
-<!-- Vidéo fond plein écran -->
-<video id="bg-video" autoplay muted loop playsinline>
-  <source src="/static/bg-video.mp4" type="video/mp4">
-</video>
+<!-- Image fond plein écran -->
+<img id="bg-image" src="/static/login-bg.png" alt="">
 
 <!-- Carte login -->
 <div class="scene">
