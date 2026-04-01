@@ -1457,8 +1457,15 @@ function getLoginHTML(): string {
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{width:100%;height:100%;overflow:hidden;}
 
-/* ── Fond canvas animé plein écran ── */
-#bg-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;}
+/* ── Diaporama plein écran ── */
+.bg-slide{
+  position:fixed;inset:0;width:100%;height:100%;z-index:0;
+  background-size:cover;background-position:center;background-repeat:no-repeat;
+  opacity:0;transition:opacity 1.5s ease-in-out;pointer-events:none;
+}
+.bg-slide.active{opacity:1;}
+/* overlay sombre léger pour lisibilité */
+.bg-overlay{position:fixed;inset:0;z-index:0;background:rgba(5,10,30,0.42);pointer-events:none;}
 
 /* ── Overlay verre dépoli global ── */
 .scene{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;padding:16px;}
@@ -1580,108 +1587,58 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </head>
 <body>
 
-<!-- Fond animé canvas -->
-<canvas id="bg-canvas"></canvas>
+<!-- Diaporama plein écran (10 images, fondu aléatoire) -->
+<div id="slideshow"></div>
+<div class="bg-overlay"></div>
 <script>
 (function(){
-  const canvas = document.getElementById('bg-canvas');
-  const ctx = canvas.getContext('2d');
-  const img = new Image();
-  img.src = '/static/login-bg.png';
+  const IMAGES = [
+    '/static/login-bg-01.jpg','/static/login-bg-02.jpg','/static/login-bg-03.jpg',
+    '/static/login-bg-04.jpg','/static/login-bg-05.jpg','/static/login-bg-06.jpg',
+    '/static/login-bg-07.jpg','/static/login-bg-08.jpg','/static/login-bg-09.jpg',
+    '/static/login-bg-10.jpg'
+  ];
+  const INTERVAL = 5000;
 
-  function resize(){
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+  const container = document.getElementById('slideshow');
+
+  function shuffle(arr){
+    const a=[...arr];
+    for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+    return a;
   }
-  window.addEventListener('resize', resize);
-  resize();
+  let playlist = shuffle(IMAGES);
+  let idx = 0;
 
-  // Boules dorées flottantes
-  const orbs = Array.from({length: 18}, (_, i) => ({
-    x: Math.random(),
-    y: Math.random(),
-    r: 2 + Math.random() * 5,
-    vx: (Math.random() - 0.5) * 0.00045,
-    vy: (Math.random() - 0.5) * 0.00045,
-    alpha: 0.4 + Math.random() * 0.6,
-    pulse: Math.random() * Math.PI * 2,
-    pulseSpeed: 0.025 + Math.random() * 0.035
-  }));
+  const slides = [0,1].map(()=>{
+    const d=document.createElement('div');
+    d.className='bg-slide';
+    container.appendChild(d);
+    return d;
+  });
+  let current = 0;
 
-  // Particules lumineuses
-  const particles = Array.from({length: 35}, () => ({
-    x: Math.random(),
-    y: Math.random(),
-    r: 0.8 + Math.random() * 2,
-    vx: (Math.random() - 0.5) * 0.00025,
-    vy: -0.00018 - Math.random() * 0.00030,
-    alpha: 0.2 + Math.random() * 0.5,
-    pulse: Math.random() * Math.PI * 2,
-    pulseSpeed: 0.02 + Math.random() * 0.03
-  }));
+  IMAGES.forEach(src=>{ const i=new Image(); i.src=src; });
 
-  function drawFrame(){
-    const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
-
-    // 1. Image de fond (object-fit: cover)
-    if(img.complete && img.naturalWidth > 0){
-      const iw = img.naturalWidth, ih = img.naturalHeight;
-      const scale = Math.max(W/iw, H/ih);
-      const dw = iw*scale, dh = ih*scale;
-      const dx = (W-dw)/2, dy = (H-dh)/2;
-      ctx.drawImage(img, dx, dy, dw, dh);
-    } else {
-      ctx.fillStyle = '#0a1628';
-      ctx.fillRect(0,0,W,H);
-    }
-
-    // 2. Boules dorées flottantes
-    orbs.forEach(o => {
-      o.x += o.vx; o.y += o.vy;
-      o.pulse += o.pulseSpeed;
-      if(o.x < 0) o.x = 1; if(o.x > 1) o.x = 0;
-      if(o.y < 0) o.y = 1; if(o.y > 1) o.y = 0;
-      const pulse = 0.7 + 0.3 * Math.sin(o.pulse);
-      const grd = ctx.createRadialGradient(
-        o.x*W, o.y*H, 0,
-        o.x*W, o.y*H, o.r * 3.5 * pulse
-      );
-      grd.addColorStop(0,   `rgba(255,200,60,${o.alpha * pulse})`);
-      grd.addColorStop(0.4, `rgba(255,160,20,${o.alpha * 0.5 * pulse})`);
-      grd.addColorStop(1,   'rgba(255,140,0,0)');
-      ctx.beginPath();
-      ctx.arc(o.x*W, o.y*H, o.r * 3.5 * pulse, 0, Math.PI*2);
-      ctx.fillStyle = grd;
-      ctx.fill();
-      // centre brillant
-      ctx.beginPath();
-      ctx.arc(o.x*W, o.y*H, o.r * pulse, 0, Math.PI*2);
-      ctx.fillStyle = `rgba(255,230,120,${o.alpha * pulse})`;
-      ctx.fill();
+  function showNext(){
+    const next = 1 - current;
+    slides[next].style.backgroundImage = 'url("'+playlist[idx]+'")';
+    requestAnimationFrame(()=>{
+      requestAnimationFrame(()=>{
+        slides[next].classList.add('active');
+        slides[current].classList.remove('active');
+        current = next;
+        idx = (idx + 1) % playlist.length;
+        if(idx === 0) playlist = shuffle(IMAGES);
+      });
     });
-
-    // 3. Particules lumineuses montantes
-    particles.forEach(p => {
-      p.x += p.vx; p.y += p.vy;
-      p.pulse += p.pulseSpeed;
-      if(p.y < -0.02) p.y = 1.02;
-      if(p.x < 0) p.x = 1; if(p.x > 1) p.x = 0;
-      const a = p.alpha * (0.6 + 0.4 * Math.sin(p.pulse));
-      ctx.beginPath();
-      ctx.arc(p.x*W, p.y*H, p.r, 0, Math.PI*2);
-      ctx.fillStyle = `rgba(255,215,80,${a})`;
-      ctx.shadowColor = 'rgba(255,200,50,0.8)';
-      ctx.shadowBlur = 6;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    });
-
-    requestAnimationFrame(drawFrame);
   }
 
-  img.onload = drawFrame;
-  if(img.complete && img.naturalWidth > 0) drawFrame();
+  slides[current].style.backgroundImage = 'url("'+playlist[idx]+'")';
+  slides[current].classList.add('active');
+  idx = (idx + 1) % playlist.length;
+
+  setInterval(showNext, INTERVAL);
 })();
 </script>
 
