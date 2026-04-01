@@ -187,7 +187,7 @@ function renderLayout(title, content) {
   <div class="sidebar">
     <div class="sidebar-logo">
       <div class="logo-icon"><i class="fas fa-star text-yellow-400"></i></div>
-      <div class="logo-text"><h2>TimeTrack</h2><p>BGFIBank</p></div>
+      <div class="logo-text"><h2>TimeTrack</h2><p>BGFIBank CA</p></div>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">Tableau de Bord</div>
@@ -1357,7 +1357,7 @@ function printReport() {
   const table = document.getElementById('report-table');
   if (!table) return;
   const win = window.open('', '_blank');
-  win.document.write(`<html><head><title>Rapport TimeTrack – BGFIBank</title>
+  win.document.write(`<html><head><title>Rapport TimeTrack – BGFIBank CA</title>
     <style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px}h2{color:#1e3a5f}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e3a5f;color:white;padding:8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:11px}.footer{margin-top:20px;font-size:11px;color:#9ca3af;text-align:center}</style></head><body>
     <h2><img src="/static/bgfibank-logo.png" height="40" style="vertical-align:middle;margin-right:10px"> Rapport TimeTrack BGFIBank CA</h2>
     <p style="color:#6b7280">Période : ${_reportsDateFrom || '—'} au ${_reportsDateTo || '—'} — Généré le ${new Date().toLocaleDateString('fr-FR')}</p>

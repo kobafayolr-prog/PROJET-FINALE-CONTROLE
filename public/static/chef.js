@@ -737,7 +737,7 @@ function printChefReport() {
   const table = document.getElementById('chef-report-table');
   if (!table) return;
   const win = window.open('', '_blank');
-  win.document.write('<html><head><title>Rapport Chef - BGFIBank</title><style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px}h2{color:#1e3a5f}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e3a5f;color:white;padding:8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:11px}</style></head><body><h2>Rapport Departement - BGFIBank</h2><p style="color:#6b7280">Periode : ' + (_chefRptFrom || '-') + ' au ' + (_chefRptTo || '-') + ' | Genere le ' + new Date().toLocaleDateString('fr-FR') + '</p>' + table.outerHTML + '</body></html>');
+  win.document.write('<html><head><title>Rapport Chef - BGFIBank CA</title><style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px}h2{color:#1e3a5f}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e3a5f;color:white;padding:8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:11px}</style></head><body><h2>Rapport Departement - BGFIBank CA</h2><p style="color:#6b7280">Periode : ' + (_chefRptFrom || '-') + ' au ' + (_chefRptTo || '-') + ' | Genere le ' + new Date().toLocaleDateString('fr-FR') + '</p>' + table.outerHTML + '</body></html>');
   win.document.close();
   setTimeout(() => win.print(), 500);
 }

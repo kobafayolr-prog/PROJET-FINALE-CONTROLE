@@ -1450,7 +1450,7 @@ function getLoginHTML(): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TimeTrack - BGFIBank</title>
+<title>TimeTrack - BGFIBank CA</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
 <link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
 <style>
@@ -1807,7 +1807,7 @@ function getAdminHTML(): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TimeTrack Admin - BGFIBank</title>
+<title>TimeTrack Admin - BGFIBank CA</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
 <script>tailwind={config:{corePlugins:{preflight:false}}}</script>
 <script src="/static/libs/tailwind.min.js"></script>
@@ -1828,7 +1828,7 @@ function getAgentHTML(): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TimeTrack Agent - BGFIBank</title>
+<title>TimeTrack Agent - BGFIBank CA</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
 <script>tailwind={config:{corePlugins:{preflight:false}}}</script>
 <script src="/static/libs/tailwind.min.js"></script>
@@ -1849,7 +1849,7 @@ function getChefHTML(): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TimeTrack Chef - BGFIBank</title>
+<title>TimeTrack Chef - BGFIBank CA</title>
 <link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
 <script>tailwind={config:{corePlugins:{preflight:false}}}</script>
 <script src="/static/libs/tailwind.min.js"></script>
