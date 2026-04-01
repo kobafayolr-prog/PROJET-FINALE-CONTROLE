@@ -183,8 +183,8 @@ app.post('/api/auth/login', async (c) => {
       return c.json({ error: 'Format email invalide' }, 400)
     }
 
-    if (password.length < 4 || password.length > 100) {
-      return c.json({ error: 'Mot de passe invalide' }, 400)
+    if (password.length < 8 || password.length > 100) {
+      return c.json({ error: 'Mot de passe invalide (minimum 8 caractères)' }, 400)
     }
 
     const user = await c.env.DB.prepare(
@@ -222,6 +222,14 @@ app.post('/api/auth/login', async (c) => {
 
     // Connexion réussie - réinitialiser les tentatives
     resetAttempts(ip)
+
+    // Migration automatique SHA-256 → PBKDF2 si l'ancien format est détecté
+    if (!user.password_hash.startsWith('pbkdf2:')) {
+      const newHash = await hashPassword(password)
+      await c.env.DB.prepare(
+        'UPDATE users SET password_hash=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+      ).bind(newHash, user.id).run()
+    }
 
     await c.env.DB.prepare(
       'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?'
@@ -297,7 +305,7 @@ app.post('/api/auth/reset-confirm', async (c) => {
     const { email, code, new_password } = await c.req.json()
 
     if (!email || !code || !new_password) return c.json({ error: 'Tous les champs sont requis' }, 400)
-    if (new_password.length < 4) return c.json({ error: 'Mot de passe trop court (minimum 4 caractères)' }, 400)
+    if (new_password.length < 8) return c.json({ error: 'Mot de passe trop court (minimum 8 caractères)' }, 400)
 
     const user = await c.env.DB.prepare('SELECT id, first_name, last_name FROM users WHERE email = ? AND status = \'Actif\'').bind(email).first() as any
     if (!user) return c.json({ error: 'Email introuvable' }, 404)
@@ -360,8 +368,10 @@ app.post('/api/admin/users', async (c) => {
     const department_id = body.department_id
     const status = body.status || 'Actif'
 
+    const VALID_ROLES = ['Agent', 'Chef de Département', 'Administrateur']
     if (!validateEmail(email)) return c.json({ error: 'Email invalide' }, 400)
-    if (password.length < 4) return c.json({ error: 'Mot de passe trop court (min 4 caractères)' }, 400)
+    if (password.length < 8) return c.json({ error: 'Mot de passe trop court (minimum 8 caractères)' }, 400)
+    if (!VALID_ROLES.includes(role)) return c.json({ error: 'Rôle invalide' }, 400)
 
     const passwordHash = await hashPassword(password)
 
@@ -386,6 +396,10 @@ app.put('/api/admin/users/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const { first_name, last_name, email, password, role, department_id, status } = await c.req.json()
+
+    const VALID_ROLES = ['Agent', 'Chef de Département', 'Administrateur']
+    if (role && !VALID_ROLES.includes(role)) return c.json({ error: 'Rôle invalide' }, 400)
+    if (password && password.length < 8) return c.json({ error: 'Mot de passe trop court (minimum 8 caractères)' }, 400)
 
     if (password) {
       const passwordHash = await hashPassword(password)
@@ -1394,6 +1408,56 @@ app.get('/api/chef/reports', async (c) => {
 })
 
 // ============================================
+// NOTIFICATIONS (polling agent + chef)
+// ============================================
+
+app.get('/api/notifications', async (c) => {
+  const user = await getUser(c)
+  if (!user) return c.json({ error: 'Non autorisé' }, 401)
+
+  const since = c.req.query('since') || new Date(0).toISOString()
+
+  try {
+    if (user.role === 'Agent') {
+      // L'agent reçoit les changements de statut de ses sessions (Validé / Rejeté)
+      const rows = await c.env.DB.prepare(
+        `SELECT ws.id, ws.status, ws.rejected_reason, t.name as task_name
+         FROM work_sessions ws
+         JOIN tasks t ON ws.task_id = t.id
+         WHERE ws.user_id = ?
+           AND ws.status IN ('Validé', 'Rejeté')
+           AND ws.updated_at > ?
+         ORDER BY ws.updated_at DESC
+         LIMIT 20`
+      ).bind(user.id, since).all()
+      return c.json(rows.results)
+    }
+
+    if (user.role === 'Chef de Département') {
+      // Le chef reçoit les nouvelles sessions terminées en attente de validation
+      const rows = await c.env.DB.prepare(
+        `SELECT ws.id, ws.status, t.name as task_name,
+                u.first_name || ' ' || u.last_name as agent_name
+         FROM work_sessions ws
+         JOIN tasks t ON ws.task_id = t.id
+         JOIN users u ON ws.user_id = u.id
+         WHERE ws.department_id = ?
+           AND ws.status = 'Terminé'
+           AND ws.updated_at > ?
+         ORDER BY ws.updated_at DESC
+         LIMIT 20`
+      ).bind(user.department_id, since).all()
+      return c.json(rows.results)
+    }
+
+    // Administrateur : aucune notification polling nécessaire
+    return c.json([])
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+// ============================================
 // STATIC FILES
 // ============================================
 
@@ -1816,7 +1880,7 @@ html,body{width:100%;height:100%;overflow:hidden;}
     </div>
     <div class="field-group">
       <label class="field-label">Nouveau mot de passe</label>
-      <input type="password" id="rp_pwd" class="input-field" placeholder="Minimum 4 caractères">
+      <input type="password" id="rp_pwd" class="input-field" placeholder="Minimum 8 caractères">
     </div>
     <div id="rp_error" class="error-box"><i class="fas fa-exclamation-circle"></i><span id="rp_error_text"></span></div>
     <div id="rp_ok" class="success-box"><i class="fas fa-check-circle" style="margin-right:6px;"></i><span id="rp_ok_text"></span></div>
@@ -1864,8 +1928,8 @@ async function submitReset(){
     errTxt.textContent='Tous les champs sont requis';
     errBox.style.display='flex'; return;
   }
-  if(pwd.length<4){
-    errTxt.textContent='Mot de passe trop court (minimum 4 caractères)';
+  if(pwd.length<8){
+    errTxt.textContent='Mot de passe trop court (minimum 8 caractères)';
     errBox.style.display='flex'; return;
   }
 

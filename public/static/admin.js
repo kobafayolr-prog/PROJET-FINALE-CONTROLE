@@ -668,11 +668,15 @@ function showUserModal(userId = null) {
 
   document.getElementById('user-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const pwd = document.getElementById('u_pwd').value;
+    // Validation côté client : minimum 8 caractères si un mot de passe est saisi
+    if (!userId && pwd.length < 8) { toast('Mot de passe trop court (minimum 8 caractères)', 'error'); return; }
+    if (userId && pwd && pwd.length < 8) { toast('Mot de passe trop court (minimum 8 caractères)', 'error'); return; }
     const data = {
       first_name: document.getElementById('u_first').value,
       last_name: document.getElementById('u_last').value,
       email: document.getElementById('u_email').value,
-      password: document.getElementById('u_pwd').value,
+      password: pwd,
       role: document.getElementById('u_role').value,
       department_id: document.getElementById('u_dept').value || null,
       status: document.getElementById('u_status').value
@@ -1485,7 +1489,7 @@ function renderResetPassword() {
         </div>
         <div class="form-group">
           <label class="form-label">Nouveau mot de passe</label>
-          <input class="form-control" type="password" id="rp_newpwd" placeholder="Minimum 4 caractères">
+          <input class="form-control" type="password" id="rp_newpwd" placeholder="Minimum 8 caractères">
         </div>
         <div id="rp_error" style="display:none;background:#fee2e2;border:1px solid #fecaca;border-radius:8px;padding:10px;font-size:13px;color:#dc2626;margin-bottom:12px"></div>
         <div id="rp_ok" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#16a34a;margin-bottom:12px"></div>
@@ -1508,6 +1512,7 @@ async function submitResetPassword() {
   const ok     = document.getElementById('rp_ok');
   err.style.display = 'none'; ok.style.display = 'none';
   if (!email || !code || !newpwd) { err.textContent = 'Tous les champs sont requis'; err.style.display = 'block'; return; }
+  if (newpwd.length < 8) { err.textContent = 'Mot de passe trop court (minimum 8 caractères)'; err.style.display = 'block'; return; }
   const r = await fetch('/api/auth/reset-confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code, new_password: newpwd }) });
   const d = await r.json();
   if (!r.ok) { err.textContent = d.error || 'Erreur'; err.style.display = 'block'; }
