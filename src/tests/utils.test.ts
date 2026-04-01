@@ -8,12 +8,11 @@
  *  1. sanitizeString   — nettoyage des entrées utilisateur
  *  2. validateEmail    — validation du format email
  *  3. minutesToHours   — conversion minutes → "Xh YYm"
- *  4. hashPassword     — hachage SHA-256
- *  5. encryptPassword  — chiffrement XOR+Base64
- *  6. decryptPassword  — déchiffrement XOR+Base64
- *  7. checkRateLimit   — vérification du blocage IP
- *  8. recordFailedAttempt — enregistrement d'une tentative échouée
- *  9. resetAttempts    — déblocage d'une IP
+ *  4. hashPassword     — hachage PBKDF2-SHA256 (600 000 itérations)
+ *  5. verifyPassword   — vérification PBKDF2 + fallback SHA-256
+ *  6. checkRateLimit   — vérification du blocage IP
+ *  7. recordFailedAttempt — enregistrement d'une tentative échouée
+ *  8. resetAttempts    — déblocage d'une IP
  * ═══════════════════════════════════════════════════════════════
  */
 
@@ -39,34 +38,42 @@ function minutesToHours(minutes: number): string {
   return `${h}h ${m.toString().padStart(2, '0')}m`
 }
 
+// PBKDF2 — même implémentation que src/index.tsx
 async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hash = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
+  const enc = new TextEncoder()
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 600000 },
+    keyMaterial, 256
+  )
+  const hashArr = new Uint8Array(bits)
+  const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('')
+  const hashHex = Array.from(hashArr).map(b => b.toString(16).padStart(2, '0')).join('')
+  return `pbkdf2:sha256:600000:${saltHex}:${hashHex}`
 }
 
-function encryptPassword(password: string): string {
-  const key = 'bgfibank2024'
-  let result = ''
-  for (let i = 0; i < password.length; i++) {
-    result += String.fromCharCode(password.charCodeAt(i) ^ key.charCodeAt(i % key.length))
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const enc = new TextEncoder()
+  if (stored.startsWith('pbkdf2:')) {
+    const parts = stored.split(':')
+    if (parts.length !== 5) return false
+    const [, , iterStr, saltHex, expectedHex] = parts
+    const iterations = parseInt(iterStr, 10)
+    const salt = new Uint8Array(saltHex.match(/.{2}/g)!.map(h => parseInt(h, 16)))
+    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits'])
+    const bits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
+      keyMaterial, 256
+    )
+    const hashHex = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('')
+    return hashHex === expectedHex
   }
-  return btoa(result)
-}
-
-function decryptPassword(encrypted: string): string {
-  try {
-    const key = 'bgfibank2024'
-    const decoded = atob(encrypted)
-    let result = ''
-    for (let i = 0; i < decoded.length; i++) {
-      result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length))
-    }
-    return result
-  } catch {
-    return '••••••••'
-  }
+  // Fallback SHA-256 (anciens comptes)
+  const data = enc.encode(password)
+  const sha = await crypto.subtle.digest('SHA-256', data)
+  const shaHex = Array.from(new Uint8Array(sha)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return shaHex === stored
 }
 
 // ── Rate Limiting (même logique que index.tsx) ──
@@ -207,75 +214,65 @@ describe('minutesToHours — conversion minutes vers format lisible', () => {
 })
 
 // ═══════════════════════════════════════════════
-//  SUITE 4 — hashPassword (SHA-256)
+//  SUITE 4 — hashPassword (PBKDF2-SHA256)
 // ═══════════════════════════════════════════════
-describe('hashPassword — hachage SHA-256', () => {
+describe('hashPassword — hachage PBKDF2-SHA256 (600 000 itérations)', () => {
 
-  it('retourne une chaîne hexadécimale de 64 caractères', async () => {
+  it('retourne une chaîne au format pbkdf2:sha256:600000:<salt>:<hash>', async () => {
     const hash = await hashPassword('admin123')
-    expect(hash).toHaveLength(64)
-    expect(hash).toMatch(/^[0-9a-f]+$/)
-  })
+    expect(hash).toMatch(/^pbkdf2:sha256:600000:[0-9a-f]{32}:[0-9a-f]{64}$/)
+  }, 30000)
 
-  it('le même mot de passe produit toujours le même hash (déterministe)', async () => {
+  it('le même mot de passe produit des hashs différents (sel aléatoire)', async () => {
     const hash1 = await hashPassword('monMotDePasse')
     const hash2 = await hashPassword('monMotDePasse')
-    expect(hash1).toBe(hash2)
-  })
+    // Le sel est aléatoire donc les hashs sont différents
+    expect(hash1).not.toBe(hash2)
+    // Mais les deux sont validés correctement
+    expect(await verifyPassword('monMotDePasse', hash1)).toBe(true)
+    expect(await verifyPassword('monMotDePasse', hash2)).toBe(true)
+  }, 60000)
 
   it('deux mots de passe différents produisent des hashs différents', async () => {
     const hash1 = await hashPassword('admin123')
     const hash2 = await hashPassword('admin124')
     expect(hash1).not.toBe(hash2)
-  })
+  }, 30000)
 
   it('un mot de passe vide produit quand même un hash valide', async () => {
     const hash = await hashPassword('')
-    expect(hash).toHaveLength(64)
-  })
-
-  it('le hash connu de "admin123" est correct (valeur de référence)', async () => {
-    // Valeur calculée une fois, sert de référence pour détecter toute régression
-    const hash = await hashPassword('admin123')
-    expect(hash).toBe('240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9')
-  })
+    expect(hash).toMatch(/^pbkdf2:sha256:600000:/)
+  }, 30000)
 })
 
 // ═══════════════════════════════════════════════
-//  SUITE 5 — encryptPassword / decryptPassword (XOR+Base64)
+//  SUITE 5 — verifyPassword (PBKDF2 + fallback SHA-256)
 // ═══════════════════════════════════════════════
-describe('encryptPassword / decryptPassword — chiffrement réversible XOR', () => {
+describe('verifyPassword — vérification PBKDF2 + compatibilité SHA-256', () => {
 
-  it('chiffre un mot de passe en Base64', () => {
-    const encrypted = encryptPassword('admin123')
-    // Base64 : uniquement lettres, chiffres, +, /, =
-    expect(encrypted).toMatch(/^[A-Za-z0-9+/=]+$/)
-    expect(encrypted).not.toBe('admin123')
+  it('valide un mot de passe correct contre son hash PBKDF2', async () => {
+    const hash = await hashPassword('MonMotDePasse!')
+    expect(await verifyPassword('MonMotDePasse!', hash)).toBe(true)
+  }, 30000)
+
+  it('rejette un mot de passe incorrect contre un hash PBKDF2', async () => {
+    const hash = await hashPassword('MonMotDePasse!')
+    expect(await verifyPassword('mauvaisMotDePasse', hash)).toBe(false)
+  }, 30000)
+
+  it('valide un ancien hash SHA-256 (compatibilité migration)', async () => {
+    // Hash SHA-256 d"admin123" — anciens comptes en base
+    const sha256Hash = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'
+    expect(await verifyPassword('admin123', sha256Hash)).toBe(true)
   })
 
-  it('déchiffre correctement ce qui a été chiffré', () => {
-    const original = 'monMotDePasse!'
-    const encrypted = encryptPassword(original)
-    const decrypted = decryptPassword(encrypted)
-    expect(decrypted).toBe(original)
+  it('rejette un mauvais mot de passe contre un ancien hash SHA-256', async () => {
+    const sha256Hash = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'
+    expect(await verifyPassword('mauvais', sha256Hash)).toBe(false)
   })
 
-  it('fonctionne avec des mots de passe courts', () => {
-    const original = 'ab'
-    expect(decryptPassword(encryptPassword(original))).toBe(original)
-  })
-
-  it('fonctionne avec des mots de passe longs', () => {
-    const original = 'ceMotDePasseEstTresLongEtContientDesChiffres12345!'
-    expect(decryptPassword(encryptPassword(original))).toBe(original)
-  })
-
-  it('retourne "••••••••" si la chaîne chiffrée est invalide', () => {
-    expect(decryptPassword('!!!invalide!!!')).toBe('••••••••')
-  })
-
-  it('deux mots de passe différents produisent des chiffrements différents', () => {
-    expect(encryptPassword('pass1')).not.toBe(encryptPassword('pass2'))
+  it('rejette un hash PBKDF2 mal formé', async () => {
+    expect(await verifyPassword('admin123', 'pbkdf2:sha256:invalide')).toBe(false)
   })
 })
 

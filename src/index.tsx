@@ -71,11 +71,44 @@ function validateEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+// PBKDF2 avec Web Crypto API — compatible Cloudflare Workers, sécurisé (600 000 itérations NIST 2024)
 async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hash = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
+  const enc = new TextEncoder()
+  // Sel aléatoire de 16 octets
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 600000 },
+    keyMaterial, 256
+  )
+  const hashArr = new Uint8Array(bits)
+  const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('')
+  const hashHex = Array.from(hashArr).map(b => b.toString(16).padStart(2, '0')).join('')
+  return `pbkdf2:sha256:600000:${saltHex}:${hashHex}`
+}
+
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const enc = new TextEncoder()
+  // Format PBKDF2 moderne
+  if (stored.startsWith('pbkdf2:')) {
+    const parts = stored.split(':')
+    if (parts.length !== 5) return false
+    const [, , iterStr, saltHex, expectedHex] = parts
+    const iterations = parseInt(iterStr, 10)
+    const salt = new Uint8Array(saltHex.match(/.{2}/g)!.map(h => parseInt(h, 16)))
+    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits'])
+    const bits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
+      keyMaterial, 256
+    )
+    const hashHex = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('')
+    return hashHex === expectedHex
+  }
+  // Ancien hash SHA-256 (compatibilité migration)
+  const data = enc.encode(password)
+  const sha = await crypto.subtle.digest('SHA-256', data)
+  const shaHex = Array.from(new Uint8Array(sha)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return shaHex === stored
 }
 
 // JWT manuel (HMAC-SHA256)
@@ -118,29 +151,6 @@ function minutesToHours(minutes: number): string {
   return `${h}h ${m.toString().padStart(2, '0')}m`
 }
 
-// Chiffrement simple (XOR + base64) pour stocker les mots de passe lisibles par l'admin
-function encryptPassword(password: string): string {
-  const key = 'bgfibank2024'
-  let result = ''
-  for (let i = 0; i < password.length; i++) {
-    result += String.fromCharCode(password.charCodeAt(i) ^ key.charCodeAt(i % key.length))
-  }
-  return btoa(result)
-}
-
-function decryptPassword(encrypted: string): string {
-  try {
-    const key = 'bgfibank2024'
-    const decoded = atob(encrypted)
-    let result = ''
-    for (let i = 0; i < decoded.length; i++) {
-      result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length))
-    }
-    return result
-  } catch {
-    return '••••••••'
-  }
-}
 
 // ============================================
 // AUTH ROUTES
@@ -190,8 +200,8 @@ app.post('/api/auth/login', async (c) => {
       }, 401)
     }
 
-    const passwordHash = await hashPassword(password)
-    if (passwordHash !== user.password_hash) {
+    const passwordMatch = await verifyPassword(password, user.password_hash)
+    if (!passwordMatch) {
       const result = recordFailedAttempt(ip)
       await c.env.DB.prepare(
         'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
@@ -302,10 +312,9 @@ app.post('/api/auth/reset-confirm', async (c) => {
 
     // Code valide — mettre à jour le mot de passe
     const passwordHash = await hashPassword(new_password)
-    const passwordEncrypted = encryptPassword(new_password)
     await c.env.DB.prepare(
-      'UPDATE users SET password_hash=?, password_encrypted=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
-    ).bind(passwordHash, passwordEncrypted, user.id).run()
+      'UPDATE users SET password_hash=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+    ).bind(passwordHash, user.id).run()
 
     // Supprimer le code utilisé
     resetCodes.delete(user.id)
@@ -355,11 +364,10 @@ app.post('/api/admin/users', async (c) => {
     if (password.length < 4) return c.json({ error: 'Mot de passe trop court (min 4 caractères)' }, 400)
 
     const passwordHash = await hashPassword(password)
-    const passwordEncrypted = encryptPassword(password)
 
     const result = await c.env.DB.prepare(
-      'INSERT INTO users (first_name, last_name, email, password_hash, password_encrypted, role, department_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).bind(first_name, last_name, email, passwordHash, passwordEncrypted, role, department_id || null, status).run()
+      'INSERT INTO users (first_name, last_name, email, password_hash, role, department_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(first_name, last_name, email, passwordHash, role, department_id || null, status).run()
 
     await c.env.DB.prepare(
       'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
@@ -381,10 +389,9 @@ app.put('/api/admin/users/:id', async (c) => {
 
     if (password) {
       const passwordHash = await hashPassword(password)
-      const passwordEncrypted = encryptPassword(password)
       await c.env.DB.prepare(
-        'UPDATE users SET first_name=?, last_name=?, email=?, password_hash=?, password_encrypted=?, role=?, department_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
-      ).bind(first_name, last_name, email, passwordHash, passwordEncrypted, role, department_id || null, status, id).run()
+        'UPDATE users SET first_name=?, last_name=?, email=?, password_hash=?, role=?, department_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+      ).bind(first_name, last_name, email, passwordHash, role, department_id || null, status, id).run()
     } else {
       await c.env.DB.prepare(
         'UPDATE users SET first_name=?, last_name=?, email=?, role=?, department_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
@@ -399,25 +406,6 @@ app.put('/api/admin/users/:id', async (c) => {
   } catch (e: any) {
     return c.json({ error: e.message }, 500)
   }
-})
-
-// Route pour voir le mot de passe d'un utilisateur (admin seulement)
-app.get('/api/admin/users/:id/password', async (c) => {
-  const currentUser = await getUser(c)
-  if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
-
-  const id = c.req.param('id')
-  const user = await c.env.DB.prepare('SELECT password_encrypted FROM users WHERE id = ?').bind(id).first() as any
-
-  if (!user) return c.json({ error: 'Utilisateur non trouvé' }, 404)
-
-  const password = user.password_encrypted ? decryptPassword(user.password_encrypted) : '(mot de passe non disponible)'
-
-  await c.env.DB.prepare(
-    'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
-  ).bind(currentUser.id, 'VIEW_PASSWORD', `Consultation du mot de passe de l\'utilisateur ID ${id}`).run()
-
-  return c.json({ password })
 })
 
 app.delete('/api/admin/users/:id', async (c) => {

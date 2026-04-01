@@ -595,7 +595,6 @@ async function renderUsers() {
                 <td>${formatDate(u.last_login)}</td>
                 <td style="white-space:nowrap">
                   <button class="btn btn-sm btn-outline" onclick="showUserModal(${u.id})" title="Modifier"><i class="fas fa-edit"></i></button>
-                  <button class="btn btn-sm" style="margin-left:4px;background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1" onclick="showUserPassword(${u.id}, '${u.first_name} ${u.last_name}')" title="Voir mot de passe"><i class="fas fa-eye"></i></button>
                   <button class="btn btn-sm" style="margin-left:4px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d" onclick="showResetCodeModal(${u.id}, '${u.first_name} ${u.last_name}')" title="Générer code reset"><i class="fas fa-key"></i></button>
                   ${u.id !== currentUser.id ? `<button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id}, '${u.first_name} ${u.last_name}')" style="margin-left:4px" title="D\u00e9sactiver"><i class="fas fa-trash"></i></button>` : ''}
                 </td>
@@ -748,53 +747,6 @@ async function showResetCodeModal(userId, userName) {
         L'utilisateur devra entrer ce code + son nouveau mot de passe sur la page de connexion.
       </div>
       <div style="text-align:right">
-        <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Fermer</button>
-      </div>
-    </div>
-  </div>`;
-  document.body.appendChild(modal);
-}
-
-// Afficher le mot de passe d'un utilisateur
-async function showUserPassword(userId, userName) {
-  const result = await api('/api/admin/users/' + userId + '/password');
-  if (result.error) {
-    toast('Erreur: ' + result.error, 'error');
-    return;
-  }
-
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.innerHTML = `
-  <div class="modal" style="max-width:400px">
-    <div class="modal-header">
-      <span class="modal-title"><i class="fas fa-key mr-2"></i>Mot de passe</span>
-      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
-    </div>
-    <div style="padding:20px">
-      <div style="margin-bottom:12px;color:#6b7280;font-size:14px">
-        <i class="fas fa-user mr-1"></i> <b>${userName}</b>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;padding:14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px">
-        <input type="password" id="pwd-display" value="${result.password}" readonly 
-          style="flex:1;border:none;background:none;font-size:16px;font-family:monospace;color:#1e3a5f;outline:none">
-        <button onclick="
-          const inp = document.getElementById('pwd-display');
-          inp.type = inp.type === 'password' ? 'text' : 'password';
-          this.innerHTML = inp.type === 'password' ? '<i class=\\'fas fa-eye\\'></i>' : '<i class=\\'fas fa-eye-slash\\'></i>';
-        " style="background:none;border:none;cursor:pointer;color:#0369a1;font-size:16px">
-          <i class="fas fa-eye"></i>
-        </button>
-        <button onclick="navigator.clipboard.writeText('${result.password}').then(()=>{ toast('Mot de passe copié !') })" 
-          style="background:none;border:none;cursor:pointer;color:#0369a1;font-size:16px" title="Copier">
-          <i class="fas fa-copy"></i>
-        </button>
-      </div>
-      <div style="margin-top:12px;padding:10px;background:#fef3c7;border-radius:6px;font-size:12px;color:#92400e">
-        <i class="fas fa-exclamation-triangle mr-1"></i>
-        Cette action est enregistrée dans le journal d'audit.
-      </div>
-      <div style="text-align:right;margin-top:16px">
         <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Fermer</button>
       </div>
     </div>
