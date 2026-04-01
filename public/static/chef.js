@@ -85,7 +85,7 @@ function startChefNotifPolling() {
       const items = await r.json();
       _chefNotifSince = new Date().toISOString();
       items.forEach(n => {
-        if (n.status === 'Termine') {
+        if (n.status === 'Terminé') {
           toast('Nouvelle session a valider - ' + n.agent_name + ' : ' + n.task_name, 'info');
         }
       });

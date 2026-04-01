@@ -1415,7 +1415,11 @@ app.get('/api/notifications', async (c) => {
   const user = await getUser(c)
   if (!user) return c.json({ error: 'Non autorisé' }, 401)
 
-  const since = c.req.query('since') || new Date(0).toISOString()
+  // Convertir la date ISO du frontend (2026-04-01T16:00:00.000Z)
+  // en format comparable avec les dates SQLite (2026-04-01 16:34:33)
+  // On remplace T par espace et on coupe les millisecondes/Z
+  const rawSince = c.req.query('since') || '1970-01-01T00:00:00.000Z'
+  const since = rawSince.replace('T', ' ').replace('Z', '').split('.')[0]
 
   try {
     if (user.role === 'Agent') {
