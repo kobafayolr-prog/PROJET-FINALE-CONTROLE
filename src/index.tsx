@@ -1457,15 +1457,33 @@ function getLoginHTML(): string {
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{width:100%;height:100%;overflow:hidden;}
 
-/* ── Diaporama plein écran ── */
+/* ── Diaporama Ken Burns (effet vidéo) ── */
+@keyframes kb-zoom-in        {from{transform:scale(1)     translateX(0)     translateY(0);}    to{transform:scale(1.18)  translateX(-2%)   translateY(-1.5%);}}
+@keyframes kb-zoom-out       {from{transform:scale(1.18)  translateX(-2%)   translateY(-1.5%);}to{transform:scale(1)     translateX(0)     translateY(0);}}
+@keyframes kb-drift-left     {from{transform:scale(1.12)  translateX(2%)    translateY(0);}    to{transform:scale(1.22)  translateX(-2%)   translateY(-1%);}}
+@keyframes kb-drift-right    {from{transform:scale(1.12)  translateX(-2%)   translateY(1%);}   to{transform:scale(1.22)  translateX(2%)    translateY(-1%);}}
+@keyframes kb-tilt-up        {from{transform:scale(1.1)   translateX(0)     translateY(2%);}   to{transform:scale(1.2)   translateX(1%)    translateY(-2%);}}
+
 .bg-slide{
-  position:fixed;inset:0;width:100%;height:100%;z-index:0;
-  background-size:cover;background-position:center;background-repeat:no-repeat;
-  opacity:0;transition:opacity 1.5s ease-in-out;pointer-events:none;
+  position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;
+  overflow:hidden;opacity:0;transition:opacity 1.6s ease-in-out;
 }
 .bg-slide.active{opacity:1;}
-/* overlay sombre léger pour lisibilité */
-.bg-overlay{position:fixed;inset:0;z-index:0;background:rgba(5,10,30,0.42);pointer-events:none;}
+.bg-slide-inner{
+  position:absolute;inset:-8%;          /* marge pour que le zoom ne montre pas les bords */
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
+  will-change:transform;
+}
+/* 5 variations d'animation Ken Burns */
+.kb-0 .bg-slide-inner{animation:kb-zoom-in     8s linear forwards;}
+.kb-1 .bg-slide-inner{animation:kb-zoom-out    8s linear forwards;}
+.kb-2 .bg-slide-inner{animation:kb-drift-left  8s linear forwards;}
+.kb-3 .bg-slide-inner{animation:kb-drift-right 8s linear forwards;}
+.kb-4 .bg-slide-inner{animation:kb-tilt-up     8s linear forwards;}
+/* overlay sombre pour lisibilité */
+.bg-overlay{position:fixed;inset:0;z-index:0;background:rgba(4,8,28,0.48);pointer-events:none;}
 
 /* ── Overlay verre dépoli global ── */
 .scene{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;padding:16px;}
@@ -1587,7 +1605,7 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </head>
 <body>
 
-<!-- Diaporama plein écran (10 images, fondu aléatoire) -->
+<!-- Diaporama Ken Burns — effet vidéo (zoom/pan lent) -->
 <div id="slideshow"></div>
 <div class="bg-overlay"></div>
 <script>
@@ -1598,7 +1616,8 @@ html,body{width:100%;height:100%;overflow:hidden;}
     '/static/login-bg-07.jpg','/static/login-bg-08.jpg','/static/login-bg-09.jpg',
     '/static/login-bg-10.jpg'
   ];
-  const INTERVAL = 5000;
+  const INTERVAL  = 7000;   // 7 s par image (laisser le temps au zoom d'être visible)
+  const KB_STYLES = 5;      // nb de variantes Ken Burns
 
   const container = document.getElementById('slideshow');
 
@@ -1609,22 +1628,45 @@ html,body{width:100%;height:100%;overflow:hidden;}
   }
   let playlist = shuffle(IMAGES);
   let idx = 0;
+  let kbIdx = 0;
 
+  /* Créer 2 slides (alternance A/B) */
   const slides = [0,1].map(()=>{
-    const d=document.createElement('div');
-    d.className='bg-slide';
+    const d = document.createElement('div');
+    d.className = 'bg-slide';
+    const inner = document.createElement('div');
+    inner.className = 'bg-slide-inner';
+    d.appendChild(inner);
     container.appendChild(d);
     return d;
   });
   let current = 0;
 
+  /* Précharger toutes les images */
   IMAGES.forEach(src=>{ const i=new Image(); i.src=src; });
+
+  function applyKB(slide, kbClass){
+    /* retire toutes les classes kb-* puis applique la nouvelle */
+    for(let k=0;k<KB_STYLES;k++) slide.classList.remove('kb-'+k);
+    slide.classList.add(kbClass);
+    /* forcer le redémarrage de l'animation CSS */
+    const inner = slide.querySelector('.bg-slide-inner');
+    inner.style.animation = 'none';
+    inner.offsetHeight; /* reflow */
+    inner.style.animation = '';
+  }
 
   function showNext(){
     const next = 1 - current;
-    slides[next].style.backgroundImage = 'url("'+playlist[idx]+'")';
+    const nextKB = 'kb-' + (kbIdx % KB_STYLES);
+    kbIdx++;
+
+    const inner = slides[next].querySelector('.bg-slide-inner');
+    inner.style.backgroundImage = 'url("'+playlist[idx]+'")';
+
     requestAnimationFrame(()=>{
       requestAnimationFrame(()=>{
+        applyKB(slides[next], nextKB);
         slides[next].classList.add('active');
         slides[current].classList.remove('active');
         current = next;
@@ -1634,7 +1676,12 @@ html,body{width:100%;height:100%;overflow:hidden;}
     });
   }
 
-  slides[current].style.backgroundImage = 'url("'+playlist[idx]+'")';
+  /* Première image immédiatement */
+  const firstKB = 'kb-' + (kbIdx % KB_STYLES);
+  kbIdx++;
+  const firstInner = slides[current].querySelector('.bg-slide-inner');
+  firstInner.style.backgroundImage = 'url("'+playlist[idx]+'")';
+  applyKB(slides[current], firstKB);
   slides[current].classList.add('active');
   idx = (idx + 1) % playlist.length;
 
