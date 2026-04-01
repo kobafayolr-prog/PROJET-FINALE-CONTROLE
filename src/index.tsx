@@ -1507,6 +1507,10 @@ html,body{width:100%;height:100%;overflow:hidden;}
 }
 .left-panel .tagline::before{
   content:'';display:block;width:32px;height:2px;
+  background:linear-gradient(90deg,transparent,rgba(212,175,55,0.9));
+}
+.left-panel .tagline::after{
+  content:'';display:block;width:32px;height:2px;
   background:linear-gradient(90deg,rgba(212,175,55,0.9),transparent);
 }
 .left-panel h1{
@@ -1738,7 +1742,6 @@ html,body{width:100%;height:100%;overflow:hidden;}
 
 <!-- Panneau gauche (visible uniquement sur grand écran) -->
 <div class="left-panel">
-  <div class="divider-gold"></div>
   <div class="tagline">BGFIBank CA</div>
   <h1 id="left-headline"></h1>
 </div>
