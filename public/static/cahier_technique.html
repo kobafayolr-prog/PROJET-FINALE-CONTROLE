@@ -695,7 +695,7 @@
 
   <div class="toc-item main"><span><span class="toc-num">13.</span> Migrations SQL <span class="toc-new">NOUVEAU</span></span><span class="toc-page-num">26</span></div>
   <div class="toc-item sub"><span>13.1 Migration 0001 — Schéma initial</span></div>
-  <div class="toc-item sub"><span>13.2 Migration 0002 — Sécurité (password_encrypted)</span></div>
+  <div class="toc-item sub"><span>13.2 Migration 0002 — Sécurité (colonne retirée en 0003)</span></div>
   <div class="toc-item sub"><span>13.3 Données de démarrage (seed.sql)</span></div>
 
   <div class="toc-item main"><span><span class="toc-num">Annexe A.</span> Glossaire</span><span class="toc-page-num">27</span></div>
@@ -732,7 +732,7 @@
     <thead><tr><th>Module</th><th>Description</th><th>Profil concerné</th></tr></thead>
     <tbody>
       <tr><td><strong>Authentification</strong></td><td>Connexion sécurisée avec JWT, rate-limiting 3 tentatives / blocage <strong>2 min</strong></td><td>Tous</td></tr>
-      <tr><td><strong>Gestion des utilisateurs</strong></td><td>CRUD complet : création, modification, désactivation (soft delete), affichage des mots de passe</td><td>Admin</td></tr>
+      <tr><td><strong>Gestion des utilisateurs</strong></td><td>CRUD complet : création, modification, désactivation (soft delete). Mots de passe hachés PBKDF2 — aucun affichage en clair.</td><td>Admin</td></tr>
       <tr><td><strong>Référentiels</strong></td><td>Gestion des départements, objectifs stratégiques, processus, tâches avec suppression modale</td><td>Admin</td></tr>
       <tr><td><strong>Pointage Agent</strong></td><td>Chronomètre en temps réel + saisie manuelle de sessions</td><td>Agent</td></tr>
       <tr><td><strong>Validation des sessions</strong></td><td>Valider ou rejeter les sessions soumises par les agents</td><td>Chef Dépt</td></tr>
@@ -1053,7 +1053,7 @@ PROJET-FINALE-CONTROLE/
   </div>
 
   <h4>3.2.5 Table <code>users</code> — Utilisateurs <span class="badge-upd-inline">MIS À JOUR</span></h4>
-  <p>Table centrale des comptes utilisateurs. Le champ <code>password_encrypted</code> a été ajouté (migration 0002) pour permettre la consultation des mots de passe par l'administrateur.</p>
+  <p>Table centrale des comptes utilisateurs. Le champ <code>password_hash</code> stocke le hash PBKDF2-SHA256 avec sel aléatoire (600 000 itérations, recommandation NIST 2024). La colonne <code>password_encrypted</code> ajoutée en migration 0002 a été <strong>supprimée en migration 0003</strong> car obsolète.</p>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Colonne</th><th>Type MySQL</th><th>Contrainte</th><th>Description</th></tr></thead>
@@ -1062,8 +1062,7 @@ PROJET-FINALE-CONTROLE/
         <tr><td>first_name</td><td><span class="type-badge t-text">VARCHAR(100)</span></td><td>NOT NULL</td><td>Prénom</td></tr>
         <tr><td>last_name</td><td><span class="type-badge t-text">VARCHAR(100)</span></td><td>NOT NULL</td><td>Nom de famille</td></tr>
         <tr><td>email</td><td><span class="type-badge t-text">VARCHAR(255)</span></td><td>UNIQUE NOT NULL</td><td>Adresse email (identifiant de connexion)</td></tr>
-        <tr><td>password_hash</td><td><span class="type-badge t-text">VARCHAR(64)</span></td><td>NOT NULL</td><td>Hash SHA-256 hexadécimal du mot de passe (connexion)</td></tr>
-        <tr style="background:#f0fdf4"><td>password_encrypted</td><td><span class="type-badge t-text">TEXT</span></td><td>DEFAULT NULL</td><td><strong>★ NOUVEAU</strong> — Mot de passe obfusqué XOR+Base64 (lecture admin). Mis à jour lors du code reset.</td></tr>
+        <tr><td>password_hash</td><td><span class="type-badge t-text">TEXT</span></td><td>NOT NULL</td><td>Hash PBKDF2-SHA256 avec sel 16 octets, 600 000 itérations. Format : <code>pbkdf2:sha256:600000:&lt;sel_hex&gt;:&lt;hash_hex&gt;</code>. Fallback SHA-256 accepté pour comptes existants.</td></tr>
         <tr><td>role</td><td><span class="type-badge t-enum">ENUM</span></td><td>DEFAULT 'Agent'</td><td><em>Agent</em> | <em>Chef de Département</em> | <em>Administrateur</em></td></tr>
         <tr><td class="fk">department_id</td><td><span class="type-badge t-int">INT</span></td><td>FK → departments(id), nullable</td><td>Département (NULL pour l'admin)</td></tr>
         <tr><td>status</td><td><span class="type-badge t-enum">ENUM</span></td><td>DEFAULT 'Actif'</td><td>État : <em>Actif</em> / <em>Inactif</em> (soft delete)</td></tr>
@@ -1169,8 +1168,7 @@ PROJET-FINALE-CONTROLE/
   <span class="sql-col">first_name</span>          <span class="sql-kw">VARCHAR</span>(100) <span class="sql-kw">NOT NULL</span>,
   <span class="sql-col">last_name</span>           <span class="sql-kw">VARCHAR</span>(100) <span class="sql-kw">NOT NULL</span>,
   <span class="sql-col">email</span>               <span class="sql-kw">VARCHAR</span>(255) <span class="sql-kw">UNIQUE NOT NULL</span>,
-  <span class="sql-col">password_hash</span>       <span class="sql-kw">VARCHAR</span>(64) <span class="sql-kw">NOT NULL</span>,
-  <span class="sql-col">password_encrypted</span>  <span class="sql-kw">TEXT DEFAULT NULL</span>,  <span class="sql-cmt">-- ★ ajout migration 0002</span>
+  <span class="sql-col">password_hash</span>       <span class="sql-kw">TEXT NOT NULL</span>,  <span class="sql-cmt">-- PBKDF2-SHA256 (600 000 itérations) — migration 0003 a supprimé password_encrypted</span>
   <span class="sql-col">role</span>                <span class="sql-kw">ENUM</span>(<span class="sql-str">'Agent'</span>,<span class="sql-str">'Chef de Département'</span>,<span class="sql-str">'Administrateur'</span>) <span class="sql-kw">DEFAULT</span> <span class="sql-str">'Agent'</span>,
   <span class="sql-col">department_id</span>       <span class="sql-kw">INT DEFAULT NULL</span>,
   <span class="sql-col">status</span>              <span class="sql-kw">ENUM</span>(<span class="sql-str">'Actif'</span>,<span class="sql-str">'Inactif'</span>) <span class="sql-kw">DEFAULT</span> <span class="sql-str">'Actif'</span>,
@@ -1386,9 +1384,8 @@ PROJET-FINALE-CONTROLE/
   <div class="api-section">
     <div class="api-group-title">👤 Gestion des Utilisateurs</div>
     <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/admin/users</div><div class="api-desc">Liste tous les utilisateurs <strong>actifs</strong> (<code>WHERE status='Actif'</code>) avec leur département.</div></div><span class="api-auth auth-admin">Admin</span></div>
-    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/admin/users</div><div class="api-desc">Crée un utilisateur. Hash SHA-256 + chiffrement XOR automatique. Audit loggé.</div></div><span class="api-auth auth-admin">Admin</span></div>
-    <div class="api-route"><span class="method PUT">PUT</span><div><div class="api-path">/api/admin/users/:id</div><div class="api-desc">Modifie un utilisateur. Si nouveau mot de passe fourni, re-hashé et re-chiffré.</div></div><span class="api-auth auth-admin">Admin</span></div>
-    <div class="api-route"><span class="method GET">GET</span><div><div class="api-path">/api/admin/users/:id/password</div><div class="api-desc">Retourne le mot de passe en clair (déchiffrement XOR). Action enregistrée en audit.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method POST">POST</span><div><div class="api-path">/api/admin/users</div><div class="api-desc">Crée un utilisateur. Hash PBKDF2-SHA256 automatique (600 000 itérations). Audit loggé. Rôle validé contre les trois valeurs autorisées.</div></div><span class="api-auth auth-admin">Admin</span></div>
+    <div class="api-route"><span class="method PUT">PUT</span><div><div class="api-path">/api/admin/users/:id</div><div class="api-desc">Modifie un utilisateur. Si nouveau mot de passe fourni (≥ 8 caractères), re-hashé en PBKDF2. Validation enum rôle.</div></div><span class="api-auth auth-admin">Admin</span></div>
     <div class="api-route new-route"><span class="method DELETE">DEL</span><div><div class="api-path">/api/admin/users/:id <span class="badge-new-inline">NOUVEAU</span></div><div class="api-desc">Désactive l'utilisateur (<code>status → 'Inactif'</code>). Protection : impossible de désactiver son propre compte. Soft delete.</div></div><span class="api-auth auth-admin">Admin</span></div>
 
     <div class="api-group-title" style="margin-top:14px">🏢 Référentiels — Départements</div>
@@ -1468,7 +1465,7 @@ PROJET-FINALE-CONTROLE/
   <div class="flow" style="margin:10px 0">
     <div class="flow-step" style="font-size:9pt">Utilisateur<br>envoie email+mdp</div>
     <div class="flow-arrow">→</div>
-    <div class="flow-step" style="font-size:9pt">Vérification<br>hash SHA-256</div>
+    <div class="flow-step" style="font-size:9pt">Vérification<br>hash PBKDF2<br>(ou SHA-256 legacy)</div>
     <div class="flow-arrow">→</div>
     <div class="flow-step" style="font-size:9pt">Génération<br>JWT signé</div>
     <div class="flow-arrow">→</div>
@@ -1477,15 +1474,25 @@ PROJET-FINALE-CONTROLE/
     <div class="flow-step" style="font-size:9pt">Header Bearer<br>sur chaque appel</div>
   </div>
 
-  <h3>6.2 Hachage des mots de passe <span class="badge-upd-inline">MIS À JOUR</span></h3>
+  <h3>6.2 Hachage des mots de passe <span class="badge-upd-inline">MIS À JOUR — PBKDF2</span></h3>
+  <div class="highlight" style="border-left:4px solid #16a34a;background:#f0fdf4">
+    <strong>🔒 Sécurité renforcée :</strong> Passage de SHA-256 non salé à <strong>PBKDF2-SHA256</strong> avec sel aléatoire
+    16 octets et <strong>600 000 itérations</strong> (recommandation NIST SP 800-132, 2024). Le stockage réversible
+    (colonne <code>password_encrypted</code> + route GET mot de passe) a été <strong>supprimé définitivement</strong>.
+  </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Champ</th><th>Algorithme</th><th>Format</th><th>Usage</th></tr></thead>
+      <thead><tr><th>Champ</th><th>Algorithme</th><th>Format stocké</th><th>Usage</th></tr></thead>
       <tbody>
-        <tr><td>password_hash</td><td>SHA-256 (Web Crypto API)</td><td>Hexadécimal 64 chars</td><td>Comparaison lors de la connexion</td></tr>
-        <tr style="background:#f0fdf4"><td>password_encrypted <strong>★</strong></td><td>XOR + Base64 (clé: bgfibank2024)</td><td>Base64 variable</td><td><strong>NOUVEAU</strong> — Affichage admin (bouton œil). Mis à jour automatiquement lors du code reset.</td></tr>
+        <tr><td>password_hash</td><td>PBKDF2-SHA256 — 600 000 iter, sel 16 octets (Web Crypto API)</td><td><code>pbkdf2:sha256:600000:&lt;sel_hex&gt;:&lt;hash_hex&gt;</code></td><td>Vérification lors de la connexion et du reset</td></tr>
+        <tr style="background:#fff7ed"><td>password_hash (legacy)</td><td>SHA-256 simple (fallback comptes existants)</td><td>Hexadécimal 64 chars</td><td>Comptes créés avant la migration — migre vers PBKDF2 automatiquement à la prochaine connexion</td></tr>
       </tbody>
     </table>
+  </div>
+  <div class="note">
+    <strong>Migration automatique :</strong> Lors de la connexion d'un compte possédant encore un hash SHA-256 (64 chars),
+    le backend vérifie le mot de passe, puis <em>re-hache automatiquement</em> en PBKDF2 et met à jour <code>password_hash</code>
+    en base. L'utilisateur ne voit rien, la migration est transparente.
   </div>
 
   <h3>6.3 Rate Limiting &amp; Verrouillage <span class="badge-upd-inline">MIS À JOUR — 2 min</span></h3>
@@ -1536,7 +1543,6 @@ PROJET-FINALE-CONTROLE/
     <span class="chip chip-orange">CREATE_USER</span>
     <span class="chip chip-orange">UPDATE_USER</span>
     <span class="chip chip-red">DELETE_USER</span>
-    <span class="chip chip-gray">VIEW_PASSWORD</span>
     <span class="chip chip-purple">RESET_PASSWORD_REQUEST</span>
     <span class="chip chip-purple">RESET_PASSWORD_CONFIRM</span>
     <span class="chip chip-green">VALIDATE_SESSION</span>
@@ -1854,7 +1860,7 @@ app.post(<span class="sql-str">'/api/auth/reset-confirm'</span>, <span class="sq
     </div>
   </div>
 
-  <h3>10.2 Comportement Frontend Admin &amp; Chef</h3>
+  <h3>10.2 Comportement Frontend par rôle</h3>
 
   <div class="table-wrap">
     <table>
@@ -1865,41 +1871,55 @@ app.post(<span class="sql-str">'/api/auth/reset-confirm'</span>, <span class="sq
           <td><code>admin.js</code></td>
           <td><code>startNotifPolling()</code><br><code>pollNotifications()</code></td>
           <td>30 s</td>
-          <td>Session <code>status = 'Terminé'</code> :<br>badge rouge + toast bleu</td>
+          <td>Session <code>status = 'Terminé'</code> :<br>badge rouge + toast bleu « Nouvelle session à valider »</td>
         </tr>
         <tr>
           <td><span style="background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700">Chef</span></td>
           <td><code>chef.js</code></td>
           <td><code>startChefNotifPolling()</code></td>
           <td>30 s</td>
-          <td>Session <code>status = 'Terminé'</code> :<br>toast « Nouvelle session à valider »</td>
+          <td>Session <code>status = 'Terminé'</code> :<br>toast « Nouvelle session à valider — Prénom NOM : Tâche »</td>
+        </tr>
+        <tr>
+          <td><span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700">Agent</span></td>
+          <td><code>agent.js</code></td>
+          <td><code>startAgentNotifPolling()</code></td>
+          <td>20 s</td>
+          <td>Session <code>status = 'Validé'</code> : toast vert « ✓ Session validée — Tâche »<br>Session <code>status = 'Rejeté'</code> : toast rouge « ✗ Session rejetée — Motif : … »</td>
         </tr>
       </tbody>
     </table>
   </div>
 
-  <h4 style="margin:18px 0 8px">Flux de notification</h4>
+  <h4 style="margin:18px 0 8px">Flux complet de notification (Agent ↔ Chef)</h4>
   <div class="flow" style="margin:10px 0">
     <div class="flow-step" style="font-size:9pt">Agent arrête<br>une session<br>(status=Terminé)</div>
     <div class="flow-arrow">→</div>
-    <div class="flow-step" style="font-size:9pt">Backend stocke<br>en base de données</div>
+    <div class="flow-step" style="font-size:9pt">Backend stocke<br>en base (D1 / SQLite)</div>
     <div class="flow-arrow">→</div>
-    <div class="flow-step" style="font-size:9pt">Polling 30s<br>Admin / Chef</div>
+    <div class="flow-step" style="font-size:9pt">Polling 30s<br>Chef + Admin</div>
     <div class="flow-arrow">→</div>
-    <div class="flow-step" style="font-size:9pt">Toast + badge<br>de notification</div>
+    <div class="flow-step" style="font-size:9pt">Toast Chef<br>« Nouvelle session<br>à valider »</div>
     <div class="flow-arrow">→</div>
-    <div class="flow-step" style="font-size:9pt">Chef valide<br>ou rejette</div>
+    <div class="flow-step" style="font-size:9pt">Chef valide<br>(Validé) ou<br>rejette (Rejeté)</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step" style="font-size:9pt">Polling 20s<br>Agent</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step" style="font-size:9pt">Toast Agent<br>✓ Validé<br>✗ Rejeté + motif</div>
   </div>
 
   <div class="table-wrap" style="margin-top:18px">
     <table>
       <thead><tr><th>Paramètre</th><th>Valeur</th><th>Description</th></tr></thead>
       <tbody>
-        <tr><td><code>since</code></td><td>ISO 8601</td><td>Horodatage de la dernière vérification (ex : <code>2025-03-15T10:30:00.000Z</code>)</td></tr>
-        <tr><td>Intervalle</td><td>30 000 ms</td><td>Fréquence de polling — 1 appel toutes les 30 secondes par profil actif</td></tr>
-        <tr><td>Réponse</td><td>Array JSON</td><td>Liste de sessions <code>{ id, status, agent_name, task_name }</code> nouvelles depuis <code>since</code></td></tr>
-        <tr><td>Autorisation</td><td>Bearer JWT</td><td>Token JWT dans le header Authorization — non autorisé sans token valide</td></tr>
-        <tr><td>Badge</td><td>Element DOM</td><td><code>id="notif-badge"</code> — affiché avec le nombre de nouvelles sessions</td></tr>
+        <tr><td><code>since</code></td><td>ISO 8601 UTC</td><td>Horodatage de la dernière vérification (ex : <code>2025-03-15T10:30:00.000Z</code>). Converti en format SQLite <code>2025-03-15 10:30:00</code> côté backend via <code>datetime(?)</code>.</td></tr>
+        <tr><td>Intervalle Agent</td><td>20 000 ms</td><td>Polling toutes les 20 secondes — vérifie les sessions Validé/Rejeté de l'agent</td></tr>
+        <tr><td>Intervalle Chef/Admin</td><td>30 000 ms</td><td>Polling toutes les 30 secondes — vérifie les sessions Terminé du département</td></tr>
+        <tr><td>Réponse Agent</td><td>Array JSON</td><td>Liste <code>{ id, status, rejected_reason, task_name }</code> — sessions Validé ou Rejeté depuis <code>since</code></td></tr>
+        <tr><td>Réponse Chef</td><td>Array JSON</td><td>Liste <code>{ id, status, task_name, agent_name }</code> — sessions Terminé du département depuis <code>since</code></td></tr>
+        <tr><td>Réponse Admin</td><td>Array JSON vide</td><td>Le dashboard admin reçoit un tableau vide — notifications gérées différemment</td></tr>
+        <tr><td>Autorisation</td><td>Bearer JWT</td><td>Token JWT dans le header Authorization — HTTP 401 sans token valide</td></tr>
+        <tr><td>Badge</td><td>Element DOM</td><td><code>id="notif-badge"</code> — affiché avec le nombre de nouvelles sessions (Chef/Admin uniquement)</td></tr>
       </tbody>
     </table>
   </div>
@@ -1955,9 +1975,10 @@ npm install
 <span class="sql-cmt"># 3. Créer la base de données MySQL</span>
 mysql -u root -p -e "CREATE DATABASE timetrack_bgfibank CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-<span class="sql-cmt"># 4. Appliquer le schéma et les données initiales</span>
+<span class="sql-cmt"># 4. Appliquer le schéma et les données initiales (3 migrations)</span>
 mysql -u root -p timetrack_bgfibank &lt; migrations/0001_initial_schema.sql
 mysql -u root -p timetrack_bgfibank &lt; migrations/0002_add_security.sql
+mysql -u root -p timetrack_bgfibank &lt; migrations/0003_bcrypt_remove_password_encrypted.sql
 mysql -u root -p timetrack_bgfibank &lt; seed.sql
 
 <span class="sql-cmt"># 5. Configurer les variables d'environnement (.env)</span>
@@ -2175,14 +2196,29 @@ pm2 start ecosystem.config.cjs
 <span class="sql-kw">CREATE INDEX IF NOT EXISTS</span> idx_processes_department     <span class="sql-kw">ON</span> processes(department_id);
 <span class="sql-kw">CREATE INDEX IF NOT EXISTS</span> idx_audit_logs_user          <span class="sql-kw">ON</span> audit_logs(user_id);</pre></div>
 
-  <h3>13.2 Migration 0002 — Sécurité (password_encrypted)</h3>
-  <p>Fichier : <code>migrations/0002_add_security.sql</code> — Ajoute la colonne de mot de passe obfusqué pour la consultation admin.</p>
+  <h3>13.2 Migration 0002 — Sécurité (colonne ajoutée puis retirée)</h3>
+  <p>Fichier : <code>migrations/0002_add_security.sql</code> — Ajoutait la colonne <code>password_encrypted</code> pour l'obfuscation XOR.</p>
 
-  <div class="code-block"><pre><span class="sql-cmt">-- Migration 0002 : Ajout colonne sécurité</span>
+  <div class="code-block"><pre><span class="sql-cmt">-- Migration 0002 : Ajout colonne sécurité (XOR+Base64, obsolète)</span>
 <span class="sql-kw">ALTER TABLE</span> <span class="sql-col">users</span>
-  <span class="sql-kw">ADD COLUMN</span> <span class="sql-col">password_encrypted</span> <span class="sql-kw">TEXT DEFAULT NULL</span>;
-<span class="sql-cmt">-- Stocke le mot de passe obfusqué XOR+Base64 (clé : bgfibank2024)</span>
-<span class="sql-cmt">-- Mis à jour automatiquement lors de chaque changement de mot de passe</span></pre></div>
+  <span class="sql-kw">ADD COLUMN</span> <span class="sql-col">password_encrypted</span> <span class="sql-kw">TEXT DEFAULT NULL</span>;</pre></div>
+
+  <div class="note" style="border-left:4px solid #dc2626;background:#fef2f2">
+    <strong>⚠️ Cette colonne a été supprimée en migration 0003.</strong>
+    Le stockage réversible des mots de passe (XOR+Base64) était une vulnérabilité de sécurité.
+    La route <code>GET /api/admin/users/:id/password</code> qui retournait le mot de passe en clair a également été supprimée.
+  </div>
+
+  <h3>13.3 Migration 0003 — Suppression password_encrypted (PBKDF2)</h3>
+  <p>Fichier : <code>migrations/0003_bcrypt_remove_password_encrypted.sql</code> — Supprime la colonne obsolète et migre vers PBKDF2.</p>
+
+  <div class="code-block"><pre><span class="sql-cmt">-- Migration 0003 : Sécurité — Suppression colonne réversible + passage à PBKDF2</span>
+<span class="sql-cmt">-- SQLite ne supporte pas DROP COLUMN avec IF EXISTS</span>
+<span class="sql-kw">ALTER TABLE</span> <span class="sql-col">users</span> <span class="sql-kw">DROP COLUMN</span> <span class="sql-col">password_encrypted</span>;
+
+<span class="sql-cmt">-- Le champ password_hash accepte désormais deux formats :</span>
+<span class="sql-cmt">--   1. PBKDF2 : pbkdf2:sha256:600000:&lt;sel_hex&gt;:&lt;hash_hex&gt;</span>
+<span class="sql-cmt">--   2. SHA-256 legacy : 64 caractères hexadécimaux (migration auto à la prochaine connexion)</span></pre></div>
 
   <h3>13.3 Données de Démarrage (seed.sql)</h3>
   <p>Le fichier <code>seed.sql</code> est exécuté une seule fois à l'installation pour insérer les données initiales :</p>
@@ -2195,7 +2231,7 @@ pm2 start ecosystem.config.cjs
         <tr><td><code>departments</code></td><td>8</td><td>DC, DCONF, DF, DG, DI, DOT, DRH, DR</td></tr>
         <tr><td><code>processes</code></td><td>14</td><td>Processus couvrant tous les départements et objectifs</td></tr>
         <tr><td><code>tasks</code></td><td>21+</td><td>Tâches prédéfinies par département</td></tr>
-        <tr><td><code>users</code></td><td>5</td><td>1 Admin + 2 Chefs + 2 Agents avec mots de passe hachés SHA-256 et chiffrés XOR</td></tr>
+        <tr><td><code>users</code></td><td>5</td><td>1 Admin + 2 Chefs + 2 Agents avec mots de passe hachés SHA-256 (migration automatique vers PBKDF2 à la première connexion)</td></tr>
       </tbody>
     </table>
   </div>
@@ -2214,9 +2250,10 @@ npx wrangler d1 execute webapp-production --local --command="SELECT COUNT(*) FRO
   <div class="code-block"><pre><span class="sql-cmt"># Créer la base de données MySQL</span>
 mysql -u root -p -e <span class="sql-str">"CREATE DATABASE timetrack_bgfibank CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"</span>
 
-<span class="sql-cmt"># Appliquer les migrations</span>
+<span class="sql-cmt"># Appliquer les 3 migrations dans l'ordre</span>
 mysql -u root -p timetrack_bgfibank &lt; migrations/0001_initial_schema.sql
 mysql -u root -p timetrack_bgfibank &lt; migrations/0002_add_security.sql
+mysql -u root -p timetrack_bgfibank &lt; migrations/0003_bcrypt_remove_password_encrypted.sql
 
 <span class="sql-cmt"># Charger les données de démarrage</span>
 mysql -u root -p timetrack_bgfibank &lt; seed.sql</pre></div>
@@ -2261,7 +2298,8 @@ mysql -u root -p timetrack_bgfibank &lt; seed.sql</pre></div>
         <tr><td><strong>SPA</strong></td><td>Single-Page Application — application web dont le contenu est rendu côté client sans rechargement complet de la page.</td></tr>
         <tr><td><strong>utf8mb4</strong></td><td>Jeu de caractères MySQL supportant tous les caractères Unicode y compris les émojis (4 octets max). Recommandé pour tout projet international.</td></tr>
         <tr><td><strong>Wrangler</strong></td><td>CLI officiel de Cloudflare pour développer, tester et déployer des Workers et Pages.</td></tr>
-        <tr><td><strong>XOR</strong></td><td>Opération logique bit à bit utilisée pour l'obfuscation réversible des mots de passe (chiffrement symétrique léger pour l'affichage admin).</td></tr>
+        <tr><td><strong>PBKDF2</strong></td><td>Password-Based Key Derivation Function 2 — algorithme de hachage de mots de passe basé sur HMAC-SHA256, avec sel aléatoire et itérations (600 000 dans ce projet). Recommandé par le NIST SP 800-132 (2024). Irréversible.</td></tr>
+        <tr><td><strong>XOR</strong></td><td>Opération logique bit à bit autrefois utilisée pour l'obfuscation réversible des mots de passe. <strong>Supprimée en v1.3.0</strong> — remplacée par PBKDF2.</td></tr>
       </tbody>
     </table>
   </div>
@@ -2269,11 +2307,14 @@ mysql -u root -p timetrack_bgfibank &lt; seed.sql</pre></div>
   <div style="margin-top:50px;border-top:2px solid #1e3a5f;padding-top:20px;text-align:center;color:#6b7280;font-size:9.5pt">
     <div style="font-size:22px;margin-bottom:8px">🏦</div>
     <strong style="color:#1e3a5f">BGFIBank — Direction des Systèmes d'Information</strong><br>
-    TimeTrack v1.2.0 — Cahier Technique — Mars 2025<br>
+    TimeTrack v1.3.0 — Cahier Technique — Avril 2025<br>
     <em>Document à usage interne uniquement — Reproduction interdite sans autorisation</em><br><br>
     GitHub : <span style="color:#1d4ed8">https://github.com/kobafayolr-prog/PROJET-FINALE-CONTROLE</span><br><br>
     <span style="font-size:8.5pt;background:#f0fdf4;color:#166534;padding:4px 14px;border-radius:10px;display:inline-block;margin-top:4px">
-      Ajouts v1.2.0 : MySQL 8.x · password_encrypted · 5 routes DELETE · Soft Delete · Suppression modale · Code Reset · Rate limiting 2 min · Productivité 3 catégories · Notifications polling 30s · Migrations SQL documentées
+      Ajouts v1.2.0 : MySQL 8.x · 5 routes DELETE · Soft Delete · Suppression modale · Code Reset · Rate limiting 2 min · Productivité 3 catégories · Notifications polling 30s · Migrations SQL documentées
+    </span>
+    <span style="font-size:8.5pt;background:#eff6ff;color:#1d4ed8;padding:4px 14px;border-radius:10px;display:inline-block;margin-top:4px">
+      Sécurité v1.3.0 : PBKDF2-SHA256 600k iter · Suppression password_encrypted · Migration 0003 · Auto-migration SHA256→PBKDF2 · Validation enum rôle · Mdp ≥ 8 car. · Notifications Agent (20s) + Chef (30s) bidirectionnelles · VIEW_PASSWORD retiré de l'audit
     </span>
   </div>
 </div>

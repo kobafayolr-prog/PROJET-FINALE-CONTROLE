@@ -1361,7 +1361,7 @@ async function renderAudit() {
             <option>LOGIN</option><option>LOGIN_FAILED</option><option>LOGOUT</option>
             <option>VALIDATION</option><option>REJET</option>
             <option>CREATE_USER</option><option>UPDATE_USER</option><option>DELETE</option>
-            <option>RESET_PASSWORD_REQUEST</option><option>VIEW_PASSWORD</option>
+            <option>RESET_PASSWORD_REQUEST</option><option>RESET_PASSWORD_DONE</option>
           </select>
         </div>
         <button class="btn btn-primary" onclick="loadAuditData()" style="height:38px">
@@ -1439,8 +1439,7 @@ function getAuditBadge(action) {
     'DELETE_PROCESS':            ['action-delete',     'SUPPR. PROCESSUS'],
     'DELETE_TASK':               ['action-delete',     'SUPPR. TÂCHE'],
     'RESET_PASSWORD_REQUEST':    ['action-update',     'RESET MDP'],
-    'RESET_PASSWORD_DONE':       ['action-create',     'MDP CHANGÉ'],
-    'VIEW_PASSWORD':             ['action-login',      'VUE MDP']
+    'RESET_PASSWORD_DONE':       ['action-create',     'MDP CHANGÉ']
   };
   const [cls, label] = map[action] || ['action-login', action];
   return `<span class="status-badge ${cls}">${label}</span>`;
