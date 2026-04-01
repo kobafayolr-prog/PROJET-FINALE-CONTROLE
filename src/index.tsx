@@ -1523,8 +1523,9 @@ html,body{width:100%;height:100%;overflow:hidden;}
 
 .left-panel .divider-gold{
   width:56px;height:3px;border-radius:2px;
-  background:linear-gradient(90deg,rgba(212,175,55,0.9),rgba(212,175,55,0.2));
-  margin-bottom:32px;
+  background:linear-gradient(90deg,rgba(212,175,55,0.2),rgba(212,175,55,0.9),rgba(212,175,55,0.2));
+  margin-bottom:28px;
+  align-self:flex-start;
 }
 
 /* ── Overlay verre dépoli global ── */
@@ -1737,10 +1738,9 @@ html,body{width:100%;height:100%;overflow:hidden;}
 
 <!-- Panneau gauche (visible uniquement sur grand écran) -->
 <div class="left-panel">
+  <div class="divider-gold"></div>
   <div class="tagline">BGFIBank CA</div>
   <h1 id="left-headline"></h1>
-  <div class="divider-gold"></div>
-  <p>TimeTrack vous permet de mesurer et valoriser chaque heure travaillée, en temps réel, depuis n'importe quel poste.</p>
 </div>
 <script>
 (function(){
