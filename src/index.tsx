@@ -1601,11 +1601,11 @@ html,body{width:100%;height:100%;overflow:hidden;}
     x: Math.random(),
     y: Math.random(),
     r: 2 + Math.random() * 5,
-    vx: (Math.random() - 0.5) * 0.00015,
-    vy: (Math.random() - 0.5) * 0.00015,
+    vx: (Math.random() - 0.5) * 0.00045,
+    vy: (Math.random() - 0.5) * 0.00045,
     alpha: 0.4 + Math.random() * 0.6,
     pulse: Math.random() * Math.PI * 2,
-    pulseSpeed: 0.008 + Math.random() * 0.012
+    pulseSpeed: 0.025 + Math.random() * 0.035
   }));
 
   // Particules lumineuses
@@ -1613,8 +1613,8 @@ html,body{width:100%;height:100%;overflow:hidden;}
     x: Math.random(),
     y: Math.random(),
     r: 0.8 + Math.random() * 2,
-    vx: (Math.random() - 0.5) * 0.00008,
-    vy: -0.00005 - Math.random() * 0.0001,
+    vx: (Math.random() - 0.5) * 0.00025,
+    vy: -0.00018 - Math.random() * 0.00030,
     alpha: 0.2 + Math.random() * 0.5,
     pulse: Math.random() * Math.PI * 2,
     pulseSpeed: 0.02 + Math.random() * 0.03
