@@ -1457,8 +1457,16 @@ function getLoginHTML(): string {
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{width:100%;height:100%;overflow:hidden;}
 
-/* ── Fond image plein écran ── */
-#bg-image{position:fixed;inset:0;width:100%;height:100%;z-index:0;object-fit:cover;object-position:left center;pointer-events:none;}
+/* ── Fond canvas plein écran ── */
+#bg-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;}
+
+/* ── Aiguilles horloge animées ── */
+#clock-overlay{
+  position:fixed;
+  z-index:0;
+  pointer-events:none;
+  /* positionnement ajusté via JS selon la taille de l'écran */
+}
 
 /* ── Overlay verre dépoli global ── */
 .scene{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;padding:16px;}
@@ -1580,8 +1588,115 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </head>
 <body>
 
-<!-- Image fond plein écran -->
-<img id="bg-image" src="/static/login-bg.png" alt="">
+<!-- Fond animé : image + horloge en temps réel -->
+<canvas id="bg-canvas"></canvas>
+<script>
+(function(){
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.src = '/static/login-bg.png';
+
+  // Coordonnées du centre de l'horloge dans l'image originale (2752x1536)
+  // L'horloge est dans le quart supérieur gauche
+  const CLOCK_REF_X = 0.185;  // 18.5% depuis la gauche
+  const CLOCK_REF_Y = 0.36;   // 36% depuis le haut
+  const CLOCK_REF_R = 0.155;  // rayon = 15.5% de la hauteur
+
+  function resize(){
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function drawFrame(){
+    const W = canvas.width, H = canvas.height;
+
+    // 1. Dessiner l'image de fond (couvre tout l'écran)
+    if(img.complete){
+      // object-fit: cover + object-position: left center
+      const iw = img.naturalWidth, ih = img.naturalHeight;
+      const scale = Math.max(W/iw, H/ih);
+      const dw = iw*scale, dh = ih*scale;
+      const dx = 0, dy = (H-dh)/2;
+      ctx.drawImage(img, dx, dy, dw, dh);
+
+      // 2. Calculer le centre et rayon de l'horloge à l'écran
+      const cx = dx + CLOCK_REF_X * dw;
+      const cy = dy + CLOCK_REF_Y * dh;
+      const R  = CLOCK_REF_R * dh;
+
+      // 3. Heure actuelle
+      const now  = new Date();
+      const sec  = now.getSeconds() + now.getMilliseconds()/1000;
+      const min  = now.getMinutes() + sec/60;
+      const hour = (now.getHours() % 12) + min/60;
+
+      // 4. Dessiner aiguille des heures
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate((hour/12)*Math.PI*2 - Math.PI/2);
+      ctx.beginPath();
+      ctx.moveTo(-R*0.12, 0);
+      ctx.lineTo(R*0.52, 0);
+      ctx.strokeStyle = 'rgba(220,230,255,0.92)';
+      ctx.lineWidth = R*0.045;
+      ctx.lineCap = 'round';
+      ctx.shadowColor = 'rgba(180,210,255,0.7)';
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+      ctx.restore();
+
+      // 5. Dessiner aiguille des minutes
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate((min/60)*Math.PI*2 - Math.PI/2);
+      ctx.beginPath();
+      ctx.moveTo(-R*0.14, 0);
+      ctx.lineTo(R*0.72, 0);
+      ctx.strokeStyle = 'rgba(220,230,255,0.88)';
+      ctx.lineWidth = R*0.030;
+      ctx.lineCap = 'round';
+      ctx.shadowColor = 'rgba(180,210,255,0.6)';
+      ctx.shadowBlur = 6;
+      ctx.stroke();
+      ctx.restore();
+
+      // 6. Dessiner aiguille des secondes (dorée)
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate((sec/60)*Math.PI*2 - Math.PI/2);
+      ctx.beginPath();
+      ctx.moveTo(-R*0.18, 0);
+      ctx.lineTo(R*0.82, 0);
+      ctx.strokeStyle = 'rgba(255,200,80,0.90)';
+      ctx.lineWidth = R*0.016;
+      ctx.lineCap = 'round';
+      ctx.shadowColor = 'rgba(255,180,0,0.8)';
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.restore();
+
+      // 7. Centre de l\'horloge
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.beginPath();
+      ctx.arc(0, 0, R*0.045, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,210,100,0.95)';
+      ctx.shadowColor = 'rgba(255,180,0,0.9)';
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    requestAnimationFrame(drawFrame);
+  }
+
+  img.onload = drawFrame;
+  if(img.complete) drawFrame();
+})();
+</script>
 
 <!-- Carte login -->
 <div class="scene">
