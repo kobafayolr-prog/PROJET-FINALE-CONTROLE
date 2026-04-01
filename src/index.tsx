@@ -1457,16 +1457,8 @@ function getLoginHTML(): string {
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{width:100%;height:100%;overflow:hidden;}
 
-/* ── Fond canvas plein écran ── */
+/* ── Fond canvas animé plein écran ── */
 #bg-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;}
-
-/* ── Aiguilles horloge animées ── */
-#clock-overlay{
-  position:fixed;
-  z-index:0;
-  pointer-events:none;
-  /* positionnement ajusté via JS selon la taille de l'écran */
-}
 
 /* ── Overlay verre dépoli global ── */
 .scene{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;padding:16px;}
@@ -1588,7 +1580,7 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </head>
 <body>
 
-<!-- Fond animé : image + horloge en temps réel -->
+<!-- Fond animé canvas -->
 <canvas id="bg-canvas"></canvas>
 <script>
 (function(){
@@ -1597,104 +1589,99 @@ html,body{width:100%;height:100%;overflow:hidden;}
   const img = new Image();
   img.src = '/static/login-bg.png';
 
-  // Coordonnées du centre de l'horloge dans l'image originale (2752x1536)
-  // L'horloge est dans le quart supérieur gauche
-  const CLOCK_REF_X = 0.185;  // 18.5% depuis la gauche
-  const CLOCK_REF_Y = 0.36;   // 36% depuis le haut
-  const CLOCK_REF_R = 0.155;  // rayon = 15.5% de la hauteur
-
   function resize(){
-    canvas.width  = window.innerWidth;
+    canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
   }
   window.addEventListener('resize', resize);
   resize();
 
+  // Boules dorées flottantes
+  const orbs = Array.from({length: 18}, (_, i) => ({
+    x: Math.random(),
+    y: Math.random(),
+    r: 2 + Math.random() * 5,
+    vx: (Math.random() - 0.5) * 0.00015,
+    vy: (Math.random() - 0.5) * 0.00015,
+    alpha: 0.4 + Math.random() * 0.6,
+    pulse: Math.random() * Math.PI * 2,
+    pulseSpeed: 0.008 + Math.random() * 0.012
+  }));
+
+  // Particules lumineuses
+  const particles = Array.from({length: 35}, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    r: 0.8 + Math.random() * 2,
+    vx: (Math.random() - 0.5) * 0.00008,
+    vy: -0.00005 - Math.random() * 0.0001,
+    alpha: 0.2 + Math.random() * 0.5,
+    pulse: Math.random() * Math.PI * 2,
+    pulseSpeed: 0.02 + Math.random() * 0.03
+  }));
+
   function drawFrame(){
     const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
 
-    // 1. Dessiner l'image de fond (couvre tout l'écran)
-    if(img.complete){
-      // object-fit: cover + object-position: left center
+    // 1. Image de fond (object-fit: cover)
+    if(img.complete && img.naturalWidth > 0){
       const iw = img.naturalWidth, ih = img.naturalHeight;
       const scale = Math.max(W/iw, H/ih);
       const dw = iw*scale, dh = ih*scale;
-      const dx = 0, dy = (H-dh)/2;
+      const dx = (W-dw)/2, dy = (H-dh)/2;
       ctx.drawImage(img, dx, dy, dw, dh);
-
-      // 2. Calculer le centre et rayon de l'horloge à l'écran
-      const cx = dx + CLOCK_REF_X * dw;
-      const cy = dy + CLOCK_REF_Y * dh;
-      const R  = CLOCK_REF_R * dh;
-
-      // 3. Heure actuelle
-      const now  = new Date();
-      const sec  = now.getSeconds() + now.getMilliseconds()/1000;
-      const min  = now.getMinutes() + sec/60;
-      const hour = (now.getHours() % 12) + min/60;
-
-      // 4. Dessiner aiguille des heures
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate((hour/12)*Math.PI*2 - Math.PI/2);
-      ctx.beginPath();
-      ctx.moveTo(-R*0.12, 0);
-      ctx.lineTo(R*0.52, 0);
-      ctx.strokeStyle = 'rgba(220,230,255,0.92)';
-      ctx.lineWidth = R*0.045;
-      ctx.lineCap = 'round';
-      ctx.shadowColor = 'rgba(180,210,255,0.7)';
-      ctx.shadowBlur = 8;
-      ctx.stroke();
-      ctx.restore();
-
-      // 5. Dessiner aiguille des minutes
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate((min/60)*Math.PI*2 - Math.PI/2);
-      ctx.beginPath();
-      ctx.moveTo(-R*0.14, 0);
-      ctx.lineTo(R*0.72, 0);
-      ctx.strokeStyle = 'rgba(220,230,255,0.88)';
-      ctx.lineWidth = R*0.030;
-      ctx.lineCap = 'round';
-      ctx.shadowColor = 'rgba(180,210,255,0.6)';
-      ctx.shadowBlur = 6;
-      ctx.stroke();
-      ctx.restore();
-
-      // 6. Dessiner aiguille des secondes (dorée)
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate((sec/60)*Math.PI*2 - Math.PI/2);
-      ctx.beginPath();
-      ctx.moveTo(-R*0.18, 0);
-      ctx.lineTo(R*0.82, 0);
-      ctx.strokeStyle = 'rgba(255,200,80,0.90)';
-      ctx.lineWidth = R*0.016;
-      ctx.lineCap = 'round';
-      ctx.shadowColor = 'rgba(255,180,0,0.8)';
-      ctx.shadowBlur = 10;
-      ctx.stroke();
-      ctx.restore();
-
-      // 7. Centre de l\'horloge
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.beginPath();
-      ctx.arc(0, 0, R*0.045, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(255,210,100,0.95)';
-      ctx.shadowColor = 'rgba(255,180,0,0.9)';
-      ctx.shadowBlur = 12;
-      ctx.fill();
-      ctx.restore();
+    } else {
+      ctx.fillStyle = '#0a1628';
+      ctx.fillRect(0,0,W,H);
     }
+
+    // 2. Boules dorées flottantes
+    orbs.forEach(o => {
+      o.x += o.vx; o.y += o.vy;
+      o.pulse += o.pulseSpeed;
+      if(o.x < 0) o.x = 1; if(o.x > 1) o.x = 0;
+      if(o.y < 0) o.y = 1; if(o.y > 1) o.y = 0;
+      const pulse = 0.7 + 0.3 * Math.sin(o.pulse);
+      const grd = ctx.createRadialGradient(
+        o.x*W, o.y*H, 0,
+        o.x*W, o.y*H, o.r * 3.5 * pulse
+      );
+      grd.addColorStop(0,   `rgba(255,200,60,${o.alpha * pulse})`);
+      grd.addColorStop(0.4, `rgba(255,160,20,${o.alpha * 0.5 * pulse})`);
+      grd.addColorStop(1,   'rgba(255,140,0,0)');
+      ctx.beginPath();
+      ctx.arc(o.x*W, o.y*H, o.r * 3.5 * pulse, 0, Math.PI*2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+      // centre brillant
+      ctx.beginPath();
+      ctx.arc(o.x*W, o.y*H, o.r * pulse, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(255,230,120,${o.alpha * pulse})`;
+      ctx.fill();
+    });
+
+    // 3. Particules lumineuses montantes
+    particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      p.pulse += p.pulseSpeed;
+      if(p.y < -0.02) p.y = 1.02;
+      if(p.x < 0) p.x = 1; if(p.x > 1) p.x = 0;
+      const a = p.alpha * (0.6 + 0.4 * Math.sin(p.pulse));
+      ctx.beginPath();
+      ctx.arc(p.x*W, p.y*H, p.r, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(255,215,80,${a})`;
+      ctx.shadowColor = 'rgba(255,200,50,0.8)';
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    });
 
     requestAnimationFrame(drawFrame);
   }
 
   img.onload = drawFrame;
-  if(img.complete) drawFrame();
+  if(img.complete && img.naturalWidth > 0) drawFrame();
 })();
 </script>
 
