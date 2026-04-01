@@ -1653,7 +1653,7 @@ html,body{width:100%;height:100%;overflow:hidden;}
   </div>
 
   <div class="card-footer">
-    &copy; ${new Date().getFullYear()} BGFIBank &mdash; Accès réservé au personnel autorisé
+    &copy; ${new Date().getFullYear()} BGFIBank CA &mdash; Accès réservé au personnel autorisé
   </div>
 </div>
 </div>
