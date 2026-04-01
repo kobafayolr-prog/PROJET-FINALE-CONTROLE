@@ -1457,36 +1457,90 @@ function getLoginHTML(): string {
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{width:100%;height:100%;overflow:hidden;}
 
-/* ── Diaporama Ken Burns (effet vidéo) ── */
-@keyframes kb-zoom-in        {from{transform:scale(1)     translateX(0)     translateY(0);}    to{transform:scale(1.18)  translateX(-2%)   translateY(-1.5%);}}
-@keyframes kb-zoom-out       {from{transform:scale(1.18)  translateX(-2%)   translateY(-1.5%);}to{transform:scale(1)     translateX(0)     translateY(0);}}
-@keyframes kb-drift-left     {from{transform:scale(1.12)  translateX(2%)    translateY(0);}    to{transform:scale(1.22)  translateX(-2%)   translateY(-1%);}}
-@keyframes kb-drift-right    {from{transform:scale(1.12)  translateX(-2%)   translateY(1%);}   to{transform:scale(1.22)  translateX(2%)    translateY(-1%);}}
-@keyframes kb-tilt-up        {from{transform:scale(1.1)   translateX(0)     translateY(2%);}   to{transform:scale(1.2)   translateX(1%)    translateY(-2%);}}
+/* ── Diaporama Ken Burns (effet vidéo — zoom amplifié) ── */
+@keyframes kb-zoom-in    {from{transform:scale(1)    translateX(0)    translateY(0);}   to{transform:scale(1.28) translateX(-3%)  translateY(-2%);}}
+@keyframes kb-zoom-out   {from{transform:scale(1.28) translateX(-3%)  translateY(-2%);}  to{transform:scale(1)    translateX(0)    translateY(0);}}
+@keyframes kb-drift-left {from{transform:scale(1.15) translateX(4%)   translateY(1%);}   to{transform:scale(1.30) translateX(-4%)  translateY(-2%);}}
+@keyframes kb-drift-right{from{transform:scale(1.15) translateX(-4%)  translateY(-1%);}  to{transform:scale(1.30) translateX(4%)   translateY(1%);}}
+@keyframes kb-tilt-up    {from{transform:scale(1.12) translateX(0)    translateY(4%);}   to{transform:scale(1.26) translateX(2%)   translateY(-4%);}}
 
 .bg-slide{
   position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;
-  overflow:hidden;opacity:0;transition:opacity 1.6s ease-in-out;
+  overflow:hidden;opacity:0;transition:opacity 1.8s ease-in-out;
 }
 .bg-slide.active{opacity:1;}
 .bg-slide-inner{
-  position:absolute;inset:-8%;          /* marge pour que le zoom ne montre pas les bords */
-  background-size:cover;
-  background-position:center;
-  background-repeat:no-repeat;
+  position:absolute;inset:-12%;
+  background-size:cover;background-position:center;background-repeat:no-repeat;
   will-change:transform;
 }
-/* 5 variations d'animation Ken Burns */
-.kb-0 .bg-slide-inner{animation:kb-zoom-in     8s linear forwards;}
-.kb-1 .bg-slide-inner{animation:kb-zoom-out    8s linear forwards;}
-.kb-2 .bg-slide-inner{animation:kb-drift-left  8s linear forwards;}
-.kb-3 .bg-slide-inner{animation:kb-drift-right 8s linear forwards;}
-.kb-4 .bg-slide-inner{animation:kb-tilt-up     8s linear forwards;}
-/* overlay sombre pour lisibilité */
-.bg-overlay{position:fixed;inset:0;z-index:0;background:rgba(4,8,28,0.48);pointer-events:none;}
+.kb-0 .bg-slide-inner{animation:kb-zoom-in     9s ease-in-out forwards;}
+.kb-1 .bg-slide-inner{animation:kb-zoom-out    9s ease-in-out forwards;}
+.kb-2 .bg-slide-inner{animation:kb-drift-left  9s ease-in-out forwards;}
+.kb-3 .bg-slide-inner{animation:kb-drift-right 9s ease-in-out forwards;}
+.kb-4 .bg-slide-inner{animation:kb-tilt-up     9s ease-in-out forwards;}
+
+/* overlay dégradé directionnel pour laisser respirer le panneau gauche */
+.bg-overlay{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:linear-gradient(
+    105deg,
+    rgba(4,8,28,0.72) 0%,
+    rgba(4,8,28,0.55) 45%,
+    rgba(4,8,28,0.38) 100%
+  );
+}
+
+/* ── Panneau texte gauche ── */
+.left-panel{
+  display:none; /* caché sur mobile */
+  flex-direction:column;justify-content:center;
+  max-width:480px;padding:0 48px 0 56px;
+  color:#fff;user-select:none;
+}
+@media(min-width:900px){.left-panel{display:flex;flex:1;}}
+
+.left-panel .tagline{
+  font-size:13px;font-weight:600;letter-spacing:3px;text-transform:uppercase;
+  color:rgba(212,175,55,0.9);margin-bottom:20px;
+  display:flex;align-items:center;gap:10px;
+}
+.left-panel .tagline::before{
+  content:'';display:block;width:32px;height:2px;
+  background:linear-gradient(90deg,rgba(212,175,55,0.9),transparent);
+}
+.left-panel h1{
+  font-size:clamp(32px,3.5vw,52px);font-weight:800;line-height:1.15;
+  margin-bottom:20px;
+  background:linear-gradient(135deg,#ffffff 0%,rgba(212,175,55,0.85) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.left-panel p{
+  font-size:16px;line-height:1.7;color:rgba(255,255,255,0.68);
+  margin-bottom:36px;max-width:380px;
+}
+.left-panel .stats-row{
+  display:flex;gap:32px;
+}
+.left-panel .stat{
+  display:flex;flex-direction:column;gap:4px;
+}
+.left-panel .stat-num{
+  font-size:28px;font-weight:800;
+  background:linear-gradient(135deg,#fff,rgba(212,175,55,0.9));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.left-panel .stat-label{
+  font-size:12px;color:rgba(255,255,255,0.5);letter-spacing:1px;text-transform:uppercase;
+}
+.left-panel .divider-gold{
+  width:56px;height:3px;border-radius:2px;
+  background:linear-gradient(90deg,rgba(212,175,55,0.9),rgba(212,175,55,0.2));
+  margin-bottom:32px;
+}
 
 /* ── Overlay verre dépoli global ── */
-.scene{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;padding:16px;}
+.scene{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;padding:16px 24px;}
 
 /* ── Carte de connexion glassmorphism ── */
 .login-card{
@@ -1611,12 +1665,13 @@ html,body{width:100%;height:100%;overflow:hidden;}
 <script>
 (function(){
   const IMAGES = [
-    '/static/login-bg-01.jpg','/static/login-bg-02.jpg','/static/login-bg-03.jpg',
-    '/static/login-bg-04.jpg','/static/login-bg-05.jpg','/static/login-bg-06.jpg',
-    '/static/login-bg-07.jpg','/static/login-bg-08.jpg','/static/login-bg-09.jpg',
-    '/static/login-bg-10.jpg'
+    '/static/login-bg-11.jpg','/static/login-bg-01.jpg','/static/login-bg-12.jpg',
+    '/static/login-bg-02.jpg','/static/login-bg-13.jpg','/static/login-bg-03.jpg',
+    '/static/login-bg-14.jpg','/static/login-bg-04.jpg','/static/login-bg-15.jpg',
+    '/static/login-bg-05.jpg','/static/login-bg-06.jpg','/static/login-bg-07.jpg',
+    '/static/login-bg-08.jpg','/static/login-bg-09.jpg','/static/login-bg-10.jpg'
   ];
-  const INTERVAL  = 7000;   // 7 s par image (laisser le temps au zoom d'être visible)
+  const INTERVAL  = 8000;   // 8 s par image
   const KB_STYLES = 5;      // nb de variantes Ken Burns
 
   const container = document.getElementById('slideshow');
@@ -1689,8 +1744,32 @@ html,body{width:100%;height:100%;overflow:hidden;}
 })();
 </script>
 
-<!-- Carte login -->
+<!-- Mise en page principale -->
 <div class="scene">
+
+<!-- Panneau gauche (visible uniquement sur grand écran) -->
+<div class="left-panel">
+  <div class="tagline">BGFIBank CA &mdash; Portail RH</div>
+  <h1>Suivez votre temps.<br>Optimisez votre<br>productivité.</h1>
+  <div class="divider-gold"></div>
+  <p>TimeTrack vous permet de mesurer et valoriser chaque heure travaillée, en temps réel, depuis n'importe quel poste.</p>
+  <div class="stats-row">
+    <div class="stat">
+      <span class="stat-num">8h</span>
+      <span class="stat-label">Objectif quotidien</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">3</span>
+      <span class="stat-label">Niveaux d'accès</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">8</span>
+      <span class="stat-label">Départements</span>
+    </div>
+  </div>
+</div>
+
+<!-- Carte login -->
 <div class="login-card">
   <div style="text-align:center;margin-bottom:20px;">
     <div class="logo-wrapper">
