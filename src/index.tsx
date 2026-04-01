@@ -1514,25 +1514,13 @@ html,body{width:100%;height:100%;overflow:hidden;}
   margin-bottom:20px;
   background:linear-gradient(135deg,#ffffff 0%,rgba(212,175,55,0.85) 100%);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  transition:opacity .5s ease, transform .5s ease;
 }
 .left-panel p{
   font-size:16px;line-height:1.7;color:rgba(255,255,255,0.68);
   margin-bottom:36px;max-width:380px;
 }
-.left-panel .stats-row{
-  display:flex;gap:32px;
-}
-.left-panel .stat{
-  display:flex;flex-direction:column;gap:4px;
-}
-.left-panel .stat-num{
-  font-size:28px;font-weight:800;
-  background:linear-gradient(135deg,#fff,rgba(212,175,55,0.9));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-}
-.left-panel .stat-label{
-  font-size:12px;color:rgba(255,255,255,0.5);letter-spacing:1px;text-transform:uppercase;
-}
+
 .left-panel .divider-gold{
   width:56px;height:3px;border-radius:2px;
   background:linear-gradient(90deg,rgba(212,175,55,0.9),rgba(212,175,55,0.2));
@@ -1749,25 +1737,36 @@ html,body{width:100%;height:100%;overflow:hidden;}
 
 <!-- Panneau gauche (visible uniquement sur grand écran) -->
 <div class="left-panel">
-  <div class="tagline">BGFIBank CA &mdash; Portail RH</div>
-  <h1>Suivez votre temps.<br>Optimisez votre<br>productivité.</h1>
+  <div class="tagline">BGFIBank CA</div>
+  <h1 id="left-headline"></h1>
   <div class="divider-gold"></div>
   <p>TimeTrack vous permet de mesurer et valoriser chaque heure travaillée, en temps réel, depuis n'importe quel poste.</p>
-  <div class="stats-row">
-    <div class="stat">
-      <span class="stat-num">8h</span>
-      <span class="stat-label">Objectif quotidien</span>
-    </div>
-    <div class="stat">
-      <span class="stat-num">3</span>
-      <span class="stat-label">Niveaux d'accès</span>
-    </div>
-    <div class="stat">
-      <span class="stat-num">8</span>
-      <span class="stat-label">Départements</span>
-    </div>
-  </div>
 </div>
+<script>
+(function(){
+  const phrases = [
+    "Suivez votre temps.<br>Optimisez votre<br>productivité.",
+    "Chaque minute compte.<br>Mesurez ce qui<br>vous fait avancer.",
+    "Votre temps,<br>votre performance,<br>votre valeur.",
+    "Travaillez mieux.<br>Tracez chaque heure.<br>Progressez chaque jour."
+  ];
+  const el = document.getElementById('left-headline');
+  let current = Math.floor(Math.random() * phrases.length);
+  el.innerHTML = phrases[current];
+
+  // Rotation toutes les 8 s (synchronisé avec les slides)
+  setInterval(function(){
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(10px)';
+    setTimeout(function(){
+      current = (current + 1) % phrases.length;
+      el.innerHTML = phrases[current];
+      el.style.opacity = '1';
+      el.style.transform = 'translateY(0)';
+    }, 500);
+  }, 8000);
+})();
+</script>
 
 <!-- Carte login -->
 <div class="login-card">
