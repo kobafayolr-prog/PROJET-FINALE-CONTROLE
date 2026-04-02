@@ -1712,13 +1712,13 @@ html,body{width:100%;height:100%;overflow:hidden;}
     { img: '/static/login-bg-06.jpg', phrase: 'Chaque tâche accomplie<br>rapproche la banque<br>de ses objectifs.' },
     { img: '/static/login-bg-07.jpg', phrase: 'La transparence<br>est la base de<br>toute confiance.' },
     { img: '/static/login-bg-08.jpg', phrase: 'Informé en temps réel.<br>Réactif à chaque instant.<br>Toujours connecté.' },
-    { img: '/static/login-bg-09.jpg', phrase: 'Diriger, c\'est aussi<br>suivre, écouter<br>et valoriser.' },
+    { img: '/static/login-bg-09.jpg', phrase: 'Diriger, c&#39;est aussi<br>suivre, écouter<br>et valoriser.' },
     { img: '/static/login-bg-10.jpg', phrase: 'Les chiffres parlent.<br>Les résultats guident.<br>La performance décide.' },
     { img: '/static/login-bg-11.jpg', phrase: 'Vos données,<br>votre histoire,<br>votre excellence.' },
-    { img: '/static/login-bg-12.jpg', phrase: 'Bien gérer les hommes,<br>c\'est bien gérer<br>la banque.' },
+    { img: '/static/login-bg-12.jpg', phrase: 'Bien gérer les hommes,<br>c&#39;est bien gérer<br>la banque.' },
     { img: '/static/login-bg-13.jpg', phrase: 'Chaque action laisse<br>une trace.<br>Agissez avec intégrité.' },
-    { img: '/static/login-bg-14.jpg', phrase: 'La sécurité n\'est pas<br>une option.<br>C\'est une exigence.' },
-    { img: '/static/login-bg-15.jpg', phrase: 'BGFIBank CA.<br>L\'excellence au service<br>de votre avenir.' }
+    { img: '/static/login-bg-14.jpg', phrase: 'La sécurité n&#39;est pas<br>une option.<br>C&#39;est une exigence.' },
+    { img: '/static/login-bg-15.jpg', phrase: 'BGFIBank CA.<br>L&#39;excellence au service<br>de votre avenir.' }
   ];
 
   const INTERVAL = 6000; // 6 s par slide
