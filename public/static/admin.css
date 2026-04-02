@@ -167,6 +167,9 @@ tbody td { padding: 11px 14px; font-size: 13px; color: #374151; }
 /* ROLE BADGES */
 .role-admin { background: #ede9fe; color: #7c3aed; }
 .role-chef { background: #dbeafe; color: #1d4ed8; }
+.role-chef-service { background: #e0f2fe; color: #0369a1; }
+.role-dir-dept { background: #fef3c7; color: #b45309; }
+.role-dg { background: #fce7f3; color: #9d174d; }
 .role-agent { background: #dcfce7; color: #16a34a; }
 
 /* MODALS */

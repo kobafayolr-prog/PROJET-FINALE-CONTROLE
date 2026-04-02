@@ -368,7 +368,7 @@ app.post('/api/admin/users', async (c) => {
     const department_id = body.department_id
     const status = body.status || 'Actif'
 
-    const VALID_ROLES = ['Agent', 'Chef de Département', 'Administrateur']
+    const VALID_ROLES = ['Agent', 'Chef de Service', 'Chef de Département', 'Directeur de Département', 'Directeur Général', 'Administrateur']
     if (!validateEmail(email)) return c.json({ error: 'Email invalide' }, 400)
     if (password.length < 8) return c.json({ error: 'Mot de passe trop court (minimum 8 caractères)' }, 400)
     if (!VALID_ROLES.includes(role)) return c.json({ error: 'Rôle invalide' }, 400)
@@ -397,7 +397,7 @@ app.put('/api/admin/users/:id', async (c) => {
     const id = c.req.param('id')
     const { first_name, last_name, email, password, role, department_id, status } = await c.req.json()
 
-    const VALID_ROLES = ['Agent', 'Chef de Département', 'Administrateur']
+    const VALID_ROLES = ['Agent', 'Chef de Service', 'Chef de Département', 'Directeur de Département', 'Directeur Général', 'Administrateur']
     if (role && !VALID_ROLES.includes(role)) return c.json({ error: 'Rôle invalide' }, 400)
     if (password && password.length < 8) return c.json({ error: 'Mot de passe trop court (minimum 8 caractères)' }, 400)
 
@@ -1550,6 +1550,270 @@ app.get('/api/notifications', async (c) => {
 })
 
 // ============================================
+// API CHEF DE SERVICE
+// ============================================
+
+app.get('/api/chef-service/dashboard', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Chef de Service' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+  const deptId = user.department_id
+  try {
+    const todayMin = await c.env.DB.prepare(
+      `SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions WHERE user_id=? AND date(start_time)=date('now')`
+    ).bind(user.id).first() as any
+    const totalMin = await c.env.DB.prepare(
+      `SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions WHERE user_id=? AND status IN ('Validé','Terminé')`
+    ).bind(user.id).first() as any
+    const sessionStats = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total, SUM(CASE WHEN status='Rejeté' THEN 1 ELSE 0 END) as rejected FROM work_sessions WHERE user_id=?`
+    ).bind(user.id).first() as any
+    // Team members: agents in same dept
+    const team = await c.env.DB.prepare(
+      `SELECT u.id, u.first_name || ' ' || u.last_name as name, u.role,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes,
+       COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END),0) as validated_minutes,
+       COUNT(ws.id) as total_sessions
+       FROM users u
+       LEFT JOIN work_sessions ws ON ws.user_id=u.id
+       WHERE u.department_id=? AND u.role='Agent' AND u.status='Actif'
+       GROUP BY u.id, u.first_name, u.last_name`
+    ).bind(deptId).all()
+    const byObjective = await c.env.DB.prepare(
+      `SELECT o.name, o.color,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM strategic_objectives o
+       LEFT JOIN work_sessions ws ON ws.objective_id=o.id AND ws.user_id=?
+       WHERE o.status='Actif'
+       GROUP BY o.id, o.name, o.color HAVING total_minutes>0`
+    ).bind(user.id).all()
+    return c.json({
+      today_hours: minutesToHours(todayMin?.m || 0),
+      total_hours: minutesToHours(totalMin?.m || 0),
+      total_sessions: sessionStats?.total || 0,
+      rejected_sessions: sessionStats?.rejected || 0,
+      team: team.results,
+      byObjective: byObjective.results
+    })
+  } catch(e: any) { return c.json({ error: e.message }, 500) }
+})
+
+app.get('/api/chef-service/tasks', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Chef de Service' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+  const tasks = await c.env.DB.prepare(
+    `SELECT t.*, p.name as process_name, o.name as objective_name, o.color as objective_color
+     FROM tasks t JOIN processes p ON t.process_id=p.id JOIN strategic_objectives o ON t.objective_id=o.id
+     WHERE t.department_id=? AND t.status='Actif' ORDER BY t.name`
+  ).bind(user.department_id).all()
+  return c.json(tasks.results)
+})
+
+app.get('/api/chef-service/sessions', async (c) => {
+  const user = await getUser(c)
+  if (!user || user.role !== 'Chef de Service') return c.json({ error: 'Non autorisé' }, 401)
+  const sessions = await c.env.DB.prepare(
+    `SELECT ws.*, t.name as task_name, o.name as objective_name, o.color as objective_color
+     FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN strategic_objectives o ON ws.objective_id=o.id
+     WHERE ws.user_id=? ORDER BY ws.start_time DESC LIMIT 50`
+  ).bind(user.id).all()
+  return c.json(sessions.results)
+})
+
+app.get('/api/chef-service/sessions/active', async (c) => {
+  const user = await getUser(c)
+  if (!user || user.role !== 'Chef de Service') return c.json({ error: 'Non autorisé' }, 401)
+  const session = await c.env.DB.prepare(
+    `SELECT ws.*, t.name as task_name FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id
+     WHERE ws.user_id=? AND ws.status='En cours' ORDER BY ws.start_time DESC LIMIT 1`
+  ).bind(user.id).first()
+  return c.json(session || null)
+})
+
+app.post('/api/chef-service/sessions/start', async (c) => {
+  const user = await getUser(c)
+  if (!user || user.role !== 'Chef de Service') return c.json({ error: 'Non autorisé' }, 401)
+  try {
+    const { task_id } = await c.req.json()
+    const existing = await c.env.DB.prepare(
+      `SELECT id FROM work_sessions WHERE user_id=? AND status='En cours'`
+    ).bind(user.id).first()
+    if (existing) return c.json({ error: 'Une session est déjà en cours. Terminez-la d\'abord.' }, 400)
+    const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id=?').bind(task_id).first() as any
+    if (!task) return c.json({ error: 'Tâche introuvable' }, 404)
+    const result = await c.env.DB.prepare(
+      `INSERT INTO work_sessions (user_id, task_id, objective_id, department_id, start_time, status, session_type)
+       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, 'En cours', 'Auto')`
+    ).bind(user.id, task_id, task.objective_id, user.department_id).run()
+    return c.json({ id: result.meta.last_row_id, message: 'Session démarrée' })
+  } catch(e: any) { return c.json({ error: e.message }, 500) }
+})
+
+app.post('/api/chef-service/sessions/stop', async (c) => {
+  const user = await getUser(c)
+  if (!user || user.role !== 'Chef de Service') return c.json({ error: 'Non autorisé' }, 401)
+  try {
+    const { comment } = await c.req.json().catch(() => ({ comment: '' }))
+    const session = await c.env.DB.prepare(
+      `SELECT * FROM work_sessions WHERE user_id=? AND status='En cours' ORDER BY start_time DESC LIMIT 1`
+    ).bind(user.id).first() as any
+    if (!session) return c.json({ error: 'Aucune session en cours' }, 404)
+    const startTime = new Date(session.start_time).getTime()
+    const durationMinutes = Math.round((Date.now() - startTime) / 60000)
+    await c.env.DB.prepare(
+      `UPDATE work_sessions SET end_time=CURRENT_TIMESTAMP, duration_minutes=?, status='Terminé', comment=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`
+    ).bind(durationMinutes, comment || null, session.id).run()
+    return c.json({ message: 'Session terminée', duration_minutes: durationMinutes })
+  } catch(e: any) { return c.json({ error: e.message }, 500) }
+})
+
+// ============================================
+// API DIRECTEUR DE DÉPARTEMENT
+// ============================================
+
+app.get('/api/dir-dept/dashboard', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Directeur de Département' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+  const deptId = user.department_id
+  try {
+    const dept = await c.env.DB.prepare('SELECT name FROM departments WHERE id=?').bind(deptId).first() as any
+    const activeAgents = await c.env.DB.prepare(
+      `SELECT COUNT(DISTINCT user_id) as c FROM work_sessions WHERE department_id=? AND date(start_time)=date('now')`
+    ).bind(deptId).first() as any
+    const totalHours = await c.env.DB.prepare(
+      `SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions
+       WHERE department_id=? AND strftime('%Y-%m',start_time)=strftime('%Y-%m','now') AND status IN ('Validé','Terminé')`
+    ).bind(deptId).first() as any
+    const toValidate = await c.env.DB.prepare(
+      `SELECT COUNT(*) as c FROM work_sessions WHERE department_id=? AND status='Terminé'`
+    ).bind(deptId).first() as any
+    const byObjective = await c.env.DB.prepare(
+      `SELECT o.name, o.color, o.target_percentage,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM strategic_objectives o
+       LEFT JOIN work_sessions ws ON ws.objective_id=o.id AND ws.department_id=? AND ws.status IN ('Validé','Terminé')
+       WHERE o.status='Actif'
+       GROUP BY o.id, o.name, o.color, o.target_percentage HAVING total_minutes>0`
+    ).bind(deptId).all()
+    const agentPerf = await c.env.DB.prepare(
+      `SELECT u.first_name || ' ' || u.last_name as name, u.role,
+       COUNT(ws.id) as sessions,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes,
+       COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END),0) as validated_minutes
+       FROM users u
+       LEFT JOIN work_sessions ws ON ws.user_id=u.id AND ws.status IN ('Validé','Terminé')
+       WHERE u.department_id=? AND u.role IN ('Agent','Chef de Service') AND u.status='Actif'
+       GROUP BY u.id ORDER BY total_minutes DESC`
+    ).bind(deptId).all()
+    const recentSessions = await c.env.DB.prepare(
+      `SELECT ws.*, u.first_name || ' ' || u.last_name as agent_name, t.name as task_name, o.name as objective_name
+       FROM work_sessions ws JOIN users u ON ws.user_id=u.id JOIN tasks t ON ws.task_id=t.id JOIN strategic_objectives o ON ws.objective_id=o.id
+       WHERE ws.department_id=? ORDER BY ws.start_time DESC LIMIT 20`
+    ).bind(deptId).all()
+    const totalMin = totalHours?.m || 0
+    const objData = byObjective.results as any[]
+    const grandTotal = objData.reduce((s: number, o: any) => s + o.total_minutes, 0)
+    return c.json({
+      department_name: dept?.name || '',
+      active_agents: activeAgents?.c || 0,
+      total_hours: minutesToHours(totalMin),
+      to_validate: toValidate?.c || 0,
+      byObjective: objData.map((o: any) => ({
+        ...o,
+        percentage: grandTotal > 0 ? Math.round(o.total_minutes * 100 / grandTotal) : 0,
+        hours_display: minutesToHours(o.total_minutes)
+      })),
+      agentPerf: agentPerf.results,
+      recentSessions: recentSessions.results
+    })
+  } catch(e: any) { return c.json({ error: e.message }, 500) }
+})
+
+// ============================================
+// API DIRECTEUR GÉNÉRAL
+// ============================================
+
+app.get('/api/dg/dashboard', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Directeur Général' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+  try {
+    const totalUsers = await c.env.DB.prepare(
+      `SELECT COUNT(*) as c FROM users WHERE status='Actif' AND role NOT IN ('Administrateur','Directeur Général')`
+    ).first() as any
+    const totalHoursMonth = await c.env.DB.prepare(
+      `SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions
+       WHERE strftime('%Y-%m',start_time)=strftime('%Y-%m','now') AND status IN ('Validé','Terminé')`
+    ).first() as any
+    const toValidate = await c.env.DB.prepare(
+      `SELECT COUNT(*) as c FROM work_sessions WHERE status='Terminé'`
+    ).first() as any
+    const byDept = await c.env.DB.prepare(
+      `SELECT d.name as dept_name,
+       COUNT(DISTINCT u.id) as agent_count,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM departments d
+       LEFT JOIN users u ON u.department_id=d.id AND u.status='Actif'
+       LEFT JOIN work_sessions ws ON ws.department_id=d.id AND ws.status IN ('Validé','Terminé') AND strftime('%Y-%m',ws.start_time)=strftime('%Y-%m','now')
+       WHERE d.status='Actif'
+       GROUP BY d.id, d.name ORDER BY total_minutes DESC`
+    ).all()
+    const byObjective = await c.env.DB.prepare(
+      `SELECT o.name, o.color, o.target_percentage,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM strategic_objectives o
+       LEFT JOIN work_sessions ws ON ws.objective_id=o.id AND ws.status IN ('Validé','Terminé')
+       WHERE o.status='Actif'
+       GROUP BY o.id, o.name, o.color, o.target_percentage ORDER BY total_minutes DESC`
+    ).all()
+    const monthlyTrend = await c.env.DB.prepare(
+      `SELECT strftime('%Y-%m',start_time) as month, COALESCE(SUM(duration_minutes),0) as total_minutes
+       FROM work_sessions WHERE status IN ('Validé','Terminé')
+       GROUP BY month ORDER BY month DESC LIMIT 6`
+    ).all()
+    const ratio333 = await c.env.DB.prepare(
+      `SELECT t.task_type, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id
+       WHERE ws.status IN ('Validé','Terminé')
+       GROUP BY t.task_type`
+    ).all()
+    const ratio333Data = ratio333.results as any[]
+    const total333 = ratio333Data.reduce((s: number, r: any) => s + r.total_minutes, 0)
+    const ratio333Map: Record<string, number> = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+    ratio333Data.forEach((r: any) => {
+      const key = r.task_type === 'Productive' ? 'Production' : r.task_type
+      if (ratio333Map.hasOwnProperty(key)) ratio333Map[key] += r.total_minutes
+    })
+    const ratio333Result = Object.entries(ratio333Map).map(([label, minutes]) => ({
+      label, minutes, percentage: total333 > 0 ? Math.round(minutes * 100 / total333) : 0, hours_display: minutesToHours(minutes)
+    }))
+    const deptData = byDept.results as any[]
+    const grandTotal = deptData.reduce((s: number, d: any) => s + d.total_minutes, 0)
+    return c.json({
+      total_users: totalUsers?.c || 0,
+      total_hours_month: minutesToHours(totalHoursMonth?.m || 0),
+      to_validate: toValidate?.c || 0,
+      byDept: deptData.map((d: any) => ({
+        ...d,
+        percentage: grandTotal > 0 ? Math.round(d.total_minutes * 100 / grandTotal) : 0,
+        hours_display: minutesToHours(d.total_minutes)
+      })),
+      byObjective: (byObjective.results as any[]).map((o: any) => ({
+        ...o, hours_display: minutesToHours(o.total_minutes)
+      })),
+      monthlyTrend: monthlyTrend.results,
+      ratio333: ratio333Result
+    })
+  } catch(e: any) { return c.json({ error: e.message }, 500) }
+})
+
+// ============================================
 // STATIC FILES
 // ============================================
 
@@ -1577,6 +1841,21 @@ app.get('/agent/*', (c) => {
 // Chef routes
 app.get('/chef/*', (c) => {
   return c.html(getChefHTML())
+})
+
+// Chef de Service routes
+app.get('/chef-service/*', (c) => {
+  return c.html(getChefServiceHTML())
+})
+
+// Directeur de Département routes
+app.get('/dir-dept/*', (c) => {
+  return c.html(getDirDeptHTML())
+})
+
+// Directeur Général routes
+app.get('/dg/*', (c) => {
+  return c.html(getDGHTML())
 })
 
 // Root redirect
@@ -2070,6 +2349,9 @@ document.getElementById('login-form').addEventListener('submit',async(e)=>{
     setTimeout(()=>{
       if(d.user.role==='Administrateur')window.location='/admin/dashboard';
       else if(d.user.role==='Chef de Département')window.location='/chef/dashboard';
+      else if(d.user.role==='Chef de Service')window.location='/chef-service/dashboard';
+      else if(d.user.role==='Directeur de Département')window.location='/dir-dept/dashboard';
+      else if(d.user.role==='Directeur Général')window.location='/dg/dashboard';
       else window.location='/agent/dashboard';
     },400);
   }catch(err){
@@ -2086,6 +2368,9 @@ document.getElementById('login-form').addEventListener('submit',async(e)=>{
     const u=JSON.parse(localStorage.getItem('user')||'{}');
     if(u.role==='Administrateur')window.location='/admin/dashboard';
     else if(u.role==='Chef de Département')window.location='/chef/dashboard';
+    else if(u.role==='Chef de Service')window.location='/chef-service/dashboard';
+    else if(u.role==='Directeur de Département')window.location='/dir-dept/dashboard';
+    else if(u.role==='Directeur Général')window.location='/dg/dashboard';
     else if(u.role==='Agent')window.location='/agent/dashboard';
   }
 })();
@@ -2153,6 +2438,69 @@ function getChefHTML(): string {
 <body>
 <div id="app"></div>
 <script src="/static/chef.js"></script>
+</body>
+</html>`
+}
+
+function getChefServiceHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TimeTrack Chef de Service - BGFIBank CA</title>
+<link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
+<script>tailwind={config:{corePlugins:{preflight:false}}}</script>
+<script src="/static/libs/tailwind.min.js"></script>
+<link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
+<script src="/static/libs/chart.min.js"></script>
+<link rel="stylesheet" href="/static/chef-service.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/static/chef-service.js"></script>
+</body>
+</html>`
+}
+
+function getDirDeptHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TimeTrack Directeur - BGFIBank CA</title>
+<link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
+<script>tailwind={config:{corePlugins:{preflight:false}}}</script>
+<script src="/static/libs/tailwind.min.js"></script>
+<link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
+<script src="/static/libs/chart.min.js"></script>
+<link rel="stylesheet" href="/static/dir-dept.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/static/dir-dept.js"></script>
+</body>
+</html>`
+}
+
+function getDGHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TimeTrack Direction Générale - BGFIBank CA</title>
+<link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
+<script>tailwind={config:{corePlugins:{preflight:false}}}</script>
+<script src="/static/libs/tailwind.min.js"></script>
+<link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
+<script src="/static/libs/chart.min.js"></script>
+<link rel="stylesheet" href="/static/dg.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/static/dg.js"></script>
 </body>
 </html>`
 }

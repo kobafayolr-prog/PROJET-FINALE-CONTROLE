@@ -742,7 +742,7 @@ async function renderUsers() {
 }
 
 function getRoleBadge(role) {
-  const cls = role === 'Administrateur' ? 'role-admin' : role === 'Chef de Département' ? 'role-chef' : 'role-agent';
+  const cls = role === 'Administrateur' ? 'role-admin' : role === 'Chef de Département' ? 'role-chef' : role === 'Chef de Service' ? 'role-chef-service' : role === 'Directeur de Département' ? 'role-dir-dept' : role === 'Directeur Général' ? 'role-dg' : 'role-agent';
   return `<span class="status-badge ${cls}">${role}</span>`;
 }
 
@@ -776,7 +776,10 @@ function showUserModal(userId = null) {
         <div class="form-group"><label class="form-label">Rôle</label>
           <select class="form-control" id="u_role">
             <option value="Agent" ${user?.role==='Agent'?'selected':''}>Agent</option>
+            <option value="Chef de Service" ${user?.role==='Chef de Service'?'selected':''}>Chef de Service</option>
             <option value="Chef de Département" ${user?.role==='Chef de Département'?'selected':''}>Chef de Département</option>
+            <option value="Directeur de Département" ${user?.role==='Directeur de Département'?'selected':''}>Directeur de Département</option>
+            <option value="Directeur Général" ${user?.role==='Directeur Général'?'selected':''}>Directeur Général</option>
             <option value="Administrateur" ${user?.role==='Administrateur'?'selected':''}>Administrateur</option>
           </select>
         </div>
