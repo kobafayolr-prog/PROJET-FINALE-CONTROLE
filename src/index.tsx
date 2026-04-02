@@ -1513,28 +1513,16 @@ function getLoginHTML(): string {
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{width:100%;height:100%;overflow:hidden;}
 
-/* ── Diaporama Ken Burns (effet vidéo — zoom amplifié) ── */
-@keyframes kb-zoom-in    {from{transform:scale(1)    translateX(0)    translateY(0);}   to{transform:scale(1.28) translateX(-3%)  translateY(-2%);}}
-@keyframes kb-zoom-out   {from{transform:scale(1.28) translateX(-3%)  translateY(-2%);}  to{transform:scale(1)    translateX(0)    translateY(0);}}
-@keyframes kb-drift-left {from{transform:scale(1.15) translateX(4%)   translateY(1%);}   to{transform:scale(1.30) translateX(-4%)  translateY(-2%);}}
-@keyframes kb-drift-right{from{transform:scale(1.15) translateX(-4%)  translateY(-1%);}  to{transform:scale(1.30) translateX(4%)   translateY(1%);}}
-@keyframes kb-tilt-up    {from{transform:scale(1.12) translateX(0)    translateY(4%);}   to{transform:scale(1.26) translateX(2%)   translateY(-4%);}}
-
+/* ── Diaporama classique (fondu enchaîné) ── */
 .bg-slide{
   position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;
-  overflow:hidden;opacity:0;transition:opacity 1.8s ease-in-out;
+  overflow:hidden;opacity:0;transition:opacity 1.6s ease-in-out;
 }
 .bg-slide.active{opacity:1;}
 .bg-slide-inner{
-  position:absolute;inset:-12%;
+  position:absolute;inset:0;
   background-size:cover;background-position:center;background-repeat:no-repeat;
-  will-change:transform;
 }
-.kb-0 .bg-slide-inner{animation:kb-zoom-in     9s ease-in-out forwards;}
-.kb-1 .bg-slide-inner{animation:kb-zoom-out    9s ease-in-out forwards;}
-.kb-2 .bg-slide-inner{animation:kb-drift-left  9s ease-in-out forwards;}
-.kb-3 .bg-slide-inner{animation:kb-drift-right 9s ease-in-out forwards;}
-.kb-4 .bg-slide-inner{animation:kb-tilt-up     9s ease-in-out forwards;}
 
 /* overlay dégradé directionnel pour laisser respirer le panneau gauche */
 .bg-overlay{
@@ -1570,15 +1558,16 @@ html,body{width:100%;height:100%;overflow:hidden;}
   background:linear-gradient(90deg,rgba(212,175,55,0.9),transparent);
 }
 .left-panel h1{
-  font-size:clamp(32px,3.5vw,52px);font-weight:800;line-height:1.15;
-  margin-bottom:20px;
+  font-size:clamp(28px,3vw,46px);font-weight:800;line-height:1.18;
+  margin-bottom:16px;
   background:linear-gradient(135deg,#ffffff 0%,rgba(212,175,55,0.85) 100%);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-  transition:opacity .5s ease, transform .5s ease;
+  transition:opacity .4s ease, transform .4s ease;
 }
 .left-panel p{
-  font-size:16px;line-height:1.7;color:rgba(255,255,255,0.68);
+  font-size:15px;line-height:1.75;color:rgba(255,255,255,0.72);
   margin-bottom:36px;max-width:380px;
+  transition:opacity .4s ease, transform .4s ease;
 }
 
 .left-panel .divider-gold{
@@ -1708,31 +1697,33 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </head>
 <body>
 
-<!-- Diaporama Ken Burns — effet vidéo (zoom/pan lent) -->
+<!-- Diaporama classique ordonné — 15 slides avec messages synchronisés -->
 <div id="slideshow"></div>
 <div class="bg-overlay"></div>
 <script>
 (function(){
-  const IMAGES = [
-    '/static/login-bg-11.jpg','/static/login-bg-01.jpg','/static/login-bg-12.jpg',
-    '/static/login-bg-02.jpg','/static/login-bg-13.jpg','/static/login-bg-03.jpg',
-    '/static/login-bg-14.jpg','/static/login-bg-04.jpg','/static/login-bg-15.jpg',
-    '/static/login-bg-05.jpg','/static/login-bg-06.jpg','/static/login-bg-07.jpg',
-    '/static/login-bg-08.jpg','/static/login-bg-09.jpg','/static/login-bg-10.jpg'
+  /* ── 15 slides dans l'ordre logique de l'application ── */
+  const SLIDES = [
+    { img: '/static/login-bg-01.jpg', title: 'Bienvenue sur TimeTrack', msg: 'Votre outil de suivi du temps<br>au service de la performance<br>BGFIBank CA.' },
+    { img: '/static/login-bg-02.jpg', title: 'Connexion sécurisée',     msg: 'Accédez à votre espace avec<br>vos identifiants BGFIBank.<br>Sécurité renforcée JWT.' },
+    { img: '/static/login-bg-03.jpg', title: 'Votre tableau de bord',   msg: 'Visualisez vos sessions,<br>votre productivité et<br>vos objectifs en temps réel.' },
+    { img: '/static/login-bg-04.jpg', title: 'Pointage en un clic',     msg: 'Démarrez et terminez<br>vos sessions de travail<br>facilement depuis votre espace.' },
+    { img: '/static/login-bg-05.jpg', title: 'Suivi des tâches',        msg: 'Associez chaque session<br>à une tâche, un processus<br>et un objectif stratégique.' },
+    { img: '/static/login-bg-06.jpg', title: 'Objectifs stratégiques',  msg: 'Contribuez aux objectifs<br>de la banque. Chaque heure<br>travaillée compte.' },
+    { img: '/static/login-bg-07.jpg', title: 'Validation hiérarchique', msg: 'Vos sessions sont validées<br>par votre Chef de Département<br>en toute transparence.' },
+    { img: '/static/login-bg-08.jpg', title: 'Notifications en direct', msg: 'Soyez alerté en temps réel<br>dès qu\'une session est<br>validée ou rejetée.' },
+    { img: '/static/login-bg-09.jpg', title: 'Espace Chef de Département', msg: 'Supervisez votre équipe,<br>validez les sessions et<br>suivez la productivité.' },
+    { img: '/static/login-bg-10.jpg', title: 'Rapports & Statistiques', msg: 'Analysez les performances<br>par département, objectif<br>et période de référence.' },
+    { img: '/static/login-bg-11.jpg', title: 'Export des données',      msg: 'Exportez vos rapports en CSV<br>pour vos analyses et<br>présentations de direction.' },
+    { img: '/static/login-bg-12.jpg', title: 'Gestion des utilisateurs', msg: 'L\'administrateur gère les comptes,<br>les rôles et les accès<br>en toute sécurité.' },
+    { img: '/static/login-bg-13.jpg', title: 'Journal d\'audit',        msg: 'Traçabilité complète de toutes<br>les actions pour la conformité<br>et la gouvernance.' },
+    { img: '/static/login-bg-14.jpg', title: 'Sécurité bancaire',       msg: 'PBKDF2-SHA256, chiffrement<br>des données, conformité<br>aux normes bancaires.' },
+    { img: '/static/login-bg-15.jpg', title: 'BGFIBank CA — Excellence', msg: 'Ensemble, bâtissons une banque<br>performante, transparente<br>et tournée vers l\'avenir.' }
   ];
-  const INTERVAL  = 8000;   // 8 s par image
-  const KB_STYLES = 5;      // nb de variantes Ken Burns
+
+  const INTERVAL = 6000; // 6 s par slide
 
   const container = document.getElementById('slideshow');
-
-  function shuffle(arr){
-    const a=[...arr];
-    for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
-    return a;
-  }
-  let playlist = shuffle(IMAGES);
-  let idx = 0;
-  let kbIdx = 0;
 
   /* Créer 2 slides (alternance A/B) */
   const slides = [0,1].map(()=>{
@@ -1745,49 +1736,49 @@ html,body{width:100%;height:100%;overflow:hidden;}
     return d;
   });
   let current = 0;
+  let idx = 0;
 
   /* Précharger toutes les images */
-  IMAGES.forEach(src=>{ const i=new Image(); i.src=src; });
+  SLIDES.forEach(s=>{ const i=new Image(); i.src=s.img; });
 
-  function applyKB(slide, kbClass){
-    /* retire toutes les classes kb-* puis applique la nouvelle */
-    for(let k=0;k<KB_STYLES;k++) slide.classList.remove('kb-'+k);
-    slide.classList.add(kbClass);
-    /* forcer le redémarrage de l'animation CSS */
-    const inner = slide.querySelector('.bg-slide-inner');
-    inner.style.animation = 'none';
-    inner.offsetHeight; /* reflow */
-    inner.style.animation = '';
+  function updateMessage(slideData){
+    const titleEl = document.getElementById('left-headline');
+    const msgEl   = document.getElementById('left-message');
+    if(!titleEl || !msgEl) return;
+    titleEl.style.opacity='0'; titleEl.style.transform='translateY(12px)';
+    msgEl.style.opacity='0';   msgEl.style.transform='translateY(8px)';
+    setTimeout(function(){
+      titleEl.innerHTML = slideData.title;
+      msgEl.innerHTML   = slideData.msg;
+      titleEl.style.opacity='1'; titleEl.style.transform='translateY(0)';
+      msgEl.style.opacity='1';   msgEl.style.transform='translateY(0)';
+    }, 400);
   }
 
   function showNext(){
-    const next = 1 - current;
-    const nextKB = 'kb-' + (kbIdx % KB_STYLES);
-    kbIdx++;
+    const next     = 1 - current;
+    const nextData = SLIDES[idx];
 
     const inner = slides[next].querySelector('.bg-slide-inner');
-    inner.style.backgroundImage = 'url("'+playlist[idx]+'")';
+    inner.style.backgroundImage = 'url("'+nextData.img+'")';
 
     requestAnimationFrame(()=>{
       requestAnimationFrame(()=>{
-        applyKB(slides[next], nextKB);
         slides[next].classList.add('active');
         slides[current].classList.remove('active');
         current = next;
-        idx = (idx + 1) % playlist.length;
-        if(idx === 0) playlist = shuffle(IMAGES);
+        updateMessage(nextData);
+        idx = (idx + 1) % SLIDES.length;
       });
     });
   }
 
   /* Première image immédiatement */
-  const firstKB = 'kb-' + (kbIdx % KB_STYLES);
-  kbIdx++;
   const firstInner = slides[current].querySelector('.bg-slide-inner');
-  firstInner.style.backgroundImage = 'url("'+playlist[idx]+'")';
-  applyKB(slides[current], firstKB);
+  firstInner.style.backgroundImage = 'url("'+SLIDES[idx].img+'")';
   slides[current].classList.add('active');
-  idx = (idx + 1) % playlist.length;
+  updateMessage(SLIDES[idx]);
+  idx = 1;
 
   setInterval(showNext, INTERVAL);
 })();
@@ -1799,33 +1790,10 @@ html,body{width:100%;height:100%;overflow:hidden;}
 <!-- Panneau gauche (visible uniquement sur grand écran) -->
 <div class="left-panel">
   <div class="tagline">BGFIBank CA</div>
+  <div class="divider-gold"></div>
   <h1 id="left-headline"></h1>
+  <p id="left-message"></p>
 </div>
-<script>
-(function(){
-  const phrases = [
-    "Suivez votre temps.<br>Optimisez votre<br>productivité.",
-    "Chaque minute compte.<br>Mesurez ce qui<br>vous fait avancer.",
-    "Votre temps,<br>votre performance,<br>votre valeur.",
-    "Travaillez mieux.<br>Tracez chaque heure.<br>Progressez chaque jour."
-  ];
-  const el = document.getElementById('left-headline');
-  let current = Math.floor(Math.random() * phrases.length);
-  el.innerHTML = phrases[current];
-
-  // Rotation toutes les 8 s (synchronisé avec les slides)
-  setInterval(function(){
-    el.style.opacity = '0';
-    el.style.transform = 'translateY(10px)';
-    setTimeout(function(){
-      current = (current + 1) % phrases.length;
-      el.innerHTML = phrases[current];
-      el.style.opacity = '1';
-      el.style.transform = 'translateY(0)';
-    }, 500);
-  }, 8000);
-})();
-</script>
 
 <!-- Carte login -->
 <div class="login-card">
