@@ -153,6 +153,70 @@ function updateNotifBadge(count) {
 }
 
 // ============================================
+// RECHERCHE GLOBALE
+// ============================================
+
+/**
+ * Recherche globale : filtre les lignes du tableau actif en temps réel.
+ * Fonctionne sur toutes les pages : utilisateurs, sessions, départements,
+ * objectifs, processus, tâches, audit.
+ */
+function handleGlobalSearch(query) {
+  const q = query.trim().toLowerCase();
+  const page = getCurrentPage();
+
+  // Pages avec tableau standard (tr dans tbody)
+  const tablePages = ['users', 'sessions', 'departments', 'objectives', 'processes', 'tasks', 'audit'];
+
+  if (tablePages.includes(page)) {
+    // Chercher dans tous les tbody visibles
+    const tbodies = document.querySelectorAll('#content tbody');
+    tbodies.forEach(tbody => {
+      const rows = tbody.querySelectorAll('tr');
+      let visibleCount = 0;
+      rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        const match = q === '' || text.includes(q);
+        row.style.display = match ? '' : 'none';
+        if (match) visibleCount++;
+      });
+
+      // Afficher un message si aucun résultat
+      const emptyRow = tbody.querySelector('.search-empty-row');
+      if (emptyRow) emptyRow.remove();
+      if (visibleCount === 0 && q !== '') {
+        const colspan = tbody.closest('table')?.querySelectorAll('thead th').length || 5;
+        const tr = document.createElement('tr');
+        tr.className = 'search-empty-row';
+        tr.innerHTML = `<td colspan="${colspan}" style="text-align:center;color:#9ca3af;padding:24px;font-style:italic">
+          <i class="fas fa-search" style="margin-right:8px"></i>Aucun résultat pour « ${query} »
+        </td>`;
+        tbody.appendChild(tr);
+      }
+    });
+    return;
+  }
+
+  // Page départements (cartes au lieu de tableau)
+  if (page === 'departments') {
+    const cards = document.querySelectorAll('#content .dept-card');
+    cards.forEach(card => {
+      const text = card.innerText.toLowerCase();
+      card.style.display = (q === '' || text.includes(q)) ? '' : 'none';
+    });
+    return;
+  }
+
+  // Page dashboard ou reports : pas de filtrage
+}
+
+// Vider la recherche quand on change de page
+function clearSearch() {
+  const input = document.getElementById('globalSearch');
+  if (input) input.value = '';
+}
+
+// ============================================
 // ROUTING
 // ============================================
 function getCurrentPage() {
@@ -170,6 +234,7 @@ function getCurrentPage() {
 }
 
 function navigate(page) {
+  clearSearch();
   history.pushState({}, '', '/admin/' + page);
   renderPage(page);
 }
@@ -233,7 +298,9 @@ function renderLayout(title, content) {
           <div class="role">Direction Générale</div>
         </div>
       </div>
-      <div class="sidebar-search"><input type="text" placeholder="Rechercher..."></div>
+      <div class="sidebar-search">
+        <input type="text" id="globalSearch" placeholder="🔍 Rechercher..." oninput="handleGlobalSearch(this.value)" autocomplete="off">
+      </div>
       <button class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Déconnexion</button>
     </div>
   </div>
