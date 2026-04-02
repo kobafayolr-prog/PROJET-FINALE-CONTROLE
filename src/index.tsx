@@ -1704,21 +1704,21 @@ html,body{width:100%;height:100%;overflow:hidden;}
 (function(){
   /* ── 15 slides dans l'ordre logique de l'application ── */
   const SLIDES = [
-    { img: '/static/login-bg-01.jpg', title: 'Bienvenue sur TimeTrack', msg: 'Votre outil de suivi du temps<br>au service de la performance<br>BGFIBank CA.' },
-    { img: '/static/login-bg-02.jpg', title: 'Connexion sécurisée',     msg: 'Accédez à votre espace avec<br>vos identifiants BGFIBank.<br>Sécurité renforcée JWT.' },
-    { img: '/static/login-bg-03.jpg', title: 'Votre tableau de bord',   msg: 'Visualisez vos sessions,<br>votre productivité et<br>vos objectifs en temps réel.' },
-    { img: '/static/login-bg-04.jpg', title: 'Pointage en un clic',     msg: 'Démarrez et terminez<br>vos sessions de travail<br>facilement depuis votre espace.' },
-    { img: '/static/login-bg-05.jpg', title: 'Suivi des tâches',        msg: 'Associez chaque session<br>à une tâche, un processus<br>et un objectif stratégique.' },
-    { img: '/static/login-bg-06.jpg', title: 'Objectifs stratégiques',  msg: 'Contribuez aux objectifs<br>de la banque. Chaque heure<br>travaillée compte.' },
-    { img: '/static/login-bg-07.jpg', title: 'Validation hiérarchique', msg: 'Vos sessions sont validées<br>par votre Chef de Département<br>en toute transparence.' },
-    { img: '/static/login-bg-08.jpg', title: 'Notifications en direct', msg: 'Soyez alerté en temps réel<br>dès qu\'une session est<br>validée ou rejetée.' },
-    { img: '/static/login-bg-09.jpg', title: 'Espace Chef de Département', msg: 'Supervisez votre équipe,<br>validez les sessions et<br>suivez la productivité.' },
-    { img: '/static/login-bg-10.jpg', title: 'Rapports & Statistiques', msg: 'Analysez les performances<br>par département, objectif<br>et période de référence.' },
-    { img: '/static/login-bg-11.jpg', title: 'Export des données',      msg: 'Exportez vos rapports en CSV<br>pour vos analyses et<br>présentations de direction.' },
-    { img: '/static/login-bg-12.jpg', title: 'Gestion des utilisateurs', msg: 'L\'administrateur gère les comptes,<br>les rôles et les accès<br>en toute sécurité.' },
-    { img: '/static/login-bg-13.jpg', title: 'Journal d\'audit',        msg: 'Traçabilité complète de toutes<br>les actions pour la conformité<br>et la gouvernance.' },
-    { img: '/static/login-bg-14.jpg', title: 'Sécurité bancaire',       msg: 'PBKDF2-SHA256, chiffrement<br>des données, conformité<br>aux normes bancaires.' },
-    { img: '/static/login-bg-15.jpg', title: 'BGFIBank CA — Excellence', msg: 'Ensemble, bâtissons une banque<br>performante, transparente<br>et tournée vers l\'avenir.' }
+    { img: '/static/login-bg-01.jpg', phrase: 'Suivez votre temps.<br>Optimisez votre<br>productivité.' },
+    { img: '/static/login-bg-02.jpg', phrase: 'Chaque minute compte.<br>Mesurez ce qui<br>vous fait avancer.' },
+    { img: '/static/login-bg-03.jpg', phrase: 'Votre temps,<br>votre performance,<br>votre valeur.' },
+    { img: '/static/login-bg-04.jpg', phrase: 'Travaillez mieux.<br>Tracez chaque heure.<br>Progressez chaque jour.' },
+    { img: '/static/login-bg-05.jpg', phrase: 'Posez vos actions.<br>Mesurez votre impact.<br>Avancez avec clarté.' },
+    { img: '/static/login-bg-06.jpg', phrase: 'Chaque tâche accomplie<br>rapproche la banque<br>de ses objectifs.' },
+    { img: '/static/login-bg-07.jpg', phrase: 'La transparence<br>est la base de<br>toute confiance.' },
+    { img: '/static/login-bg-08.jpg', phrase: 'Informé en temps réel.<br>Réactif à chaque instant.<br>Toujours connecté.' },
+    { img: '/static/login-bg-09.jpg', phrase: 'Diriger, c\'est aussi<br>suivre, écouter<br>et valoriser.' },
+    { img: '/static/login-bg-10.jpg', phrase: 'Les chiffres parlent.<br>Les résultats guident.<br>La performance décide.' },
+    { img: '/static/login-bg-11.jpg', phrase: 'Vos données,<br>votre histoire,<br>votre excellence.' },
+    { img: '/static/login-bg-12.jpg', phrase: 'Bien gérer les hommes,<br>c\'est bien gérer<br>la banque.' },
+    { img: '/static/login-bg-13.jpg', phrase: 'Chaque action laisse<br>une trace.<br>Agissez avec intégrité.' },
+    { img: '/static/login-bg-14.jpg', phrase: 'La sécurité n\'est pas<br>une option.<br>C\'est une exigence.' },
+    { img: '/static/login-bg-15.jpg', phrase: 'BGFIBank CA.<br>L\'excellence au service<br>de votre avenir.' }
   ];
 
   const INTERVAL = 6000; // 6 s par slide
@@ -1742,17 +1742,15 @@ html,body{width:100%;height:100%;overflow:hidden;}
   SLIDES.forEach(s=>{ const i=new Image(); i.src=s.img; });
 
   function updateMessage(slideData){
-    const titleEl = document.getElementById('left-headline');
-    const msgEl   = document.getElementById('left-message');
-    if(!titleEl || !msgEl) return;
-    titleEl.style.opacity='0'; titleEl.style.transform='translateY(12px)';
-    msgEl.style.opacity='0';   msgEl.style.transform='translateY(8px)';
+    const el = document.getElementById('left-headline');
+    if(!el) return;
+    el.style.opacity='0';
+    el.style.transform='translateY(10px)';
     setTimeout(function(){
-      titleEl.innerHTML = slideData.title;
-      msgEl.innerHTML   = slideData.msg;
-      titleEl.style.opacity='1'; titleEl.style.transform='translateY(0)';
-      msgEl.style.opacity='1';   msgEl.style.transform='translateY(0)';
-    }, 400);
+      el.innerHTML = slideData.phrase;
+      el.style.opacity='1';
+      el.style.transform='translateY(0)';
+    }, 500);
   }
 
   function showNext(){
@@ -1790,9 +1788,7 @@ html,body{width:100%;height:100%;overflow:hidden;}
 <!-- Panneau gauche (visible uniquement sur grand écran) -->
 <div class="left-panel">
   <div class="tagline">BGFIBank CA</div>
-  <div class="divider-gold"></div>
   <h1 id="left-headline"></h1>
-  <p id="left-message"></p>
 </div>
 
 <!-- Carte login -->
