@@ -479,7 +479,44 @@ async function renderDashboard() {
         </tbody>
       </table>
     </div>
-  </div>`;
+  </div>
+
+  <!-- Méthode 3-3-3 : Ratio d'Efficience -->
+  <div class="card">
+    <div class="card-body">
+      <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Méthode 3-3-3 — Ratio d'Efficience Global</div>
+      <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap">
+        <div style="flex:0 0 220px"><canvas id="chart333" height="220"></canvas></div>
+        <div style="flex:1;min-width:200px">
+          ${(stats.ratio333||[]).map(r => {
+            const color = r.type==='Production'?'#1e3a5f':r.type==='Administration & Reporting'?'#f59e0b':'#10b981';
+            const icon  = r.type==='Production'?'fa-briefcase':r.type==='Administration & Reporting'?'fa-file-alt':'fa-check-circle';
+            return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+              <span style="width:14px;height:14px;border-radius:3px;background:${color};flex-shrink:0"></span>
+              <div style="flex:1">
+                <div style="font-weight:700;font-size:13px;color:#1e3a5f"><i class="fas ${icon}" style="margin-right:5px;color:${color}"></i>${r.type}</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+                  <div style="flex:1;background:#e5e7eb;border-radius:4px;height:8px">
+                    <div style="width:${r.percentage}%;background:${color};height:8px;border-radius:4px;transition:width .5s"></div>
+                  </div>
+                  <span style="font-weight:700;color:${color};font-size:14px;width:40px">${r.percentage}%</span>
+                  <span style="color:#6b7280;font-size:12px">${r.hours_display}</span>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+          <div style="margin-top:16px;padding:10px 14px;background:#eff6ff;border-radius:8px;border-left:4px solid #1e3a5f">
+            <div style="font-size:12px;color:#1e3a5f;font-weight:600"><i class="fas fa-info-circle" style="margin-right:5px"></i>Ratio d'Efficience</div>
+            <div style="font-size:22px;font-weight:800;color:#1e3a5f;margin-top:4px">
+              ${(stats.ratio333||[]).find(r=>r.type==='Production')?.percentage||0}%
+              <span style="font-size:13px;font-weight:400;color:#6b7280">de Production</span>
+            </div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px">Objectif : viser ≥ 70% en Production</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>\`;
 
   // Charts
   destroyCharts();
@@ -555,6 +592,36 @@ async function renderDashboard() {
           }
         },
         cutout: '60%'
+      }
+    });
+  }
+
+  // Graphique donut Méthode 3-3-3
+  if (stats.ratio333 && stats.ratio333.length > 0 && document.getElementById('chart333')) {
+    const colors333 = ['#1e3a5f', '#f59e0b', '#10b981'];
+    adminCharts.chart333 = new Chart(document.getElementById('chart333'), {
+      type: 'doughnut',
+      data: {
+        labels: stats.ratio333.map(r => r.type),
+        datasets: [{
+          data: stats.ratio333.map(r => r.minutes),
+          backgroundColor: colors333,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                const r = stats.ratio333[ctx.dataIndex];
+                return ` ${r.hours_display} (${r.percentage}%)`;
+              }
+            }
+          }
+        },
+        cutout: '62%'
       }
     });
   }
@@ -1134,7 +1201,7 @@ async function renderTasks() {
               <td><a style="color:#1e3a5f">${t.process_name}</a></td>
               <td>${t.department_name}</td>
               <td><span class="badge badge-obj" style="background:${t.objective_color}">${t.objective_name}</span></td>
-              <td><span class="badge ${t.task_type==='Productive'?'badge-active':'badge-inactive'}">${t.task_type}</span></td>
+              <td><span class="badge ${t.task_type==='Production'||t.task_type==='Productive'?'badge-active':t.task_type==='Contr\u00f4le'?'badge-validation':'badge-inactive'}" style="font-size:11px">${t.task_type==='Productive'?'Production':t.task_type==='Non productive'?'Administration & Reporting':t.task_type||'Production'}</span></td>
               <td><span class="badge ${t.status==='Actif'?'badge-active':'badge-inactive'}">${t.status}</span></td>
               <td style="white-space:nowrap">
                 <button class="btn btn-sm btn-outline" onclick="showTaskModal(${t.id})" title="Modifier"><i class="fas fa-edit"></i></button>
@@ -1183,10 +1250,11 @@ function showTaskModal(id = null) {
         </select>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Productive ?</label>
+        <div class="form-group"><label class="form-label">Type (Méthode 3-3-3)</label>
           <select class="form-control" id="t_type">
-            <option value="Productive" ${t?.task_type==='Productive'?'selected':''}>Productive</option>
-            <option value="Non productive" ${t?.task_type==='Non productive'?'selected':''}>Non productive</option>
+            <option value="Production" ${(!t?.task_type||t?.task_type==='Production'||t?.task_type==='Productive')?'selected':''}>Production</option>
+            <option value="Administration & Reporting" ${(t?.task_type==='Administration & Reporting'||t?.task_type==='Non productive')?'selected':''}>Administration & Reporting</option>
+            <option value="Contrôle" ${t?.task_type==='Contrôle'?'selected':''}>Contrôle</option>
           </select>
         </div>
         <div class="form-group"><label class="form-label">Statut</label>

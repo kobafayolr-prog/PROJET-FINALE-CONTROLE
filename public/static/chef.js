@@ -328,7 +328,40 @@ async function renderDashboard() {
         </tbody>
       </table>
     </div>
-  </div>`;
+  </div>
+
+  <!-- Méthode 3-3-3 — Ratio d'Efficience du Département -->
+  <div class="chart-card">
+    <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Méthode 3-3-3 — Efficience du Département</div>
+    <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+      <div style="flex:0 0 180px"><canvas id="chart333Chef" height="180"></canvas></div>
+      <div style="flex:1;min-width:180px">
+        ${(data.ratio333||[]).map(r => {
+          const color = r.type==='Production'?'#1e3a5f':r.type==='Administration & Reporting'?'#f59e0b':'#10b981';
+          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <span style="width:12px;height:12px;border-radius:3px;background:${color};flex-shrink:0"></span>
+            <div style="flex:1">
+              <div style="font-weight:700;font-size:12px;color:#1e3a5f">${r.type}</div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                <div style="flex:1;background:#e5e7eb;border-radius:4px;height:7px">
+                  <div style="width:${r.percentage}%;background:${color};height:7px;border-radius:4px"></div>
+                </div>
+                <span style="font-weight:700;color:${color};font-size:13px;width:36px">${r.percentage}%</span>
+                <span style="color:#6b7280;font-size:11px">${r.hours_display}</span>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+        <div style="margin-top:12px;padding:8px 12px;background:#eff6ff;border-radius:8px;border-left:4px solid #1e3a5f">
+          <div style="font-size:11px;color:#1e3a5f;font-weight:600">Ratio d'Efficience</div>
+          <div style="font-size:20px;font-weight:800;color:#1e3a5f">
+            ${(data.ratio333||[]).find(r=>r.type==='Production')?.percentage||0}%
+            <span style="font-size:12px;font-weight:400;color:#6b7280">Production</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>\`;
 
   destroyCharts();
 
@@ -351,6 +384,21 @@ async function renderDashboard() {
         datasets: [{ data: data.byObjective.map(o => o.total_minutes), backgroundColor: data.byObjective.map(o => o.color), borderWidth: 2 }]
       },
       options: { plugins: { legend: { display: false } }, cutout: '55%' }
+    });
+  }
+
+  // Donut Méthode 3-3-3
+  if (data.ratio333 && data.ratio333.length > 0 && document.getElementById('chart333Chef')) {
+    chefCharts.chart333 = new Chart(document.getElementById('chart333Chef'), {
+      type: 'doughnut',
+      data: {
+        labels: data.ratio333.map(r => r.type),
+        datasets: [{ data: data.ratio333.map(r => r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }]
+      },
+      options: {
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { const r = data.ratio333[ctx.dataIndex]; return ` ${r.hours_display} (${r.percentage}%)`; } } } },
+        cutout: '60%'
+      }
     });
   }
 }

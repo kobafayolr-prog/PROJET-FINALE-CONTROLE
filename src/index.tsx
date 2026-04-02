@@ -771,10 +771,47 @@ app.get('/api/admin/stats', async (c) => {
     hours_display: minutesToHours(o.total_minutes)
   }))
 
+  // ── Méthode 3-3-3 : répartition Production / Administration & Reporting / Contrôle ──
+  const ratio333 = await c.env.DB.prepare(
+    `SELECT
+       COALESCE(t.task_type, 'Production') as type_333,
+       COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
+     FROM work_sessions ws
+     LEFT JOIN tasks t ON ws.task_id = t.id
+     WHERE ws.status IN ('Validé', 'En attente', 'En cours')
+     GROUP BY COALESCE(t.task_type, 'Production')`
+  ).all()
+
+  const ratio333Data = ratio333.results as any[]
+  const total333 = ratio333Data.reduce((s: number, r: any) => s + r.total_minutes, 0)
+
+  // Normaliser les anciens types vers les nouveaux
+  const normalize333 = (type: string) => {
+    if (!type || type === 'Productive' || type === 'Production') return 'Production'
+    if (type === 'Non productive' || type === 'Administration & Reporting') return 'Administration & Reporting'
+    if (type === 'Contrôle') return 'Contrôle'
+    return type
+  }
+
+  // Agréger en 3 catégories
+  const ratio333Map: Record<string, number> = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+  ratio333Data.forEach((r: any) => {
+    const key = normalize333(r.type_333)
+    ratio333Map[key] = (ratio333Map[key] || 0) + r.total_minutes
+  })
+
+  const ratio333Result = Object.entries(ratio333Map).map(([type, minutes]) => ({
+    type,
+    minutes,
+    hours_display: minutesToHours(minutes),
+    percentage: total333 > 0 ? Math.round((minutes / total333) * 100) : 0
+  }))
+
   return c.json({
     hoursByObjective: objectivesWithPct,
     hoursByDept: hoursByDept.results,
     monthlyTrend: monthlyTrend.results,
+    ratio333: ratio333Result,
     is_weekend: isWeekend,
     productivity: {
       total_agents:                  totalAgents?.count || 0,
@@ -916,6 +953,30 @@ app.get('/api/agent/dashboard', async (c) => {
     hours_display: minutesToHours(o.total_minutes)
   }))
 
+  // ── Méthode 3-3-3 pour l'agent ──
+  const ratio333Agent = await c.env.DB.prepare(
+    `SELECT COALESCE(t.task_type, 'Production') as type_333,
+     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
+     FROM work_sessions ws
+     LEFT JOIN tasks t ON ws.task_id = t.id
+     WHERE ws.user_id = ? AND ws.status IN ('Validé', 'Terminé')
+     GROUP BY COALESCE(t.task_type, 'Production')`
+  ).bind(user.id).all()
+  const ratio333AgentData = ratio333Agent.results as any[]
+  const total333Agent = ratio333AgentData.reduce((s: number, r: any) => s + r.total_minutes, 0)
+  const norm333 = (t: string) => {
+    if (!t || t === 'Productive' || t === 'Production') return 'Production'
+    if (t === 'Non productive' || t === 'Administration & Reporting') return 'Administration & Reporting'
+    return 'Contrôle'
+  }
+  const map333Agent: Record<string, number> = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+  ratio333AgentData.forEach((r: any) => { const k = norm333(r.type_333); map333Agent[k] = (map333Agent[k]||0) + r.total_minutes })
+  const ratio333AgentResult = Object.entries(map333Agent).map(([type, minutes]) => ({
+    type, minutes,
+    hours_display: minutesToHours(minutes),
+    percentage: total333Agent > 0 ? Math.round((minutes / total333Agent) * 100) : 0
+  }))
+
   return c.json({
     today_minutes: todayStats?.today_minutes || 0,
     today_hours: minutesToHours(todayStats?.today_minutes || 0),
@@ -923,7 +984,8 @@ app.get('/api/agent/dashboard', async (c) => {
     total_hours: minutesToHours(totalStats?.total_minutes || 0),
     total_sessions: sessionStats?.total || 0,
     rejected_sessions: sessionStats?.rejected || 0,
-    byObjective: objectivesWithPct
+    byObjective: objectivesWithPct,
+    ratio333: ratio333AgentResult
   })
 })
 
@@ -1204,6 +1266,31 @@ app.get('/api/chef/dashboard', async (c) => {
   const objData = byObjective.results as any[]
   const totalMin = objData.reduce((sum: number, o: any) => sum + o.total_minutes, 0)
 
+  // ── Méthode 3-3-3 pour le département ──
+  const ratio333Chef = await c.env.DB.prepare(
+    `SELECT COALESCE(t.task_type, 'Production') as type_333,
+     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
+     FROM work_sessions ws
+     LEFT JOIN tasks t ON ws.task_id = t.id
+     WHERE ws.department_id = ? AND ws.status IN ('Validé', 'En attente', 'En cours')
+     GROUP BY COALESCE(t.task_type, 'Production')`
+  ).bind(deptId).all()
+
+  const ratio333ChefData = ratio333Chef.results as any[]
+  const total333Chef = ratio333ChefData.reduce((s: number, r: any) => s + r.total_minutes, 0)
+  const normalize333Chef = (t: string) => {
+    if (!t || t === 'Productive' || t === 'Production') return 'Production'
+    if (t === 'Non productive' || t === 'Administration & Reporting') return 'Administration & Reporting'
+    return 'Contrôle'
+  }
+  const map333Chef: Record<string, number> = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+  ratio333ChefData.forEach((r: any) => { const k = normalize333Chef(r.type_333); map333Chef[k] = (map333Chef[k]||0) + r.total_minutes })
+  const ratio333ChefResult = Object.entries(map333Chef).map(([type, minutes]) => ({
+    type, minutes,
+    hours_display: minutesToHours(minutes),
+    percentage: total333Chef > 0 ? Math.round((minutes / total333Chef) * 100) : 0
+  }))
+
   // Fusionner agentDetail avec productivité du jour
   const productivityMap: any = {}
   for (const p of (agentProductivityToday.results as any[])) {
@@ -1260,6 +1347,7 @@ app.get('/api/chef/dashboard', async (c) => {
         is_weekend:                   isWeekendChef
       }
     }),
+    ratio333: ratio333ChefResult,
     team_productivity: {
       total_agents:              nbAgents,
       is_weekend:                isWeekendChef,
