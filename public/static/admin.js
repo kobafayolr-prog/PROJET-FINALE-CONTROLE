@@ -516,7 +516,7 @@ async function renderDashboard() {
         </div>
       </div>
     </div>
-  </div>\`;
+  </div>`;
 
   // Charts
   destroyCharts();
