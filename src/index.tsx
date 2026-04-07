@@ -1568,6 +1568,70 @@ app.get('/api/chef/dashboard', async (c) => {
   let r333Month2 = null
   if (month2) r333Month2 = await get333ForMonth(month2)
 
+  // ── Cumul 6 mois par agent (même département) ─────────────────────────────
+  const last6Chef = await c.env.DB.prepare(
+    `SELECT DISTINCT strftime('%Y-%m', start_time) as m
+     FROM work_sessions WHERE status IN ('Validé','Terminé') AND department_id=?
+     ORDER BY m DESC LIMIT 6`
+  ).bind(user.department_id).all()
+  const cumulMonthsChef = (last6Chef.results as any[]).map((r:any)=>r.m)
+
+  let cumulAgentComparisonChef: any[] = []
+  if (cumulMonthsChef.length > 0) {
+    const normChef = (t: string) => {
+      if (!t || t==='Productive' || t==='Production') return 'Production'
+      if (t.includes('Admin') || t.includes('Reporting')) return 'Administration & Reporting'
+      if (t.includes('Contr')) return 'Contrôle'
+      return 'Production'
+    }
+    const cumulRaw = await c.env.DB.prepare(
+      `SELECT ws.user_id as agent_id, u.first_name||' '||u.last_name as agent_name,
+              u.works_saturday, strftime('%Y-%m', ws.start_time) as month,
+              COALESCE(t.task_type,'Production') as type_333,
+              COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM work_sessions ws
+       JOIN tasks t ON ws.task_id=t.id
+       JOIN users u ON ws.user_id=u.id
+       WHERE ws.department_id=? AND ws.status IN ('Validé','Terminé')
+         AND strftime('%Y-%m', ws.start_time) IN (${cumulMonthsChef.map(()=>'?').join(',')})
+       GROUP BY ws.user_id, strftime('%Y-%m', ws.start_time), t.task_type`
+    ).bind(user.department_id, ...cumulMonthsChef).all()
+
+    const aMapChef: Record<string,any> = {}
+    ;(cumulRaw.results as any[]).forEach((r:any) => {
+      if (!aMapChef[r.agent_id]) {
+        aMapChef[r.agent_id] = {
+          agent_id: r.agent_id, agent_name: r.agent_name,
+          works_saturday: r.works_saturday || 0,
+          months_included: new Set<string>(),
+          'Production':0, 'Administration & Reporting':0, 'Contrôle':0
+        }
+      }
+      aMapChef[r.agent_id][normChef(r.type_333)] += r.total_minutes
+      aMapChef[r.agent_id].months_included.add(r.month)
+    })
+    cumulAgentComparisonChef = Object.values(aMapChef).map((a:any) => {
+      const nbM = a.months_included.size || 1
+      const wd = a.works_saturday ? 26 : 22
+      const capCumul = wd * 480 * nbM
+      const tot = a.Production + a['Administration & Reporting'] + a['Contrôle']
+      const pct = capCumul > 0 ? Math.round(tot*100/capCumul) : 0
+      return {
+        agent_id: a.agent_id, agent_name: a.agent_name,
+        works_saturday: a.works_saturday,
+        capacity_minutes: capCumul,
+        'Production': a.Production,
+        'Administration & Reporting': a['Administration & Reporting'],
+        'Contrôle': a.Contrôle,
+        total_minutes: tot,
+        productive_pct: pct, non_productive_pct: Math.max(0,100-pct),
+        hours_display: minutesToHours(tot),
+        months_count: nbM
+      }
+    }).sort((a:any,b:any)=>b.total_minutes-a.total_minutes)
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const objData: any[] = []
   const totalMin = 0
 
@@ -1593,6 +1657,8 @@ app.get('/api/chef/dashboard', async (c) => {
     ratio333Month2: r333Month2 ? r333Month2.global333 : null,
     agentComparison: r333Main.agentRows,
     agentComparisonMonth2: r333Month2 ? r333Month2.agentRows : null,
+    cumulAgentComparison: cumulAgentComparisonChef,
+    cumulMonths: cumulMonthsChef,
     agentDetail: (agentDetail.results as any[]).map((a: any) => {
       const p = productivityMap[a.id] || { validated_minutes_today: 0, pending_minutes_today: 0, inprogress_minutes_today: 0 }
       const cap = capPerAgentChef || 480
@@ -2242,6 +2308,123 @@ app.get('/api/dg/dashboard', async (c) => {
     const deptData = byDept.results as any[]
     const grandTotal = deptData.reduce((s:number,d:any)=>s+d.total_minutes,0)
 
+    // ── Vue cumulative 6 mois (dept + agent) ─────────────────────────────────
+    // On récupère les 6 derniers mois distincts présents en base
+    const last6Months = await c.env.DB.prepare(
+      `SELECT DISTINCT strftime('%Y-%m',start_time) as m
+       FROM work_sessions WHERE status IN ('Validé','Terminé')
+       ORDER BY m DESC LIMIT 6`
+    ).all()
+    const cumulMonths = (last6Months.results as any[]).map((r:any)=>r.m)
+    const norm = (t: string) => {
+      if (!t || t==='Productive' || t==='Production') return 'Production'
+      if (t.includes('Admin') || t.includes('Reporting')) return 'Administration & Reporting'
+      if (t.includes('Contr')) return 'Contrôle'
+      return 'Production'
+    }
+
+    // Cumul par département sur 6 mois
+    const cumulRawDept = await c.env.DB.prepare(
+      `SELECT d.name as dept_name,
+              strftime('%Y-%m', ws.start_time) as month,
+              COALESCE(t.task_type,'Production') as type_333,
+              COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM work_sessions ws
+       JOIN tasks t ON ws.task_id=t.id
+       JOIN departments d ON ws.department_id=d.id
+       WHERE ws.status IN ('Validé','Terminé')
+         AND strftime('%Y-%m', ws.start_time) IN (${cumulMonths.map(()=>'?').join(',')})
+       GROUP BY d.id, strftime('%Y-%m', ws.start_time), t.task_type`
+    ).bind(...cumulMonths).all()
+
+    // Cumul par agent sur 6 mois
+    const cumulRawAgent = await c.env.DB.prepare(
+      `SELECT ws.user_id as agent_id,
+              u.first_name||' '||u.last_name as agent_name,
+              d.name as dept_name,
+              u.works_saturday,
+              strftime('%Y-%m', ws.start_time) as month,
+              COALESCE(t.task_type,'Production') as type_333,
+              COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM work_sessions ws
+       JOIN tasks t ON ws.task_id=t.id
+       JOIN users u ON ws.user_id=u.id
+       JOIN departments d ON ws.department_id=d.id
+       WHERE ws.status IN ('Validé','Terminé')
+         AND strftime('%Y-%m', ws.start_time) IN (${cumulMonths.map(()=>'?').join(',')})
+       GROUP BY ws.user_id, strftime('%Y-%m', ws.start_time), t.task_type`
+    ).bind(...cumulMonths).all()
+
+    // Agréger dept cumul (somme sur tous les mois)
+    const cumulDeptMap: Record<string,any> = {}
+    const caps = deptCap.results as any[]
+    ;(cumulRawDept.results as any[]).forEach((r:any) => {
+      if (!cumulDeptMap[r.dept_name]) {
+        const cap = caps.find((ci:any)=>ci.dept_name===r.dept_name)
+        cumulDeptMap[r.dept_name] = {
+          dept_name: r.dept_name,
+          agent_count: cap?.agent_count || 0,
+          agents_with_saturday: cap?.agents_with_saturday || 0,
+          agents_without_saturday: cap?.agents_without_saturday || 0,
+          months_included: new Set<string>(),
+          'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0
+        }
+      }
+      cumulDeptMap[r.dept_name][norm(r.type_333)] += r.total_minutes
+      cumulDeptMap[r.dept_name].months_included.add(r.month)
+    })
+    const cumulDeptComparison = Object.values(cumulDeptMap).map((d:any) => {
+      const nbMonths = d.months_included.size || 1
+      const agSat = d.agents_with_saturday
+      const agNoSat = d.agents_without_saturday
+      // Capacité cumulée = somme sur chaque mois des jours ouvrés réels
+      // Simplifié : nbMonths × capacité mensuelle standard (22j)
+      const capCumul = (agSat * 22 + agNoSat * 22) * 480 * nbMonths
+      const tot = d.Production + d['Administration & Reporting'] + d['Contrôle']
+      const pct = capCumul > 0 ? Math.round(tot*100/capCumul) : 0
+      return {
+        dept_name: d.dept_name, agent_count: d.agent_count,
+        agents_with_saturday: agSat, agents_without_saturday: agNoSat,
+        capacity_minutes: capCumul,
+        'Production': d.Production, 'Administration & Reporting': d['Administration & Reporting'], 'Contrôle': d.Contrôle,
+        total_minutes: tot, productive_pct: pct, non_productive_pct: Math.max(0,100-pct),
+        hours_display: minutesToHours(tot), capacity_hours_display: minutesToHours(capCumul),
+        months_count: nbMonths
+      }
+    }).sort((a:any,b:any)=>b.total_minutes-a.total_minutes)
+
+    // Agréger agent cumul (somme sur tous les mois)
+    const cumulAgentMap: Record<string,any> = {}
+    ;(cumulRawAgent.results as any[]).forEach((r:any) => {
+      if (!cumulAgentMap[r.agent_id]) {
+        cumulAgentMap[r.agent_id] = {
+          agent_id: r.agent_id, agent_name: r.agent_name, dept_name: r.dept_name,
+          works_saturday: r.works_saturday || 0,
+          months_included: new Set<string>(),
+          'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0
+        }
+      }
+      cumulAgentMap[r.agent_id][norm(r.type_333)] += r.total_minutes
+      cumulAgentMap[r.agent_id].months_included.add(r.month)
+    })
+    const cumulAgentComparison = Object.values(cumulAgentMap).map((a:any) => {
+      const nbMonths = a.months_included.size || 1
+      const wd = a.works_saturday ? 26 : 22 // ~26j/mois avec samedi, ~22j sans
+      const capCumul = wd * 480 * nbMonths
+      const tot = a.Production + a['Administration & Reporting'] + a['Contrôle']
+      const pct = capCumul > 0 ? Math.round(tot*100/capCumul) : 0
+      return {
+        agent_id: a.agent_id, agent_name: a.agent_name, dept_name: a.dept_name,
+        works_saturday: a.works_saturday,
+        capacity_minutes: capCumul,
+        'Production': a.Production, 'Administration & Reporting': a['Administration & Reporting'], 'Contrôle': a.Contrôle,
+        total_minutes: tot, productive_pct: pct, non_productive_pct: Math.max(0,100-pct),
+        hours_display: minutesToHours(tot), capacity_hours_display: minutesToHours(capCumul),
+        months_count: nbMonths
+      }
+    }).sort((a:any,b:any)=>b.total_minutes-a.total_minutes)
+    // ─────────────────────────────────────────────────────────────────────────
+
     return c.json({
       month, month2: month2||null,
       working_days: dgWdStd,
@@ -2258,7 +2441,11 @@ app.get('/api/dg/dashboard', async (c) => {
       agentComparison: dgM1.agentComparison,
       agentComparisonMonth2: dgM2?.agentComparison||null,
       byDept333: dgM1.deptComparison,
-      byAgent333: dgM1.agentComparison
+      byAgent333: dgM1.agentComparison,
+      // ── Vue cumulative 6 mois ──
+      cumulMonths,
+      cumulDeptComparison,
+      cumulAgentComparison
     })
   } catch(e: any) { return c.json({ error: e.message }, 500) }
 })

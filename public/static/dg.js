@@ -6,6 +6,8 @@ const API = '';
 let token = localStorage.getItem('token');
 let currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 let dgCharts = {};
+let dgBarMode = 'mensuel'; // 'mensuel' ou 'cumul'
+let dgLastData = null;     // cache de la dernière réponse API pour le toggle sans re-fetch
 
 // Auth check
 if (!token || currentUser.role !== 'Directeur Général') {
@@ -114,6 +116,7 @@ async function renderDashboard() {
 async function loadDgDashboard() {
   const m2p = dgMonth2 ? `&month2=${dgMonth2}` : '';
   const data = await api(`/api/dg/dashboard?month=${dgMonth1}${m2p}`);
+  dgLastData = data; // cache pour le toggle mensuel/cumulatif sans re-fetch
   renderLayout('dashboard', `
   <div class="page-header">
     <div>
@@ -320,46 +323,38 @@ async function loadDgDashboard() {
     </div>`;
   })()}
 
+  <!-- Toggle vue mensuelle / cumulative -->
+  <div id="dg-bar-toggle-wrap" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600;color:#374151"><i class="fas fa-layer-group" style="margin-right:6px;color:#1e3a5f"></i>Vue des graphiques :</span>
+    <button id="dg-btn-mensuel" onclick="dgSetBarMode('mensuel')"
+      style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:2px solid #1e3a5f;background:#1e3a5f;color:#fff">
+      <i class="fas fa-calendar-day" style="margin-right:5px"></i>Mensuel
+    </button>
+    <button id="dg-btn-cumul" onclick="dgSetBarMode('cumul')"
+      style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:2px solid #1e3a5f;background:#fff;color:#1e3a5f">
+      <i class="fas fa-layer-group" style="margin-right:5px"></i>Cumulatif 6 mois
+    </button>
+    <span id="dg-cumul-label" style="font-size:11px;color:#6b7280;display:none">
+      <i class="fas fa-info-circle" style="margin-right:4px"></i>Données cumulées sur <b id="dg-cumul-nb-months">6</b> mois
+    </span>
+  </div>
+
   <!-- Barres empilées par Département -->
   <div class="chart-card" style="margin-bottom:20px">
-    <div class="chart-title"><i class="fas fa-chart-bar" style="color:#1e3a5f;margin-right:8px"></i>Comparaison par Département — Répartition 3-3-3</div>
+    <div class="chart-title"><i class="fas fa-chart-bar" style="color:#1e3a5f;margin-right:8px"></i>Comparaison par Département — Répartition 3-3-3
+      <span id="dg-dept-mode-label" style="font-size:11px;font-weight:400;color:#6b7280;margin-left:8px"></span>
+    </div>
     <canvas id="dgChartDeptBar" height="${data.month2?260:200}"></canvas>
     <div style="margin-top:16px;overflow-x:auto">
-      <table style="width:100%;font-size:12px">
-        <thead><tr style="background:#f9fafb">
-          <th style="padding:8px;text-align:left">DÉPARTEMENT</th>
-          <th style="padding:8px;text-align:center">AGENTS</th>
-          <th style="padding:8px;text-align:center;color:#1e3a5f">PRODUCTION</th>
-          <th style="padding:8px;text-align:center;color:#f59e0b">ADMIN & REPORTING</th>
-          <th style="padding:8px;text-align:center;color:#10b981">CONTRÔLE</th>
-          <th style="padding:8px;text-align:center;color:#ef4444">NON PRODUCTIF</th>
-        </tr></thead>
-        <tbody>
-          ${(data.byDept333||data.byDept||[]).map(d => {
-            const cap = d.capacity_minutes || (d.agent_count||0)*480;
-            const np  = Math.max(0, cap-(d.total_minutes||0));
-            const npPct = cap>0?Math.round(np/cap*100):0;
-            const prodPct = cap>0?Math.round((d.Production||d.total_minutes||0)/cap*100):0;
-            const aMin = d['Administration & Reporting']||0;
-            const cMin = d['Contrôle']||0;
-            const pMin = d['Production']||d.total_minutes||0;
-            return `<tr style="border-bottom:1px solid #f3f4f6">
-              <td style="padding:8px;font-weight:600">${d.dept_name}</td>
-              <td style="padding:8px;text-align:center">${d.agent_count||0}</td>
-              <td style="padding:8px;text-align:center;color:#1e3a5f;font-weight:700">${minutesToDisplay(pMin)} <small style="color:#9ca3af">(${prodPct}%)</small></td>
-              <td style="padding:8px;text-align:center;color:#f59e0b;font-weight:700">${minutesToDisplay(aMin)}</td>
-              <td style="padding:8px;text-align:center;color:#10b981;font-weight:700">${minutesToDisplay(cMin)}</td>
-              <td style="padding:8px;text-align:center"><span style="font-weight:700;color:#ef4444">${minutesToDisplay(np)}</span> <small style="color:#9ca3af">(${npPct}% cap.)</small></td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
+      <div id="dg-dept-table"></div>
     </div>
   </div>
 
   <!-- Barres empilées par Agent -->
   <div class="chart-card" style="margin-bottom:20px">
-    <div class="chart-title"><i class="fas fa-users" style="color:#1e3a5f;margin-right:8px"></i>Comparaison par Agent — Temps de Reporting vs Production</div>
+    <div class="chart-title"><i class="fas fa-users" style="color:#1e3a5f;margin-right:8px"></i>Comparaison par Agent — Temps de Reporting vs Production
+      <span id="dg-agent-mode-label" style="font-size:11px;font-weight:400;color:#6b7280;margin-left:8px"></span>
+    </div>
     <canvas id="dgChartAgentBar" height="${Math.max(180,(data.byAgent333||[]).length*(data.month2?40:28))}"></canvas>
   </div>
 
@@ -404,127 +399,196 @@ async function loadDgDashboard() {
       options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${r333M2[ctx.dataIndex].hours_display} (${r333M2[ctx.dataIndex].percentage}%)` } } } }
     });
   }
-  // Barres dept (capacité mensuelle réelle via capacity_minutes)
-  const depts = data.byDept333||data.deptComparison||data.byDept||[];
-  const deptsM2 = data.deptComparisonMonth2||[];
+
+  // Mettre à jour le toggle selon le mode courant
+  dgUpdateToggleUI();
+  // Rendre les barres selon le mode courant
+  renderDgBars(data, dgBarMode);
+}
+
+// ── Toggle mode mensuel / cumulatif ───────────────────────────────────────────
+function dgSetBarMode(mode) {
+  dgBarMode = mode;
+  dgUpdateToggleUI();
+  if (dgLastData) renderDgBars(dgLastData, mode);
+}
+
+function dgUpdateToggleUI() {
+  const btnM = document.getElementById('dg-btn-mensuel');
+  const btnC = document.getElementById('dg-btn-cumul');
+  const lbl  = document.getElementById('dg-cumul-label');
+  if (btnM) {
+    btnM.style.background = dgBarMode === 'mensuel' ? '#1e3a5f' : '#fff';
+    btnM.style.color      = dgBarMode === 'mensuel' ? '#fff' : '#1e3a5f';
+  }
+  if (btnC) {
+    btnC.style.background = dgBarMode === 'cumul' ? '#1e3a5f' : '#fff';
+    btnC.style.color      = dgBarMode === 'cumul' ? '#fff' : '#1e3a5f';
+  }
+  if (lbl) lbl.style.display = dgBarMode === 'cumul' ? 'inline' : 'none';
+}
+
+// ── Rendu des barres dept + agent selon le mode ───────────────────────────────
+function renderDgBars(data, mode) {
+  // Détruire seulement les barres (pas les pie charts)
+  if (dgCharts.deptBar) { try { dgCharts.deptBar.destroy(); } catch(e){} delete dgCharts.deptBar; }
+  if (dgCharts.agentBar) { try { dgCharts.agentBar.destroy(); } catch(e){} delete dgCharts.agentBar; }
+
+  const isCumul = mode === 'cumul';
+  const cumulNb = (data.cumulMonths||[]).length || 6;
+
+  // Mettre à jour labels de nb mois
+  const nbEl = document.getElementById('dg-cumul-nb-months');
+  if (nbEl) nbEl.textContent = cumulNb;
+
+  // Sources de données selon le mode
+  let depts, deptsM2, agents, agentsM2;
+  if (isCumul) {
+    depts    = data.cumulDeptComparison || data.byDept333 || data.deptComparison || [];
+    deptsM2  = []; // pas de mois 2 en mode cumul (6 mois sont déjà cumulés)
+    agents   = data.cumulAgentComparison || data.agentComparison || [];
+    agentsM2 = [];
+  } else {
+    depts    = data.byDept333 || data.deptComparison || data.byDept || [];
+    deptsM2  = data.deptComparisonMonth2 || [];
+    agents   = data.byAgent333 || data.agentComparison || [];
+    agentsM2 = data.agentComparisonMonth2 || [];
+  }
+
+  // Label de mode dans le titre
+  const modeLabel = isCumul
+    ? `(${cumulNb} mois cumulés)`
+    : data.month2 ? `(${data.month||dgMonth1} vs ${data.month2})` : `(${data.month||dgMonth1})`;
+  const deptModeEl  = document.getElementById('dg-dept-mode-label');
+  const agentModeEl = document.getElementById('dg-agent-mode-label');
+  if (deptModeEl)  deptModeEl.textContent  = modeLabel;
+  if (agentModeEl) agentModeEl.textContent = modeLabel;
+
+  // Capacité tooltip : si cumul → "cap. cumulée", sinon "cap. mensuelle"
+  const capLabel = isCumul ? 'cap. cumulée' : 'cap. mensuelle';
+
+  // ── Helper datasets empilés ──────────────────────────────────────
+  const mkDs = (src, lbl, stackId) => [
+    {
+      label: 'Production' + lbl,
+      data: src.map(d => +((d.Production||d.total_minutes||0)/60).toFixed(2)),
+      backgroundColor: '#1e3a5f', stack: stackId,
+      _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
+    },
+    {
+      label: 'Admin & Reporting' + lbl,
+      data: src.map(d => +((d['Administration & Reporting']||0)/60).toFixed(2)),
+      backgroundColor: '#f59e0b', stack: stackId,
+      _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
+    },
+    {
+      label: 'Contrôle' + lbl,
+      data: src.map(d => +((d['Contrôle']||0)/60).toFixed(2)),
+      backgroundColor: '#10b981', stack: stackId,
+      _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
+    },
+    {
+      label: 'Non productif' + lbl,
+      data: src.map(d => {
+        const cap = (d.capacity_minutes||d.agent_count*8*22||0)/60;
+        return +(Math.max(0, cap-(d.total_minutes||0)/60).toFixed(2));
+      }),
+      backgroundColor: '#ef4444cc', stack: stackId,
+      _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
+    }
+  ];
+
+  const tooltipCb = cl => ({
+    label: ctx => {
+      const val = ctx.raw;
+      const cap = ctx.dataset._cap ? ctx.dataset._cap[ctx.dataIndex] : 1;
+      const pct = cap > 0 ? Math.round(val/cap*100) : 0;
+      const h = Math.floor(val), m = Math.round((val-h)*60);
+      const capH = Math.floor(cap), capM = Math.round((cap-capH)*60);
+      return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m — ${pct}% ${cl} (${capH}h${capM>0?String(capM).padStart(2,'0')+'m':''})`;
+    }
+  });
+
+  // ── Graphique Département ──────────────────────────────────────────────────
   if (depts.length && document.getElementById('dgChartDeptBar')) {
-    const labels = depts.map(d=>d.dept_name.replace('Direction ','Dir. '));
-    const mkDs = (src, moisLabel, stackId) => {
-      // Calculer la capacité par département
-      return [
-        {
-          label: 'Production' + moisLabel,
-          data: src.map(d => +((d.Production||d.total_minutes||0)/60).toFixed(2)),
-          backgroundColor: '#1e3a5f',
-          stack: stackId,
-          _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
-        },
-        {
-          label: 'Admin & Reporting' + moisLabel,
-          data: src.map(d => +((d['Administration & Reporting']||0)/60).toFixed(2)),
-          backgroundColor: '#f59e0b',
-          stack: stackId,
-          _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
-        },
-        {
-          label: 'Contrôle' + moisLabel,
-          data: src.map(d => +((d['Contrôle']||0)/60).toFixed(2)),
-          backgroundColor: '#10b981',
-          stack: stackId,
-          _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
-        },
-        {
-          label: 'Non productif' + moisLabel,
-          data: src.map(d => {
-            const cap = (d.capacity_minutes||d.agent_count*8*22||0)/60;
-            return +(Math.max(0, cap - (d.total_minutes||0)/60).toFixed(2));
-          }),
-          backgroundColor: '#ef4444cc',
-          stack: stackId,
-          _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
-        }
-      ];
-    };
-    const ds = mkDs(depts, data.month2?' ('+data.month+')':'', 'M1');
-    if (deptsM2.length) ds.push(...mkDs(deptsM2, ' ('+data.month2+')', 'M2'));
+    const labels = depts.map(d => d.dept_name.replace('Direction ','Dir. '));
+    const ds = mkDs(depts, isCumul ? '' : (data.month2 ? ' ('+data.month+')' : ''), 'M1');
+    if (!isCumul && deptsM2.length) ds.push(...mkDs(deptsM2, ' ('+data.month2+')', 'M2'));
+
     dgCharts.deptBar = new Chart(document.getElementById('dgChartDeptBar'), {
       type: 'bar', data: { labels, datasets: ds },
       options: {
         indexAxis: 'y', responsive: true,
         plugins: {
-          legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
-          tooltip: {
-            callbacks: {
-              label: ctx => {
-                const val = ctx.raw;
-                const cap = ctx.dataset._cap ? ctx.dataset._cap[ctx.dataIndex] : 1;
-                const pct = cap > 0 ? Math.round(val / cap * 100) : 0;
-                const h = Math.floor(val), m = Math.round((val-h)*60);
-                const capH = Math.floor(cap), capM = Math.round((cap-capH)*60);
-                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m — ${pct}% de la cap. mensuelle (${capH}h${capM>0?String(capM).padStart(2,'0')+'m':''})`;
-              }
-            }
-          }
+          legend: { position: 'bottom', labels: { font:{size:11}, boxWidth:12 } },
+          tooltip: { callbacks: tooltipCb(capLabel) }
         },
-        scales: { x: { stacked: true, ticks: { callback: v => v+'h' }, grid: { color: '#f3f4f6' } }, y: { stacked: true, ticks: { font: { size: 11 } } } }
+        scales: {
+          x: { stacked:true, ticks:{callback:v=>v+'h'}, grid:{color:'#f3f4f6'} },
+          y: { stacked:true, ticks:{font:{size:11}} }
+        }
       }
     });
   }
-  // Barres agent (capacité mensuelle via capacity_minutes)
-  const agents = data.byAgent333||data.agentComparison||[];
-  const agentsM2 = data.agentComparisonMonth2||[];
+
+  // ── Tableau récapitulatif département ─────────────────────────────────────
+  const deptTableEl = document.getElementById('dg-dept-table');
+  if (deptTableEl && depts.length) {
+    deptTableEl.innerHTML = `
+      <table style="width:100%;font-size:12px">
+        <thead><tr style="background:#f9fafb">
+          <th style="padding:8px;text-align:left">DÉPARTEMENT</th>
+          <th style="padding:8px;text-align:center">AGENTS</th>
+          <th style="padding:8px;text-align:center;color:#1e3a5f">PRODUCTION</th>
+          <th style="padding:8px;text-align:center;color:#f59e0b">ADMIN & REPORTING</th>
+          <th style="padding:8px;text-align:center;color:#10b981">CONTRÔLE</th>
+          <th style="padding:8px;text-align:center;color:#ef4444">NON PRODUCTIF</th>
+          ${isCumul ? '<th style="padding:8px;text-align:center;color:#6b7280">MOIS</th>' : ''}
+        </tr></thead>
+        <tbody>
+          ${depts.map(d => {
+            const cap = d.capacity_minutes || (d.agent_count||0)*480;
+            const np  = Math.max(0, cap-(d.total_minutes||0));
+            const npPct = cap>0?Math.round(np/cap*100):0;
+            const prodPct = cap>0?Math.round((d.Production||d.total_minutes||0)/cap*100):0;
+            return `<tr style="border-bottom:1px solid #f3f4f6">
+              <td style="padding:8px;font-weight:600">${d.dept_name}</td>
+              <td style="padding:8px;text-align:center">${d.agent_count||0}</td>
+              <td style="padding:8px;text-align:center;color:#1e3a5f;font-weight:700">${minutesToDisplay(d.Production||d.total_minutes||0)} <small style="color:#9ca3af">(${prodPct}%)</small></td>
+              <td style="padding:8px;text-align:center;color:#f59e0b;font-weight:700">${minutesToDisplay(d['Administration & Reporting']||0)}</td>
+              <td style="padding:8px;text-align:center;color:#10b981;font-weight:700">${minutesToDisplay(d['Contrôle']||0)}</td>
+              <td style="padding:8px;text-align:center"><span style="font-weight:700;color:#ef4444">${minutesToDisplay(np)}</span> <small style="color:#9ca3af">(${npPct}%)</small></td>
+              ${isCumul ? `<td style="padding:8px;text-align:center;color:#6b7280">${d.months_count||cumulNb}</td>` : ''}
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  // ── Graphique Agent ────────────────────────────────────────────────────────
+  const mkAgDs = (src, lbl, stackId) => [
+    { label:'Production'+lbl, data:src.map(a=>+((a.Production||0)/60).toFixed(2)), backgroundColor:'#1e3a5f', stack:stackId, _cap:src.map(a=>(a.capacity_minutes||480)/60) },
+    { label:'Admin & Reporting'+lbl, data:src.map(a=>+((a['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor:'#f59e0b', stack:stackId, _cap:src.map(a=>(a.capacity_minutes||480)/60) },
+    { label:'Contrôle'+lbl, data:src.map(a=>+((a['Contrôle']||0)/60).toFixed(2)), backgroundColor:'#10b981', stack:stackId, _cap:src.map(a=>(a.capacity_minutes||480)/60) },
+    { label:'Non productif'+lbl, data:src.map(a=>{ const c=(a.capacity_minutes||480)/60; return +(Math.max(0,c-(a.total_minutes||0)/60).toFixed(2)); }), backgroundColor:'#ef4444cc', stack:stackId, _cap:src.map(a=>(a.capacity_minutes||480)/60) }
+  ];
+
   if (agents.length && document.getElementById('dgChartAgentBar')) {
-    const mkAgDs = (src, moisLabel, stackId) => [
-      {
-        label: 'Production' + moisLabel,
-        data: src.map(a => +((a.Production||0)/60).toFixed(2)),
-        backgroundColor: '#1e3a5f', stack: stackId,
-        _cap: src.map(a => (a.capacity_minutes||480)/60)
-      },
-      {
-        label: 'Admin & Reporting' + moisLabel,
-        data: src.map(a => +((a['Administration & Reporting']||0)/60).toFixed(2)),
-        backgroundColor: '#f59e0b', stack: stackId,
-        _cap: src.map(a => (a.capacity_minutes||480)/60)
-      },
-      {
-        label: 'Contrôle' + moisLabel,
-        data: src.map(a => +((a['Contrôle']||0)/60).toFixed(2)),
-        backgroundColor: '#10b981', stack: stackId,
-        _cap: src.map(a => (a.capacity_minutes||480)/60)
-      },
-      {
-        label: 'Non productif' + moisLabel,
-        data: src.map(a => {
-          const cap = (a.capacity_minutes||480)/60;
-          return +(Math.max(0, cap - (a.total_minutes||0)/60).toFixed(2));
-        }),
-        backgroundColor: '#ef4444cc', stack: stackId,
-        _cap: src.map(a => (a.capacity_minutes||480)/60)
-      }
-    ];
-    const agDs = mkAgDs(agents, data.month2?' ('+data.month+')':'', 'M1');
-    if (agentsM2.length) agDs.push(...mkAgDs(agentsM2, ' ('+data.month2+')', 'M2'));
+    const agDs = mkAgDs(agents, isCumul ? '' : (data.month2 ? ' ('+data.month+')' : ''), 'M1');
+    if (!isCumul && agentsM2.length) agDs.push(...mkAgDs(agentsM2, ' ('+data.month2+')', 'M2'));
     dgCharts.agentBar = new Chart(document.getElementById('dgChartAgentBar'), {
-      type: 'bar', data: { labels: agents.map(a=>a.agent_name), datasets: agDs },
+      type: 'bar',
+      data: { labels: agents.map(a => a.agent_name), datasets: agDs },
       options: {
         indexAxis: 'y', responsive: true,
         plugins: {
-          legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
-          tooltip: {
-            callbacks: {
-              label: ctx => {
-                const val = ctx.raw;
-                const capH = ctx.dataset._cap ? ctx.dataset._cap[ctx.dataIndex] : 8;
-                const pct = capH > 0 ? Math.round(val / capH * 100) : 0;
-                const h = Math.floor(val), m = Math.round((val-h)*60);
-                const cH = Math.floor(capH), cM = Math.round((capH-cH)*60);
-                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m — ${pct}% cap. mensuelle (${cH}h${cM>0?String(cM).padStart(2,'0')+'m':''})`;
-              }
-            }
-          }
+          legend: { position:'bottom', labels:{font:{size:11},boxWidth:12} },
+          tooltip: { callbacks: tooltipCb(capLabel) }
         },
-        scales: { x: { stacked: true, ticks: { callback: v => v+'h' }, grid: { color: '#f3f4f6' } }, y: { stacked: true, ticks: { font: { size: 11 } } } }
+        scales: {
+          x: { stacked:true, ticks:{callback:v=>v+'h'}, grid:{color:'#f3f4f6'} },
+          y: { stacked:true, ticks:{font:{size:11}} }
+        }
       }
     });
   }

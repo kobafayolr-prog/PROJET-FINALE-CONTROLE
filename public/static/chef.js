@@ -256,6 +256,8 @@ function renderLayout(title, content) {
 // ============================================
 let chefMonth1 = new Date().toISOString().slice(0,7);
 let chefMonth2 = '';
+let chefBarMode = 'mensuel'; // 'mensuel' ou 'cumul'
+let chefLastData = null;     // cache pour le toggle sans re-fetch
 
 async function renderDashboard() {
   renderLayout('Tableau de bord équipe', '<div style="text-align:center;padding:32px"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:#9ca3af"></i></div>');
@@ -265,6 +267,7 @@ async function renderDashboard() {
 async function loadChefDashboard() {
   const m2p = chefMonth2 ? `&month2=${chefMonth2}` : '';
   const data = await api(`/api/chef/dashboard?month=${chefMonth1}${m2p}`);
+  chefLastData = data; // cache pour le toggle
   const today = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
   document.getElementById('content').innerHTML = `
@@ -574,9 +577,28 @@ async function loadChefDashboard() {
     </div>
   </div>
 
+  <!-- Toggle vue mensuelle / cumulative -->
+  <div id="chef-bar-toggle-wrap" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600;color:#374151"><i class="fas fa-layer-group" style="margin-right:6px;color:#1e3a5f"></i>Vue des barres :</span>
+    <button id="chef-btn-mensuel" onclick="chefSetBarMode('mensuel')"
+      style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:2px solid #1e3a5f;background:#1e3a5f;color:#fff">
+      <i class="fas fa-calendar-day" style="margin-right:5px"></i>Mensuel
+    </button>
+    <button id="chef-btn-cumul" onclick="chefSetBarMode('cumul')"
+      style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:2px solid #1e3a5f;background:#fff;color:#1e3a5f">
+      <i class="fas fa-layer-group" style="margin-right:5px"></i>Cumulatif <span id="chef-cumul-nb-months">${(data.cumulMonths||[]).length||6}</span> mois
+    </button>
+    <span id="chef-cumul-info" style="font-size:11px;color:#6b7280;display:none">
+      <i class="fas fa-info-circle" style="margin-right:4px"></i>Données cumulées sur <b>${(data.cumulMonths||[]).length||6}</b> mois
+    </span>
+  </div>
+
   <!-- Barres comparatives par Agent (3-3-3) -->
   <div class="chart-card">
-    <div class="chart-title"><i class="fas fa-users" style="color:#1e3a5f"></i> Comparaison par Agent — Temps Reporting vs Production${data.month2?` <span style="font-size:12px;font-weight:400;color:#6b7280">(${data.month||chefMonth1} vs ${data.month2})</span>`:''}</div>
+    <div class="chart-title">
+      <i class="fas fa-users" style="color:#1e3a5f"></i> Comparaison par Agent — Temps Reporting vs Production
+      <span id="chef-agent-mode-label" style="font-size:11px;font-weight:400;color:#6b7280;margin-left:8px"></span>
+    </div>
     <canvas id="chartAgentBar333" height="${Math.max(160,(data.agentComparison||data.hoursByAgent||[]).length*(data.month2?42:30))}"></canvas>
   </div>`;
 
@@ -624,22 +646,75 @@ async function loadChefDashboard() {
     });
   }
 
-  // Barres empilées par Agent
-  const agComp = data.agentComparison || data.hoursByAgent || [];
-  const agCompM2 = data.agentComparisonMonth2 || [];
+  // Mettre à jour le toggle UI puis rendre les barres
+  chefUpdateToggleUI();
+  renderChefAgentBar(data, chefBarMode);
+}
+
+// ── Toggle mode chef ──────────────────────────────────────────────────────────
+function chefSetBarMode(mode) {
+  chefBarMode = mode;
+  chefUpdateToggleUI();
+  if (chefLastData) renderChefAgentBar(chefLastData, mode);
+}
+
+function chefUpdateToggleUI() {
+  const btnM = document.getElementById('chef-btn-mensuel');
+  const btnC = document.getElementById('chef-btn-cumul');
+  const info = document.getElementById('chef-cumul-info');
+  if (btnM) { btnM.style.background = chefBarMode==='mensuel'?'#1e3a5f':'#fff'; btnM.style.color = chefBarMode==='mensuel'?'#fff':'#1e3a5f'; }
+  if (btnC) { btnC.style.background = chefBarMode==='cumul'?'#1e3a5f':'#fff'; btnC.style.color = chefBarMode==='cumul'?'#fff':'#1e3a5f'; }
+  if (info) info.style.display = chefBarMode==='cumul' ? 'inline' : 'none';
+}
+
+function renderChefAgentBar(data, mode) {
+  // Détruire seulement la barre agent
+  if (chefCharts.agentBar) { try { chefCharts.agentBar.destroy(); } catch(e){} delete chefCharts.agentBar; }
+
+  const isCumul = mode === 'cumul';
+  const cumulNb = (data.cumulMonths||[]).length || 6;
+  const modeLabel = isCumul ? `(${cumulNb} mois cumulés)` : (data.month2 ? `(${data.month||chefMonth1} vs ${data.month2})` : `(${data.month||chefMonth1})`);
+  const capLabel  = isCumul ? 'cap. cumulée' : 'cap. mensuelle';
+
+  const lbl = document.getElementById('chef-agent-mode-label');
+  if (lbl) lbl.textContent = modeLabel;
+
+  let agComp, agCompM2;
+  if (isCumul) {
+    agComp  = data.cumulAgentComparison || data.agentComparison || [];
+    agCompM2 = [];
+  } else {
+    agComp  = data.agentComparison || data.hoursByAgent || [];
+    agCompM2 = data.agentComparisonMonth2 || [];
+  }
+
   if (agComp.length > 0 && document.getElementById('chartAgentBar333')) {
-    const mkDs = (src, suffix) => [
-      { label: 'Production'+suffix, data: src.map(a => +((a.Production||a.total_minutes||0)/60).toFixed(2)), backgroundColor: '#1e3a5f', stack: 'sa'+suffix },
-      { label: 'Admin & Reporting'+suffix, data: src.map(a => +((a['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor: '#f59e0b', stack: 'sa'+suffix },
-      { label: 'Contrôle'+suffix, data: src.map(a => +((a['Contrôle']||0)/60).toFixed(2)), backgroundColor: '#10b981', stack: 'sa'+suffix },
-      { label: 'Non productif'+suffix, data: src.map(a => +(Math.max(0, 8 - (a.total_minutes||0)/60).toFixed(2))), backgroundColor: '#ef4444', stack: 'sa'+suffix }
+    const mkDs = (src, suffix, stackSuffix) => [
+      { label:'Production'+suffix, data:src.map(a=>+((a.Production||a.total_minutes||0)/60).toFixed(2)), backgroundColor:'#1e3a5f', stack:'sa'+stackSuffix, _cap:src.map(a=>(a.capacity_minutes||480)/60) },
+      { label:'Admin & Reporting'+suffix, data:src.map(a=>+((a['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor:'#f59e0b', stack:'sa'+stackSuffix, _cap:src.map(a=>(a.capacity_minutes||480)/60) },
+      { label:'Contrôle'+suffix, data:src.map(a=>+((a['Contrôle']||0)/60).toFixed(2)), backgroundColor:'#10b981', stack:'sa'+stackSuffix, _cap:src.map(a=>(a.capacity_minutes||480)/60) },
+      { label:'Non productif'+suffix, data:src.map(a=>{ const c=(a.capacity_minutes||480)/60; return +(Math.max(0,c-(a.total_minutes||0)/60).toFixed(2)); }), backgroundColor:'#ef4444cc', stack:'sa'+stackSuffix, _cap:src.map(a=>(a.capacity_minutes||480)/60) }
     ];
-    const ds = mkDs(agComp, data.month2?' ('+data.month+')':'');
-    if (agCompM2.length) ds.push(...mkDs(agCompM2, ' ('+data.month2+')'));
+    const ds = mkDs(agComp, isCumul ? '' : (data.month2?' ('+data.month+')':''), 'M1');
+    if (!isCumul && agCompM2.length) ds.push(...mkDs(agCompM2, ' ('+data.month2+')', 'M2'));
     chefCharts.agentBar = new Chart(document.getElementById('chartAgentBar333'), {
       type: 'bar',
-      data: { labels: agComp.map(a => a.agent_name||a.agent_name), datasets: ds },
-      options: { indexAxis: 'y', plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } } }, scales: { x: { stacked: true, ticks: { callback: v => v+'h' } }, y: { stacked: true, ticks: { font: { size: 11 } } } }, responsive: true }
+      data: { labels: agComp.map(a => a.agent_name), datasets: ds },
+      options: {
+        indexAxis: 'y', responsive: true,
+        plugins: {
+          legend: { position:'bottom', labels:{ font:{size:11}, boxWidth:12 } },
+          tooltip: { callbacks: { label: ctx => {
+            const val = ctx.raw;
+            const cap = ctx.dataset._cap ? ctx.dataset._cap[ctx.dataIndex] : 8;
+            const pct = cap > 0 ? Math.round(val/cap*100) : 0;
+            const h = Math.floor(val), m = Math.round((val-h)*60);
+            const cH = Math.floor(cap), cM = Math.round((cap-cH)*60);
+            return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m — ${pct}% ${capLabel} (${cH}h${cM>0?String(cM).padStart(2,'0')+'m':''})`;
+          }}}
+        },
+        scales: { x:{ stacked:true, ticks:{callback:v=>v+'h'}, grid:{color:'#f3f4f6'} }, y:{ stacked:true, ticks:{font:{size:11}} } }
+      }
     });
   }
 }
