@@ -1,10 +1,9 @@
 -- ============================================================
--- TimeTrack BGFIBank - Schéma MySQL
--- À exécuter UNE FOIS lors de l'installation initiale
+-- TimeTrack BGFIBank - Schéma MySQL COMPLET v2
 -- Compatible MySQL 5.7+ / MySQL 8.0+ / MariaDB 10.4+
+-- À exécuter UNE FOIS lors de l'installation initiale
 -- ============================================================
 
--- Créer la base de données si elle n'existe pas
 CREATE DATABASE IF NOT EXISTS timetrack_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE timetrack_db;
 
@@ -12,14 +11,14 @@ USE timetrack_db;
 -- TABLE : strategic_objectives
 -- ============================================================
 CREATE TABLE IF NOT EXISTS strategic_objectives (
-  id                 INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  name               VARCHAR(255)    NOT NULL,
-  description        TEXT,
-  color              VARCHAR(20)     NOT NULL DEFAULT '#1e3a5f',
-  target_percentage  DECIMAL(5,2)    NOT NULL DEFAULT 0,
-  status             ENUM('Actif','Inactif') NOT NULL DEFAULT 'Actif',
-  created_at         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  id                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name              VARCHAR(255)  NOT NULL,
+  description       TEXT,
+  color             VARCHAR(20)   NOT NULL DEFAULT '#1e3a5f',
+  target_percentage DECIMAL(5,2)  NOT NULL DEFAULT 0,
+  status            ENUM('Actif','Inactif') NOT NULL DEFAULT 'Actif',
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -36,7 +35,7 @@ CREATE TABLE IF NOT EXISTS departments (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
--- TABLE : processes
+-- TABLE : processes (services)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS processes (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -47,8 +46,8 @@ CREATE TABLE IF NOT EXISTS processes (
   status        ENUM('Actif','Inactif') NOT NULL DEFAULT 'Actif',
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_processes_dept   FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
-  CONSTRAINT fk_processes_obj    FOREIGN KEY (objective_id)  REFERENCES strategic_objectives(id) ON DELETE CASCADE
+  CONSTRAINT fk_processes_dept FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_processes_obj  FOREIGN KEY (objective_id)  REFERENCES strategic_objectives(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE INDEX IF NOT EXISTS idx_processes_dept ON processes(department_id);
@@ -63,35 +62,48 @@ CREATE TABLE IF NOT EXISTS tasks (
   department_id INT UNSIGNED NOT NULL,
   process_id    INT UNSIGNED NOT NULL,
   objective_id  INT UNSIGNED NOT NULL,
-  task_type     ENUM('Productive','Non-Productive') NOT NULL DEFAULT 'Productive',
+  -- task_type LIBRE (VARCHAR) pour supporter Production / Administration & Reporting / Contrôle
+  task_type     VARCHAR(100) NOT NULL DEFAULT 'Production',
   status        ENUM('Actif','Inactif') NOT NULL DEFAULT 'Actif',
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_tasks_dept  FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
-  CONSTRAINT fk_tasks_proc  FOREIGN KEY (process_id)   REFERENCES processes(id)   ON DELETE CASCADE,
-  CONSTRAINT fk_tasks_obj   FOREIGN KEY (objective_id) REFERENCES strategic_objectives(id) ON DELETE CASCADE
+  CONSTRAINT fk_tasks_dept FOREIGN KEY (department_id) REFERENCES departments(id)             ON DELETE CASCADE,
+  CONSTRAINT fk_tasks_proc FOREIGN KEY (process_id)   REFERENCES processes(id)               ON DELETE CASCADE,
+  CONSTRAINT fk_tasks_obj  FOREIGN KEY (objective_id) REFERENCES strategic_objectives(id)    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE INDEX IF NOT EXISTS idx_tasks_dept ON tasks(department_id);
 
 -- ============================================================
--- TABLE : users
+-- TABLE : users  (7 rôles bancaires)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS users (
-  id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  first_name          VARCHAR(100) NOT NULL,
-  last_name           VARCHAR(100) NOT NULL,
-  email               VARCHAR(255) NOT NULL UNIQUE,
-  password_hash       VARCHAR(255) NOT NULL,
-  password_encrypted  TEXT         DEFAULT NULL COMMENT 'XOR+Base64 pour consultation admin',
-  role                ENUM('Administrateur','Chef de Département','Agent') NOT NULL DEFAULT 'Agent',
-  department_id       INT UNSIGNED DEFAULT NULL,
-  status              ENUM('Actif','Inactif') NOT NULL DEFAULT 'Actif',
-  last_login          DATETIME     DEFAULT NULL,
-  created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  id                 INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  first_name         VARCHAR(100) NOT NULL,
+  last_name          VARCHAR(100) NOT NULL,
+  email              VARCHAR(255) NOT NULL UNIQUE,
+  password_hash      VARCHAR(512) NOT NULL  COMMENT 'Format : pbkdf2:sha256:600000:salt:hash',
+  password_encrypted TEXT         DEFAULT NULL COMMENT 'XOR+Base64 pour consultation admin',
+  role               ENUM(
+                       'Agent',
+                       'Chef de Service',
+                       'Chef de Département',
+                       'Directeur de Département',
+                       'Directeur Général',
+                       'Administrateur'
+                     ) NOT NULL DEFAULT 'Agent',
+  department_id      INT UNSIGNED DEFAULT NULL,
+  status             ENUM('Actif','Inactif') NOT NULL DEFAULT 'Actif',
+  works_saturday     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = travaille le samedi',
+  last_login         DATETIME     DEFAULT NULL,
+  created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_users_dept FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX IF NOT EXISTS idx_users_dept          ON users(department_id);
+CREATE INDEX IF NOT EXISTS idx_users_role          ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_works_saturday ON users(works_saturday);
 
 -- ============================================================
 -- TABLE : work_sessions
@@ -106,25 +118,25 @@ CREATE TABLE IF NOT EXISTS work_sessions (
   end_time         DATETIME     DEFAULT NULL,
   duration_minutes INT          NOT NULL DEFAULT 0,
   session_type     ENUM('Auto','Manuelle') NOT NULL DEFAULT 'Auto',
-  status           ENUM('En cours','Terminé','Validé','Rejeté') NOT NULL DEFAULT 'En cours',
+  status           ENUM('En cours','Terminé','Validé','Rejeté','En attente') NOT NULL DEFAULT 'En cours',
   comment          TEXT         DEFAULT NULL,
   validated_by     INT UNSIGNED DEFAULT NULL,
   validated_at     DATETIME     DEFAULT NULL,
   rejected_reason  TEXT         DEFAULT NULL,
   created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_ws_user   FOREIGN KEY (user_id)      REFERENCES users(id)                   ON DELETE CASCADE,
-  CONSTRAINT fk_ws_task   FOREIGN KEY (task_id)      REFERENCES tasks(id)                   ON DELETE CASCADE,
-  CONSTRAINT fk_ws_obj    FOREIGN KEY (objective_id) REFERENCES strategic_objectives(id)    ON DELETE CASCADE,
-  CONSTRAINT fk_ws_dept   FOREIGN KEY (department_id)REFERENCES departments(id)             ON DELETE CASCADE,
-  CONSTRAINT fk_ws_valid  FOREIGN KEY (validated_by) REFERENCES users(id)                   ON DELETE SET NULL
+  CONSTRAINT fk_ws_user  FOREIGN KEY (user_id)       REFERENCES users(id)                ON DELETE CASCADE,
+  CONSTRAINT fk_ws_task  FOREIGN KEY (task_id)       REFERENCES tasks(id)                ON DELETE CASCADE,
+  CONSTRAINT fk_ws_obj   FOREIGN KEY (objective_id)  REFERENCES strategic_objectives(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ws_dept  FOREIGN KEY (department_id) REFERENCES departments(id)          ON DELETE CASCADE,
+  CONSTRAINT fk_ws_valid FOREIGN KEY (validated_by)  REFERENCES users(id)               ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE INDEX IF NOT EXISTS idx_ws_user      ON work_sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_ws_status    ON work_sessions(status);
-CREATE INDEX IF NOT EXISTS idx_ws_obj       ON work_sessions(objective_id);
-CREATE INDEX IF NOT EXISTS idx_ws_dept      ON work_sessions(department_id);
-CREATE INDEX IF NOT EXISTS idx_ws_start     ON work_sessions(start_time);
+CREATE INDEX IF NOT EXISTS idx_ws_user   ON work_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_ws_status ON work_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_ws_obj    ON work_sessions(objective_id);
+CREATE INDEX IF NOT EXISTS idx_ws_dept   ON work_sessions(department_id);
+CREATE INDEX IF NOT EXISTS idx_ws_start  ON work_sessions(start_time);
 
 -- ============================================================
 -- TABLE : audit_logs
@@ -139,5 +151,5 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   CONSTRAINT fk_audit_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);

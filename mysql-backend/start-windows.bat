@@ -70,19 +70,26 @@ if %ERRORLEVEL% equ 0 (
     echo   Accès réseau     : http://%LOCAL_IP%:3000/login
     echo.
     echo   Comptes par défaut :
-    echo     admin@bgfibank.com            ^| admin123       (Admin)
-    echo     chef.commercial@bgfibank.com  ^| Chef@2024      (Chef)
-    echo     agent.commercial@bgfibank.com ^| Agent@2024     (Agent)
+    echo     admin@bgfibank.com             ^| admin123   (Administrateur)
+    echo     dg@bgfibank.com                ^| Bgfi@2024  (Directeur General)
+    echo     dir.commercial@bgfibank.com    ^| Bgfi@2024  (Directeur de Departement)
+    echo     dir.conformite@bgfibank.com    ^| Bgfi@2024  (Directeur de Departement)
+    echo     chef.commercial@bgfibank.com   ^| Chef@2024  (Chef de Departement)
+    echo     maidou@bgfi.com                ^| Chef@2024  (Chef de Departement)
+    echo     chef.service@bgfibank.com      ^| Bgfi@2024  (Chef de Service)
+    echo     agent.commercial@bgfibank.com  ^| Agent@2024 (Agent)
+    echo     eliel@bgfi.com                 ^| Agent@2024 (Agent)
+    echo     agent2@bgfibank.com            ^| Bgfi@2024  (Agent)
     echo.
     echo   Commandes PM2 utiles :
-    echo     pm2 status            - Voir l'état du serveur
-    echo     pm2 logs timetrack    - Voir les logs
-    echo     pm2 restart timetrack - Redémarrer
-    echo     pm2 stop timetrack    - Arrêter
+    echo     pm2 status            - Voir l'etat du serveur
+    echo     pm2 logs timetrack    - Voir les logs en direct
+    echo     pm2 restart timetrack - Redemarrer
+    echo     pm2 stop timetrack    - Arreter
     echo.
-    echo   Pour démarrer automatiquement au boot Windows :
-    echo     pm2 save
-    echo     pm2 startup
+    echo   Sauvegarde pour redemarrage automatique au boot :
+    pm2 save
+    echo     OK: Configuration sauvegardee (pm2 save)
     echo  ============================================================
     echo.
     pause
@@ -100,11 +107,14 @@ echo   Accès local      : http://localhost:3000/login
 echo   Accès réseau     : http://%LOCAL_IP%:3000/login
 echo.
 echo   Comptes par défaut :
-echo     admin@bgfibank.com            ^| admin123       (Admin)
-echo     chef.commercial@bgfibank.com  ^| Chef@2024      (Chef)
-echo     agent.commercial@bgfibank.com ^| Agent@2024     (Agent)
+echo     admin@bgfibank.com             ^| admin123   (Administrateur)
+echo     dg@bgfibank.com                ^| Bgfi@2024  (Directeur General)
+echo     dir.commercial@bgfibank.com    ^| Bgfi@2024  (Directeur de Departement)
+echo     chef.commercial@bgfibank.com   ^| Chef@2024  (Chef de Departement)
+echo     chef.service@bgfibank.com      ^| Bgfi@2024  (Chef de Service)
+echo     agent.commercial@bgfibank.com  ^| Agent@2024 (Agent)
 echo.
-echo   Appuyez sur Ctrl+C pour arrêter le serveur.
+echo   Appuyez sur Ctrl+C pour arreter le serveur.
 echo  ============================================================
 echo.
 

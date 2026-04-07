@@ -97,10 +97,21 @@ if %ERRORLEVEL% neq 0 (
         echo     AVERTISSEMENT: PM2 non installé, utilisation de node direct
     ) else (
         echo     OK: PM2 installé
+        :: pm2-windows-startup permet le démarrage automatique au boot Windows
+        call npm install -g pm2-windows-startup >nul 2>&1
+        call pm2-windows-startup install >nul 2>&1
+        echo     OK: Démarrage automatique Windows configuré
     )
 ) else (
     for /f %%i in ('pm2 --version') do set PM2_VER=%%i
     echo     OK: PM2 %PM2_VER% déjà présent
+    :: Vérifier pm2-windows-startup
+    pm2-windows-startup --version >nul 2>&1
+    if %ERRORLEVEL% neq 0 (
+        call npm install -g pm2-windows-startup >nul 2>&1
+        call pm2-windows-startup install >nul 2>&1
+        echo     OK: Démarrage automatique Windows configuré
+    )
 )
 
 :: ============================================================
@@ -144,8 +155,15 @@ echo.
 echo   Démarrez l'application avec : start-windows.bat
 echo.
 echo   Comptes par défaut :
-echo     admin@bgfibank.com            ^| admin123
-echo     chef.commercial@bgfibank.com  ^| Chef@2024
-echo     agent.commercial@bgfibank.com ^| Agent@2024
+echo     admin@bgfibank.com             ^| admin123   (Administrateur)
+echo     dg@bgfibank.com                ^| Bgfi@2024  (Directeur General)
+echo     dir.commercial@bgfibank.com    ^| Bgfi@2024  (Directeur de Departement)
+echo     dir.conformite@bgfibank.com    ^| Bgfi@2024  (Directeur de Departement)
+echo     chef.commercial@bgfibank.com   ^| Chef@2024  (Chef de Departement)
+echo     maidou@bgfi.com                ^| Chef@2024  (Chef de Departement)
+echo     chef.service@bgfibank.com      ^| Bgfi@2024  (Chef de Service)
+echo     agent.commercial@bgfibank.com  ^| Agent@2024 (Agent)
+echo     eliel@bgfi.com                 ^| Agent@2024 (Agent)
+echo     agent2@bgfibank.com            ^| Bgfi@2024  (Agent)
 echo.
 pause
