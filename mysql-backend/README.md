@@ -91,15 +91,96 @@ mysql-backend/
 
 ---
 
-## Comptes par défaut
+## Comptes par défaut — Tous les rôles
 
-| Email                          | Mot de passe | Rôle               |
-|--------------------------------|--------------|--------------------|
-| admin@bgfibank.com             | admin123     | Administrateur     |
-| chef.commercial@bgfibank.com   | Chef@2024    | Chef de Département|
-| agent.commercial@bgfibank.com  | Agent@2024   | Agent              |
-| maidou@bgfi.com                | Chef@2024    | Chef de Département|
-| eliel@bgfi.com                 | Agent@2024   | Agent              |
+| Email                           | Mot de passe | Rôle                     | Département       |
+|---------------------------------|--------------|--------------------------|-------------------|
+| admin@bgfibank.com              | admin123     | Administrateur           | —                 |
+| dg@bgfibank.com                 | Bgfi@2024    | Directeur Général        | —                 |
+| dir.commercial@bgfibank.com     | Bgfi@2024    | Directeur de Département | Direction Commerciale |
+| dir.conformite@bgfibank.com     | Bgfi@2024    | Directeur de Département | Direction Conformité  |
+| chef.commercial@bgfibank.com    | Chef@2024    | Chef de Département      | Direction Commerciale |
+| maidou@bgfi.com                 | Chef@2024    | Chef de Département      | Direction des Risques |
+| chef.service@bgfibank.com       | Bgfi@2024    | Chef de Service          | Direction Commerciale |
+| agent.commercial@bgfibank.com   | Agent@2024   | Agent                    | Direction Commerciale |
+| eliel@bgfi.com                  | Agent@2024   | Agent (samedi)           | Direction des Risques |
+| agent2@bgfibank.com             | Bgfi@2024    | Agent                    | Direction Commerciale |
+
+> **Note** : Les mots de passe sont stockés en SHA-256 dans le seed.
+> À la **première connexion**, ils sont automatiquement migrés vers PBKDF2-SHA256
+> (600 000 itérations) sans intervention manuelle.
+
+---
+
+## Routes API disponibles (56 routes)
+
+### Authentification
+| Méthode | Route                    | Description               |
+|---------|--------------------------|---------------------------|
+| POST    | /api/auth/login          | Connexion                 |
+| GET     | /api/auth/me             | Profil utilisateur        |
+| POST    | /api/auth/logout         | Déconnexion (blacklist JWT) |
+| POST    | /api/auth/reset-request  | Demande reset mot de passe |
+| POST    | /api/auth/reset-confirm  | Confirmation reset        |
+
+### Administration (rôle : Administrateur)
+| Méthode | Route                     | Description               |
+|---------|---------------------------|---------------------------|
+| GET/POST | /api/admin/users         | Liste / Création utilisateurs |
+| PUT/DELETE | /api/admin/users/:id   | Modification / Suppression |
+| GET     | /api/admin/users/:id/password | Voir mot de passe chiffré |
+| GET/POST/PUT/DELETE | /api/admin/departments | CRUD départements |
+| GET/POST/PUT/DELETE | /api/admin/objectives  | CRUD objectifs stratégiques |
+| GET/POST/PUT/DELETE | /api/admin/processes   | CRUD processus |
+| GET/POST/PUT/DELETE | /api/admin/tasks       | CRUD tâches |
+| GET     | /api/admin/sessions      | Toutes les sessions       |
+| GET     | /api/admin/stats         | Statistiques globales + ratio 3-3-3 |
+| GET     | /api/admin/reports       | Rapports filtrés (export CSV) |
+| GET     | /api/admin/audit         | Journal d'audit           |
+
+### Agent
+| Méthode | Route                        | Description               |
+|---------|------------------------------|---------------------------|
+| GET     | /api/agent/dashboard         | Tableau de bord           |
+| GET     | /api/agent/tasks             | Tâches disponibles        |
+| GET     | /api/agent/sessions          | Mes sessions              |
+| GET     | /api/agent/sessions/active   | Session en cours          |
+| POST    | /api/agent/sessions/start    | Démarrer session          |
+| POST    | /api/agent/sessions/stop     | Terminer session          |
+| POST    | /api/agent/sessions/manual   | Session manuelle          |
+| GET     | /api/agent/stats             | Mes statistiques          |
+
+### Chef de Service
+| Méthode | Route                            | Description               |
+|---------|----------------------------------|---------------------------|
+| GET     | /api/chef-service/dashboard      | Tableau de bord           |
+| GET     | /api/chef-service/tasks          | Tâches disponibles        |
+| GET/POST | /api/chef-service/sessions      | Mes sessions / Active     |
+| POST    | /api/chef-service/sessions/start | Démarrer session          |
+| POST    | /api/chef-service/sessions/stop  | Terminer session          |
+
+### Chef de Département
+| Méthode | Route                      | Description               |
+|---------|----------------------------|---------------------------|
+| GET     | /api/chef/dashboard        | Tableau de bord + ratio 3-3-3 |
+| GET     | /api/chef/live             | Vue temps réel des agents |
+| GET     | /api/chef/team             | Liste équipe              |
+| GET     | /api/chef/validation       | Sessions à valider        |
+| POST    | /api/chef/validate/:id     | Valider une session       |
+| POST    | /api/chef/reject/:id       | Rejeter une session       |
+| POST    | /api/chef/validate-all     | Validation groupée        |
+| GET     | /api/chef/reports          | Rapports (export CSV)     |
+| GET     | /api/chef/productivity-trend | Tendance de productivité |
+
+### Directeur de Département
+| Méthode | Route                    | Description               |
+|---------|--------------------------|---------------------------|
+| GET     | /api/dir-dept/dashboard  | Dashboard département     |
+
+### Directeur Général
+| Méthode | Route               | Description               |
+|---------|---------------------|---------------------------|
+| GET     | /api/dg/dashboard   | Dashboard global (comparaison 2 mois, cumul 6 mois) |
 
 ---
 

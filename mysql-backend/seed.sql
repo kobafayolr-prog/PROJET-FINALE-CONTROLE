@@ -85,22 +85,44 @@ INSERT INTO tasks (id, name, description, department_id, process_id, objective_i
 ON DUPLICATE KEY UPDATE name=VALUES(name);
 
 -- ============================================================
--- Utilisateurs par défaut
+-- Utilisateurs par défaut — TOUS LES RÔLES COUVERTS
 -- Hash SHA-256 hex | Chiffrement XOR+base64 (clé: bgfibank2024)
 --
---   admin@bgfibank.com           → admin123
---   chef.commercial@bgfibank.com → Chef@2024
---   agent.commercial@bgfibank.com→ Agent@2024
---   eliel@bgfi.com               → Agent@2024
---   maidou@bgfi.com              → Chef@2024
+-- Compte admin    : admin@bgfibank.com              → admin123
+-- Comptes DG      : dg@bgfibank.com                 → Bgfi@2024
+-- Dir. Dép.       : dir.commercial@bgfibank.com     → Bgfi@2024
+--                   dir.conformite@bgfibank.com     → Bgfi@2024
+-- Chef de Dép.    : chef.commercial@bgfibank.com    → Chef@2024
+--                   maidou@bgfi.com                 → Chef@2024
+-- Chef de Service : chef.service@bgfibank.com       → Bgfi@2024
+-- Agents          : agent.commercial@bgfibank.com   → Agent@2024
+--                   eliel@bgfi.com                  → Agent@2024
+--                   agent2@bgfibank.com             → Bgfi@2024
+--
+-- Note : La migration automatique SHA-256 → PBKDF2 s'effectue
+--        à la première connexion de chaque utilisateur.
 -- ============================================================
-INSERT INTO users (id, first_name, last_name, email, password_hash, password_encrypted, role, department_id, status) VALUES
-(1, 'Fayolle', 'KOBA',    'admin@bgfibank.com',            '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'AwMLAAxQXFg=',        'Administrateur',      NULL, 'Actif'),
-(2, 'Marc',    'NZOGHE',  'chef.commercial@bgfibank.com',  '918f02a543a249b93ea3a00571a8ef19c036dd27e06d499c92845f9209c8a6a8', 'IQ8DDyJTXlkG',       'Chef de Département', 1,    'Actif'),
-(3, 'Sandra',  'MBOUMBA', 'agent.commercial@bgfibank.com', 'd8755e51a259f6ac6c2301c54f502589b326b98051982d90aa747f8c35f83236', 'IwADBxYhXFsABA==',   'Agent',               1,    'Actif'),
-(4, 'Eliel',   'KAPOU',   'eliel@bgfi.com',                'd8755e51a259f6ac6c2301c54f502589b326b98051982d90aa747f8c35f83236', 'IwADBxYhXFsABA==',   'Agent',               8,    'Actif'),
-(5, 'Ingara',  'MAIDOU',  'maidou@bgfi.com',               '918f02a543a249b93ea3a00571a8ef19c036dd27e06d499c92845f9209c8a6a8', 'IQ8DDyJTXlkG',       'Chef de Département', 8,    'Actif')
-ON DUPLICATE KEY UPDATE 
+INSERT INTO users (id, first_name, last_name, email, password_hash, password_encrypted, role, department_id, status, works_saturday) VALUES
+-- Administrateur
+(1,  'Fayolle',   'KOBA',      'admin@bgfibank.com',             '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'AwMLAAxQXFg=',     'Administrateur',          NULL, 'Actif', 0),
+-- Directeur Général
+(6,  'Jean-Paul', 'OBIANG',    'dg@bgfibank.com',                '150018c79911742fcbcd462e2ba6018a0c70854d0623873c84ae27afe8592b50', 'IAAAACJTXlkG',    'Directeur Général',       NULL, 'Actif', 0),
+-- Directeurs de Département
+(7,  'Hervé',     'NDONG',     'dir.commercial@bgfibank.com',    '150018c79911742fcbcd462e2ba6018a0c70854d0623873c84ae27afe8592b50', 'IAAAACJTXlkG',    'Directeur de Département', 1,   'Actif', 0),
+(8,  'Claire',    'MVELE',     'dir.conformite@bgfibank.com',    '150018c79911742fcbcd462e2ba6018a0c70854d0623873c84ae27afe8592b50', 'IAAAACJTXlkG',    'Directeur de Département', 2,   'Actif', 0),
+-- Chefs de Département
+(2,  'Marc',      'NZOGHE',    'chef.commercial@bgfibank.com',   '918f02a543a249b93ea3a00571a8ef19c036dd27e06d499c92845f9209c8a6a8', 'IQ8DDyJTXlkG',   'Chef de Département',      1,   'Actif', 0),
+(5,  'Ingara',    'MAIDOU',    'maidou@bgfi.com',                '918f02a543a249b93ea3a00571a8ef19c036dd27e06d499c92845f9209c8a6a8', 'IQ8DDyJTXlkG',   'Chef de Département',      8,   'Actif', 0),
+-- Chef de Service
+(9,  'Patricia',  'ENGONE',    'chef.service@bgfibank.com',      '150018c79911742fcbcd462e2ba6018a0c70854d0623873c84ae27afe8592b50', 'IAAAACJTXlkG',   'Chef de Service',          1,   'Actif', 0),
+-- Agents
+(3,  'Sandra',    'MBOUMBA',   'agent.commercial@bgfibank.com',  'd8755e51a259f6ac6c2301c54f502589b326b98051982d90aa747f8c35f83236', 'IwADBxYhXFsABA==','Agent',                   1,   'Actif', 0),
+(4,  'Eliel',     'KAPOU',     'eliel@bgfi.com',                 'd8755e51a259f6ac6c2301c54f502589b326b98051982d90aa747f8c35f83236', 'IwADBxYhXFsABA==','Agent',                   8,   'Actif', 1),
+(10, 'Brice',     'MOUSSAVOU', 'agent2@bgfibank.com',            '150018c79911742fcbcd462e2ba6018a0c70854d0623873c84ae27afe8592b50', 'IAAAACJTXlkG',   'Agent',                    1,   'Actif', 0)
+ON DUPLICATE KEY UPDATE
   email=VALUES(email),
+  role=VALUES(role),
+  department_id=VALUES(department_id),
+  works_saturday=VALUES(works_saturday),
   password_hash=VALUES(password_hash),
   password_encrypted=VALUES(password_encrypted);
