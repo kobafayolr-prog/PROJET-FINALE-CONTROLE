@@ -2700,6 +2700,8 @@ html,body{width:100%;height:100%;overflow:hidden;}
     const roleBadge = document.getElementById('role-badge');
     const badgeIcon = roleBadge ? roleBadge.querySelector('i') : null;
 
+    const isDG = data.role === 'Directeur Général';
+
     if(headline){
       headline.style.opacity='0';
       headline.style.transform='translateY(12px)';
@@ -2714,7 +2716,11 @@ html,body{width:100%;height:100%;overflow:hidden;}
       }
       if(roleLabel){ roleLabel.textContent = data.role; }
       if(badgeIcon){ badgeIcon.className = 'fas '+data.icon; }
-      if(roleBadge){ roleBadge.style.opacity='1'; }
+      // Le badge-libellé est masqué pour les slides Directeur Général
+      if(roleBadge){
+        roleBadge.style.opacity = isDG ? '0' : '1';
+        roleBadge.style.pointerEvents = isDG ? 'none' : '';
+      }
     }, 450);
   }
 
