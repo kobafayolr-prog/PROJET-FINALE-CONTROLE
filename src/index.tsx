@@ -1840,71 +1840,118 @@ app.get('/api/dg/dashboard', async (c) => {
     return c.json({ error: 'Non autorisé' }, 401)
   }
   try {
+    const month  = (c.req.query('month')  || new Date().toISOString().slice(0,7)) as string
+    const month2 = c.req.query('month2') as string | undefined
+    const STATUSES = `ws.status IN ('Validé','Terminé')`
+    const mf = (m: string) => `strftime('%Y-%m',ws.start_time)='${m}'`
+
     const totalUsers = await c.env.DB.prepare(
       `SELECT COUNT(*) as c FROM users WHERE status='Actif' AND role NOT IN ('Administrateur','Directeur Général')`
     ).first() as any
     const totalHoursMonth = await c.env.DB.prepare(
-      `SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions
-       WHERE strftime('%Y-%m',start_time)=strftime('%Y-%m','now') AND status IN ('Validé','Terminé')`
+      `SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions ws
+       WHERE ${STATUSES} AND ${mf(month)}`
     ).first() as any
     const toValidate = await c.env.DB.prepare(
       `SELECT COUNT(*) as c FROM work_sessions WHERE status='Terminé'`
     ).first() as any
-    const byDept = await c.env.DB.prepare(
-      `SELECT d.name as dept_name,
-       COUNT(DISTINCT u.id) as agent_count,
-       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+
+    // ── Capacité par département (nombre d'agents actifs)
+    const deptCap = await c.env.DB.prepare(
+      `SELECT d.name as dept_name, COUNT(u.id) as agent_count
        FROM departments d
-       LEFT JOIN users u ON u.department_id=d.id AND u.status='Actif'
-       LEFT JOIN work_sessions ws ON ws.department_id=d.id AND ws.status IN ('Validé','Terminé') AND strftime('%Y-%m',ws.start_time)=strftime('%Y-%m','now')
-       WHERE d.status='Actif'
-       GROUP BY d.id, d.name ORDER BY total_minutes DESC`
+       LEFT JOIN users u ON u.department_id=d.id AND u.status='Actif' AND u.role IN ('Agent','Chef de Service')
+       WHERE d.status='Actif' GROUP BY d.id, d.name`
     ).all()
-    const byObjective = await c.env.DB.prepare(
-      `SELECT o.name, o.color, o.target_percentage,
-       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
-       FROM strategic_objectives o
-       LEFT JOIN work_sessions ws ON ws.objective_id=o.id AND ws.status IN ('Validé','Terminé')
-       WHERE o.status='Actif'
-       GROUP BY o.id, o.name, o.color, o.target_percentage ORDER BY total_minutes DESC`
-    ).all()
+
+    // ── Ratio 3-3-3 par mois pour DG
+    async function getDgRatio333(m: string) {
+      const raw333 = await c.env.DB.prepare(
+        `SELECT COALESCE(t.task_type,'Production') as type_333, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+         FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id
+         WHERE ${STATUSES} AND ${mf(m)} GROUP BY t.task_type`
+      ).all()
+      const raw333Dept = await c.env.DB.prepare(
+        `SELECT d.name as dept_name, COALESCE(t.task_type,'Production') as type_333, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+         FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN departments d ON ws.department_id=d.id
+         WHERE ${STATUSES} AND ${mf(m)} GROUP BY d.id, t.task_type`
+      ).all()
+      const raw333Agent = await c.env.DB.prepare(
+        `SELECT ws.user_id as agent_id, u.first_name||' '||u.last_name as agent_name, d.name as dept_name,
+         COALESCE(t.task_type,'Production') as type_333, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+         FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN users u ON ws.user_id=u.id JOIN departments d ON ws.department_id=d.id
+         WHERE ${STATUSES} AND ${mf(m)} GROUP BY ws.user_id, t.task_type`
+      ).all()
+
+      // Normaliser
+      const norm = (t: string) => {
+        if (!t || t==='Productive' || t==='Production') return 'Production'
+        if (t.includes('Admin') || t.includes('Reporting')) return 'Administration & Reporting'
+        if (t.includes('Contr')) return 'Contrôle'
+        return t
+      }
+
+      // Ratio global
+      const gMap: Record<string,number> = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+      ;(raw333.results as any[]).forEach((r: any) => { const k=norm(r.type_333); gMap[k]=(gMap[k]||0)+r.total_minutes })
+      const gTotal = Object.values(gMap).reduce((s,v)=>s+v,0)
+      const ratio333 = Object.entries(gMap).map(([label,minutes])=>({ label, minutes, percentage: gTotal>0?Math.round(minutes*100/gTotal):0, hours_display: minutesToHours(minutes) }))
+
+      // Par département
+      const dMap: Record<string,any> = {}
+      const caps = deptCap.results as any[]
+      ;(raw333Dept.results as any[]).forEach((r: any) => {
+        if (!dMap[r.dept_name]) { const cap=caps.find((c:any)=>c.dept_name===r.dept_name); dMap[r.dept_name]={ dept_name:r.dept_name, agent_count:cap?.agent_count||0, 'Production':0,'Administration & Reporting':0,'Contrôle':0 } }
+        dMap[r.dept_name][norm(r.type_333)] += r.total_minutes
+      })
+      const deptComparison = Object.values(dMap).map((d:any) => { const tot=d.Production+d['Administration & Reporting']+d['Contrôle']; return { ...d, total_minutes:tot, capacity_minutes:d.agent_count*480, hours_display:minutesToHours(tot) } })
+
+      // Par agent
+      const aMap: Record<string,any> = {}
+      ;(raw333Agent.results as any[]).forEach((r: any) => {
+        if (!aMap[r.agent_id]) aMap[r.agent_id]={ agent_id:r.agent_id, agent_name:r.agent_name, dept_name:r.dept_name, 'Production':0,'Administration & Reporting':0,'Contrôle':0 }
+        aMap[r.agent_id][norm(r.type_333)] += r.total_minutes
+      })
+      const agentComparison = Object.values(aMap).map((a:any) => { const tot=a.Production+a['Administration & Reporting']+a['Contrôle']; return { ...a, total_minutes:tot, hours_display:minutesToHours(tot) } })
+
+      return { ratio333, deptComparison, agentComparison }
+    }
+
+    const dgM1 = await getDgRatio333(month)
+    let dgM2 = null
+    if (month2) dgM2 = await getDgRatio333(month2)
+
     const monthlyTrend = await c.env.DB.prepare(
       `SELECT strftime('%Y-%m',start_time) as month, COALESCE(SUM(duration_minutes),0) as total_minutes
        FROM work_sessions WHERE status IN ('Validé','Terminé')
        GROUP BY month ORDER BY month DESC LIMIT 6`
     ).all()
-    const ratio333 = await c.env.DB.prepare(
-      `SELECT t.task_type, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
-       FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id
-       WHERE ws.status IN ('Validé','Terminé')
-       GROUP BY t.task_type`
+
+    const byDept = await c.env.DB.prepare(
+      `SELECT d.name as dept_name, COUNT(DISTINCT u.id) as agent_count, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM departments d
+       LEFT JOIN users u ON u.department_id=d.id AND u.status='Actif'
+       LEFT JOIN work_sessions ws ON ws.department_id=d.id AND ${STATUSES} AND ${mf(month)}
+       WHERE d.status='Actif' GROUP BY d.id, d.name ORDER BY total_minutes DESC`
     ).all()
-    const ratio333Data = ratio333.results as any[]
-    const total333 = ratio333Data.reduce((s: number, r: any) => s + r.total_minutes, 0)
-    const ratio333Map: Record<string, number> = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
-    ratio333Data.forEach((r: any) => {
-      const key = r.task_type === 'Productive' ? 'Production' : r.task_type
-      if (ratio333Map.hasOwnProperty(key)) ratio333Map[key] += r.total_minutes
-    })
-    const ratio333Result = Object.entries(ratio333Map).map(([label, minutes]) => ({
-      label, minutes, percentage: total333 > 0 ? Math.round(minutes * 100 / total333) : 0, hours_display: minutesToHours(minutes)
-    }))
+
     const deptData = byDept.results as any[]
-    const grandTotal = deptData.reduce((s: number, d: any) => s + d.total_minutes, 0)
+    const grandTotal = deptData.reduce((s:number,d:any)=>s+d.total_minutes,0)
+
     return c.json({
+      month, month2: month2||null,
       total_users: totalUsers?.c || 0,
       total_hours_month: minutesToHours(totalHoursMonth?.m || 0),
       to_validate: toValidate?.c || 0,
-      byDept: deptData.map((d: any) => ({
-        ...d,
-        percentage: grandTotal > 0 ? Math.round(d.total_minutes * 100 / grandTotal) : 0,
-        hours_display: minutesToHours(d.total_minutes)
-      })),
-      byObjective: (byObjective.results as any[]).map((o: any) => ({
-        ...o, hours_display: minutesToHours(o.total_minutes)
-      })),
+      byDept: deptData.map((d:any) => ({ ...d, percentage: grandTotal>0?Math.round(d.total_minutes*100/grandTotal):0, hours_display: minutesToHours(d.total_minutes) })),
       monthlyTrend: monthlyTrend.results,
-      ratio333: ratio333Result
+      ratio333: dgM1.ratio333,
+      ratio333Month2: dgM2?.ratio333||null,
+      deptComparison: dgM1.deptComparison,
+      deptComparisonMonth2: dgM2?.deptComparison||null,
+      agentComparison: dgM1.agentComparison,
+      agentComparisonMonth2: dgM2?.agentComparison||null,
+      byAgent333: dgM1.agentComparison
     })
   } catch(e: any) { return c.json({ error: e.message }, 500) }
 })

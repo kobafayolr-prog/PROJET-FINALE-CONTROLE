@@ -103,9 +103,17 @@ function navigate(page) {
 // ============================================
 // DASHBOARD GLOBAL
 // ============================================
+let dgMonth1 = new Date().toISOString().slice(0,7);
+let dgMonth2 = '';
+
 async function renderDashboard() {
-  renderLayout('dashboard', '<div class="loading"><i class="fas fa-spinner fa-spin fa-2x"></i><p>Chargement du tableau de bord global...</p></div>');
-  const data = await api('/api/dg/dashboard');
+  renderLayout('dashboard', '<div class="loading"><i class="fas fa-spinner fa-spin fa-2x"></i><p>Chargement...</p></div>');
+  await loadDgDashboard();
+}
+
+async function loadDgDashboard() {
+  const m2p = dgMonth2 ? `&month2=${dgMonth2}` : '';
+  const data = await api(`/api/dg/dashboard?month=${dgMonth1}${m2p}`);
   renderLayout('dashboard', `
   <div class="page-header">
     <div>
@@ -135,69 +143,190 @@ async function renderDashboard() {
     </div>
   </div>
 
-  <!-- Charts globaux -->
-  <div class="charts-grid">
-    <div class="chart-card">
-      <div class="chart-title"><i class="fas fa-chart-bar" style="color:#1e3a5f;margin-right:8px"></i>Heures par Département — Ce mois</div>
-      ${data.byDept && data.byDept.length > 0 ? `<canvas id="dgChartDepts" height="250"></canvas>` : '<p class="empty-state">Aucune donnée disponible.</p>'}
-    </div>
-    <div class="chart-card">
-      <div class="chart-title"><i class="fas fa-bullseye" style="color:#1e3a5f;margin-right:8px"></i>Heures par Objectif Stratégique</div>
-      ${data.byObjective && data.byObjective.length > 0 ? `<canvas id="dgChartObj" height="250"></canvas>` : '<p class="empty-state">Aucune donnée disponible.</p>'}
+  <!-- Filtre période -->
+  <div class="chart-card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:4px 0">
+      <i class="fas fa-calendar-alt" style="color:#1e3a5f"></i>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:13px;font-weight:600;color:#374151">Mois 1</label>
+        <input type="month" id="dgFilterM1" value="${dgMonth1}" style="border:1px solid #d1d5db;border-radius:8px;padding:6px 10px;font-size:13px;color:#1e3a5f;outline:none">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:13px;font-weight:600;color:#374151">Mois 2</label>
+        <input type="month" id="dgFilterM2" value="${dgMonth2}" style="border:1px solid #d1d5db;border-radius:8px;padding:6px 10px;font-size:13px;color:#6b7280;outline:none">
+        <button onclick="document.getElementById('dgFilterM2').value='';dgMonth2='';loadDgDashboard()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px" title="Effacer">✕</button>
+      </div>
+      <button onclick="dgMonth1=document.getElementById('dgFilterM1').value;dgMonth2=document.getElementById('dgFilterM2').value;loadDgDashboard()"
+        style="background:#1e3a5f;color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer">
+        <i class="fas fa-search" style="margin-right:6px"></i>Appliquer
+      </button>
+      ${data.month2 ? `<span style="background:#eff6ff;color:#1e3a5f;font-size:12px;padding:4px 10px;border-radius:6px;font-weight:600"><i class="fas fa-code-branch" style="margin-right:4px"></i>${data.month||dgMonth1} vs ${data.month2}</span>` : `<span style="color:#9ca3af;font-size:12px">Période : <b>${data.month||dgMonth1}</b></span>`}
     </div>
   </div>
 
-  <!-- Tableau résumé départements -->
-  <div class="chart-card" style="margin-top:20px">
-    <div class="chart-title"><i class="fas fa-table" style="color:#1e3a5f;margin-right:8px"></i>Résumé par Département</div>
-    ${data.byDept && data.byDept.length > 0 ? `
-    <table class="data-table">
-      <thead><tr><th>Département</th><th>Agents</th><th>Heures ce mois</th><th>% de l'activité</th></tr></thead>
-      <tbody>
-        ${data.byDept.map(d => `<tr>
-          <td style="font-weight:600;color:#1e3a5f">${d.dept_name}</td>
-          <td>${d.agent_count}</td>
-          <td>${d.hours_display||'0h 00m'}</td>
-          <td>
-            <div style="display:flex;align-items:center;gap:6px">
-              <div style="width:100px;background:#e5e7eb;border-radius:4px;height:6px">
-                <div style="width:${d.percentage}%;background:#1e3a5f;height:6px;border-radius:4px"></div>
-              </div>
-              <span style="font-size:12px;font-weight:600">${d.percentage}%</span>
+  <!-- Méthode 3-3-3 pie charts -->
+  <div class="chart-card" style="margin-bottom:20px">
+    <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f;margin-right:8px"></i>Méthode 3-3-3 — Répartition du Temps${data.month2?` <span style="font-size:12px;font-weight:400;color:#6b7280">(${data.month||dgMonth1} vs ${data.month2})</span>`:` <span style="font-size:12px;font-weight:400;color:#6b7280">${data.month||dgMonth1}</span>`}</div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-top:12px">
+      <div style="text-align:center">
+        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">${data.month||dgMonth1}</div>
+        <canvas id="dgChart333M1" width="180" height="180"></canvas>
+      </div>
+      ${data.month2 ? `<div style="text-align:center">
+        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">${data.month2}</div>
+        <canvas id="dgChart333M2" width="180" height="180"></canvas>
+      </div>` : ''}
+      <div style="flex:1;min-width:200px">
+        ${(data.ratio333||[]).map(r => {
+          const C = {'Production':'#1e3a5f','Administration & Reporting':'#f59e0b','Contrôle':'#10b981'};
+          const color = C[r.label||r.type]||'#6b7280';
+          const pct2 = data.month2&&data.ratio333Month2 ? (data.ratio333Month2.find(x=>(x.label||x.type)===(r.label||r.type))?.percentage||0) : null;
+          const lbl = r.label||r.type;
+          return `<div style="margin-bottom:12px">
+            <div style="font-weight:600;font-size:12px;color:#374151">${lbl}</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+              <div style="flex:1;background:#e5e7eb;border-radius:3px;height:7px"><div style="width:${r.percentage}%;background:${color};height:7px;border-radius:3px"></div></div>
+              <span style="font-weight:700;color:${color};font-size:12px;width:32px">${r.percentage}%</span>
+              <span style="color:#9ca3af;font-size:11px">${r.hours_display}</span>
+              ${pct2!==null?`<span style="color:#6b7280;font-size:11px">→ ${pct2}% M2</span>`:''}
             </div>
-          </td>
-        </tr>`).join('')}
-      </tbody>
-    </table>` : '<p class="empty-state">Aucun département actif.</p>'}
+          </div>`;
+        }).join('')}
+        <div style="margin-top:12px;padding:10px 14px;background:#eff6ff;border-radius:8px;border-left:4px solid #1e3a5f">
+          <div style="font-size:11px;color:#1e3a5f;font-weight:600"><i class="fas fa-info-circle" style="margin-right:4px"></i>Efficience Production</div>
+          <div style="font-size:20px;font-weight:800;color:#1e3a5f;margin-top:3px">
+            ${(data.ratio333||[]).find(r=>(r.label||r.type)==='Production')?.percentage||0}%
+            ${data.month2&&data.ratio333Month2 ? `<span style="font-size:13px;color:#6b7280;font-weight:400"> → ${(data.ratio333Month2||[]).find(r=>(r.label||r.type)==='Production')?.percentage||0}%</span>` : ''}
+          </div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">Objectif : ≥ 70% en Production</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barres empilées par Département -->
+  <div class="chart-card" style="margin-bottom:20px">
+    <div class="chart-title"><i class="fas fa-chart-bar" style="color:#1e3a5f;margin-right:8px"></i>Comparaison par Département — Répartition 3-3-3</div>
+    <canvas id="dgChartDeptBar" height="${data.month2?260:200}"></canvas>
+    <div style="margin-top:16px;overflow-x:auto">
+      <table style="width:100%;font-size:12px">
+        <thead><tr style="background:#f9fafb">
+          <th style="padding:8px;text-align:left">DÉPARTEMENT</th>
+          <th style="padding:8px;text-align:center">AGENTS</th>
+          <th style="padding:8px;text-align:center;color:#1e3a5f">PRODUCTION</th>
+          <th style="padding:8px;text-align:center;color:#f59e0b">ADMIN & REPORTING</th>
+          <th style="padding:8px;text-align:center;color:#10b981">CONTRÔLE</th>
+          <th style="padding:8px;text-align:center;color:#ef4444">NON PRODUCTIF</th>
+        </tr></thead>
+        <tbody>
+          ${(data.byDept333||data.byDept||[]).map(d => {
+            const cap = (d.agent_count||0)*480;
+            const np  = Math.max(0, cap-(d.total_minutes||0));
+            const npPct = cap>0?Math.round(np/cap*100):0;
+            const aMin = d['Administration & Reporting']||0;
+            const cMin = d['Contrôle']||0;
+            const pMin = d['Production']||d.total_minutes||0;
+            return `<tr style="border-bottom:1px solid #f3f4f6">
+              <td style="padding:8px;font-weight:600">${d.dept_name}</td>
+              <td style="padding:8px;text-align:center">${d.agent_count||0}</td>
+              <td style="padding:8px;text-align:center;color:#1e3a5f;font-weight:700">${minutesToDisplay(pMin)}</td>
+              <td style="padding:8px;text-align:center;color:#f59e0b;font-weight:700">${minutesToDisplay(aMin)}</td>
+              <td style="padding:8px;text-align:center;color:#10b981;font-weight:700">${minutesToDisplay(cMin)}</td>
+              <td style="padding:8px;text-align:center"><span style="font-weight:700;color:#ef4444">${minutesToDisplay(np)}</span> <small style="color:#9ca3af">(${npPct}%)</small></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Barres empilées par Agent -->
+  <div class="chart-card" style="margin-bottom:20px">
+    <div class="chart-title"><i class="fas fa-users" style="color:#1e3a5f;margin-right:8px"></i>Comparaison par Agent — Temps de Reporting vs Production</div>
+    <canvas id="dgChartAgentBar" height="${Math.max(180,(data.byAgent333||[]).length*(data.month2?40:28))}"></canvas>
+  </div>
+
+  <!-- KPIs globaux -->
+  <div class="kpi-grid" style="margin-top:0">
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-icon" style="background:#dbeafe;color:#1e40af"><i class="fas fa-users"></i></div>
+      <div><div class="kpi-value">${data.total_users||0}</div><div class="kpi-label">Agents actifs</div></div>
+    </div>
+    <div class="kpi-card kpi-green">
+      <div class="kpi-icon" style="background:#dcfce7;color:#16a34a"><i class="fas fa-clock"></i></div>
+      <div><div class="kpi-value">${data.total_hours_month||'0h 00m'}</div><div class="kpi-label">Heures validées ce mois</div></div>
+    </div>
+    <div class="kpi-card kpi-orange">
+      <div class="kpi-icon" style="background:#fef3c7;color:#b45309"><i class="fas fa-hourglass-half"></i></div>
+      <div><div class="kpi-value">${data.to_validate||0}</div><div class="kpi-label">En attente de validation</div></div>
+    </div>
+    <div class="kpi-card kpi-purple">
+      <div class="kpi-icon" style="background:#f3e8ff;color:#7c3aed"><i class="fas fa-building"></i></div>
+      <div><div class="kpi-value">${data.byDept?data.byDept.length:0}</div><div class="kpi-label">Départements actifs</div></div>
+    </div>
   </div>`);
 
-  // Charts
-  if (data.byDept && data.byDept.length > 0) {
-    const ctx = document.getElementById('dgChartDepts');
-    if (ctx) {
-      dgCharts.depts = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: data.byDept.map(d => d.dept_name),
-          datasets: [{ label: 'Heures', data: data.byDept.map(d => Math.round(d.total_minutes/60*10)/10), backgroundColor: '#1e3a5f' }]
-        },
-        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-      });
-    }
+  // ── Charts DG dashboard
+  destroyDgCharts();
+
+  // Pie 333 M1
+  const r333 = data.ratio333||[];
+  if (r333.length && document.getElementById('dgChart333M1')) {
+    dgCharts.p333M1 = new Chart(document.getElementById('dgChart333M1'), {
+      type: 'pie',
+      data: { labels: r333.map(r=>r.label||r.type), datasets: [{ data: r333.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${r333[ctx.dataIndex].hours_display} (${r333[ctx.dataIndex].percentage}%)` } } } }
+    });
   }
-  if (data.byObjective && data.byObjective.length > 0) {
-    const ctx2 = document.getElementById('dgChartObj');
-    if (ctx2) {
-      dgCharts.obj = new Chart(ctx2, {
-        type: 'doughnut',
-        data: {
-          labels: data.byObjective.map(o => o.name),
-          datasets: [{ data: data.byObjective.map(o => o.total_minutes), backgroundColor: data.byObjective.map(o => o.color||'#1e3a5f') }]
-        },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-      });
-    }
+  // Pie 333 M2
+  const r333M2 = data.ratio333Month2||[];
+  if (r333M2.length && document.getElementById('dgChart333M2')) {
+    dgCharts.p333M2 = new Chart(document.getElementById('dgChart333M2'), {
+      type: 'pie',
+      data: { labels: r333M2.map(r=>r.label||r.type), datasets: [{ data: r333M2.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${r333M2[ctx.dataIndex].hours_display} (${r333M2[ctx.dataIndex].percentage}%)` } } } }
+    });
   }
+  // Barres dept
+  const depts = data.byDept333||data.deptComparison||data.byDept||[];
+  const deptsM2 = data.deptComparisonMonth2||[];
+  if (depts.length && document.getElementById('dgChartDeptBar')) {
+    const labels = depts.map(d=>d.dept_name.replace('Direction ','Dir. '));
+    const mkDs = (src, suffix) => [
+      { label:'Production'+suffix, data:src.map(d=>+((d.Production||d.total_minutes||0)/60).toFixed(2)), backgroundColor:'#1e3a5f', stack:'stk'+suffix },
+      { label:'Admin & Reporting'+suffix, data:src.map(d=>+((d['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor:'#f59e0b', stack:'stk'+suffix },
+      { label:'Contrôle'+suffix, data:src.map(d=>+((d['Contrôle']||0)/60).toFixed(2)), backgroundColor:'#10b981', stack:'stk'+suffix },
+      { label:'Non productif'+suffix, data:src.map(d=>+(Math.max(0,(d.agent_count||0)*8-(d.total_minutes||0)/60).toFixed(2))), backgroundColor:'#ef4444', stack:'stk'+suffix }
+    ];
+    const ds = mkDs(depts, data.month2?' ('+data.month+')':'');
+    if (deptsM2.length) ds.push(...mkDs(deptsM2, ' ('+data.month2+')'));
+    dgCharts.deptBar = new Chart(document.getElementById('dgChartDeptBar'), {
+      type:'bar', data:{ labels, datasets:ds },
+      options:{ indexAxis:'y', plugins:{ legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:12 } } }, scales:{ x:{ stacked:true, ticks:{callback:v=>v+'h'} }, y:{ stacked:true } }, responsive:true }
+    });
+  }
+  // Barres agent
+  const agents = data.byAgent333||data.agentComparison||[];
+  const agentsM2 = data.agentComparisonMonth2||[];
+  if (agents.length && document.getElementById('dgChartAgentBar')) {
+    const mkAgDs = (src, suffix) => [
+      { label:'Production'+suffix, data:src.map(a=>+(a.Production/60).toFixed(2)), backgroundColor:'#1e3a5f', stack:'sa'+suffix },
+      { label:'Admin & Reporting'+suffix, data:src.map(a=>+((a['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor:'#f59e0b', stack:'sa'+suffix },
+      { label:'Contrôle'+suffix, data:src.map(a=>+((a['Contrôle']||0)/60).toFixed(2)), backgroundColor:'#10b981', stack:'sa'+suffix },
+      { label:'Non productif'+suffix, data:src.map(a=>+(Math.max(0,8-a.total_minutes/60).toFixed(2))), backgroundColor:'#ef4444', stack:'sa'+suffix }
+    ];
+    const agDs = mkAgDs(agents, data.month2?' ('+data.month+')':'');
+    if (agentsM2.length) agDs.push(...mkAgDs(agentsM2, ' ('+data.month2+')'));
+    dgCharts.agentBar = new Chart(document.getElementById('dgChartAgentBar'), {
+      type:'bar', data:{ labels:agents.map(a=>a.agent_name), datasets:agDs },
+      options:{ indexAxis:'y', plugins:{ legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:12 } } }, scales:{ x:{ stacked:true, ticks:{callback:v=>v+'h'} }, y:{ stacked:true } }, responsive:true }
+    });
+  }
+}
+
+function destroyDgCharts() {
+  Object.values(dgCharts).forEach(c=>{ try{c.destroy();}catch(e){} });
+  dgCharts = {};
 }
 
 // ============================================

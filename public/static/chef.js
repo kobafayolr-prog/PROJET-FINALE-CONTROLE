@@ -181,19 +181,47 @@ function renderLayout(title, content) {
 // ============================================
 // DASHBOARD CHEF
 // ============================================
+let chefMonth1 = new Date().toISOString().slice(0,7);
+let chefMonth2 = '';
+
 async function renderDashboard() {
   renderLayout('Tableau de bord équipe', '<div style="text-align:center;padding:32px"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:#9ca3af"></i></div>');
-  const data = await api('/api/chef/dashboard');
+  await loadChefDashboard();
+}
 
+async function loadChefDashboard() {
+  const m2p = chefMonth2 ? `&month2=${chefMonth2}` : '';
+  const data = await api(`/api/chef/dashboard?month=${chefMonth1}${m2p}`);
   const today = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
   document.getElementById('content').innerHTML = `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:8px">
       <i class="fas fa-check-circle" style="color:#22c55e;font-size:18px"></i>
       <h2 style="font-size:20px;font-weight:700;color:#1e3a5f">Vue d'ensemble de mon équipe</h2>
     </div>
     <span style="font-size:13px;color:#6b7280">${today}</span>
+  </div>
+
+  <!-- Filtre période -->
+  <div class="chart-card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <i class="fas fa-calendar-alt" style="color:#1e3a5f"></i>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:13px;font-weight:600;color:#374151">Mois 1</label>
+        <input type="month" id="chefFilterM1" value="${chefMonth1}" style="border:1px solid #d1d5db;border-radius:8px;padding:6px 10px;font-size:13px;color:#1e3a5f;outline:none">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:13px;font-weight:600;color:#374151">Mois 2</label>
+        <input type="month" id="chefFilterM2" value="${chefMonth2}" style="border:1px solid #d1d5db;border-radius:8px;padding:6px 10px;font-size:13px;color:#6b7280;outline:none">
+        <button onclick="document.getElementById('chefFilterM2').value='';chefMonth2='';loadChefDashboard()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px" title="Effacer">✕</button>
+      </div>
+      <button onclick="chefMonth1=document.getElementById('chefFilterM1').value;chefMonth2=document.getElementById('chefFilterM2').value;loadChefDashboard()"
+        style="background:#1e3a5f;color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer">
+        <i class="fas fa-search" style="margin-right:6px"></i>Appliquer
+      </button>
+      ${data.month2 ? `<span style="background:#eff6ff;color:#1e3a5f;font-size:12px;padding:4px 10px;border-radius:6px;font-weight:600"><i class="fas fa-code-branch" style="margin-right:4px"></i>${data.month||chefMonth1} vs ${data.month2}</span>` : `<span style="color:#9ca3af;font-size:12px">Période : <b>${data.month||chefMonth1}</b></span>`}
+    </div>
   </div>
 
   <!-- KPIs -->
@@ -331,41 +359,55 @@ async function renderDashboard() {
   </div>
 
   <!-- Méthode 3-3-3 — Ratio d'Efficience du Département -->
-  <div class="chart-card">
-    <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Méthode 3-3-3 — Efficience du Département</div>
-    <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
-      <div style="flex:0 0 180px"><canvas id="chart333Chef" height="180"></canvas></div>
+  <div class="chart-card" style="margin-bottom:20px">
+    <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Méthode 3-3-3 — Efficience du Département${data.month2?` <span style="font-size:12px;font-weight:400;color:#6b7280">(${data.month||chefMonth1} vs ${data.month2})</span>`:''}</div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-top:10px">
+      <div style="text-align:center">
+        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">${data.month||chefMonth1}</div>
+        <canvas id="chart333ChefM1" width="160" height="160"></canvas>
+      </div>
+      ${data.month2 ? `<div style="text-align:center">
+        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">${data.month2}</div>
+        <canvas id="chart333ChefM2" width="160" height="160"></canvas>
+      </div>` : ''}
       <div style="flex:1;min-width:180px">
         ${(data.ratio333||[]).map(r => {
           const color = r.type==='Production'?'#1e3a5f':r.type==='Administration & Reporting'?'#f59e0b':'#10b981';
+          const pct2 = data.month2&&data.ratio333Month2 ? (data.ratio333Month2.find(x=>x.type===r.type)?.percentage||0) : null;
           return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
             <span style="width:12px;height:12px;border-radius:3px;background:${color};flex-shrink:0"></span>
             <div style="flex:1">
-              <div style="font-weight:700;font-size:12px;color:#1e3a5f">${r.type}</div>
+              <div style="font-weight:600;font-size:12px;color:#374151">${r.type}</div>
               <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-                <div style="flex:1;background:#e5e7eb;border-radius:4px;height:7px">
-                  <div style="width:${r.percentage}%;background:${color};height:7px;border-radius:4px"></div>
-                </div>
+                <div style="flex:1;background:#e5e7eb;border-radius:4px;height:7px"><div style="width:${r.percentage}%;background:${color};height:7px;border-radius:4px"></div></div>
                 <span style="font-weight:700;color:${color};font-size:13px;width:36px">${r.percentage}%</span>
                 <span style="color:#6b7280;font-size:11px">${r.hours_display}</span>
+                ${pct2!==null?`<span style="color:#9ca3af;font-size:11px">→ ${pct2}% M2</span>`:''}
               </div>
             </div>
           </div>`;
         }).join('')}
         <div style="margin-top:12px;padding:8px 12px;background:#eff6ff;border-radius:8px;border-left:4px solid #1e3a5f">
-          <div style="font-size:11px;color:#1e3a5f;font-weight:600">Ratio d'Efficience</div>
+          <div style="font-size:11px;color:#1e3a5f;font-weight:600">Efficience Production</div>
           <div style="font-size:20px;font-weight:800;color:#1e3a5f">
             ${(data.ratio333||[]).find(r=>r.type==='Production')?.percentage||0}%
-            <span style="font-size:12px;font-weight:400;color:#6b7280">Production</span>
+            ${data.month2&&data.ratio333Month2 ? `<span style="font-size:12px;font-weight:400;color:#6b7280"> → ${(data.ratio333Month2||[]).find(r=>r.type==='Production')?.percentage||0}%</span>` : ''}
           </div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">Objectif : ≥ 70% en Production</div>
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Barres comparatives par Agent (3-3-3) -->
+  <div class="chart-card">
+    <div class="chart-title"><i class="fas fa-users" style="color:#1e3a5f"></i> Comparaison par Agent — Temps Reporting vs Production${data.month2?` <span style="font-size:12px;font-weight:400;color:#6b7280">(${data.month||chefMonth1} vs ${data.month2})</span>`:''}</div>
+    <canvas id="chartAgentBar333" height="${Math.max(160,(data.agentComparison||data.hoursByAgent||[]).length*(data.month2?42:30))}"></canvas>
   </div>`;
 
   destroyCharts();
 
-  if (data.hoursByAgent.length > 0) {
+  if (data.hoursByAgent && data.hoursByAgent.length > 0 && document.getElementById('chartAgents')) {
     chefCharts.agents = new Chart(document.getElementById('chartAgents'), {
       type: 'bar',
       data: {
@@ -376,7 +418,7 @@ async function renderDashboard() {
     });
   }
 
-  if (data.byObjective.length > 0) {
+  if (data.byObjective && data.byObjective.length > 0 && document.getElementById('chartObj')) {
     chefCharts.obj = new Chart(document.getElementById('chartObj'), {
       type: 'doughnut',
       data: {
@@ -387,18 +429,40 @@ async function renderDashboard() {
     });
   }
 
-  // Donut Méthode 3-3-3
-  if (data.ratio333 && data.ratio333.length > 0 && document.getElementById('chart333Chef')) {
-    chefCharts.chart333 = new Chart(document.getElementById('chart333Chef'), {
-      type: 'doughnut',
-      data: {
-        labels: data.ratio333.map(r => r.type),
-        datasets: [{ data: data.ratio333.map(r => r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }]
-      },
-      options: {
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { const r = data.ratio333[ctx.dataIndex]; return ` ${r.hours_display} (${r.percentage}%)`; } } } },
-        cutout: '60%'
-      }
+  // Pie 3-3-3 Mois 1
+  if (data.ratio333 && data.ratio333.length > 0 && document.getElementById('chart333ChefM1')) {
+    chefCharts.p333M1 = new Chart(document.getElementById('chart333ChefM1'), {
+      type: 'pie',
+      data: { labels: data.ratio333.map(r=>r.type), datasets: [{ data: data.ratio333.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => { const r=data.ratio333[ctx.dataIndex]; return ` ${r.hours_display} (${r.percentage}%)`; } } } } }
+    });
+  }
+
+  // Pie 3-3-3 Mois 2
+  if (data.ratio333Month2 && data.ratio333Month2.length > 0 && document.getElementById('chart333ChefM2')) {
+    chefCharts.p333M2 = new Chart(document.getElementById('chart333ChefM2'), {
+      type: 'pie',
+      data: { labels: data.ratio333Month2.map(r=>r.type), datasets: [{ data: data.ratio333Month2.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => { const r=data.ratio333Month2[ctx.dataIndex]; return ` ${r.hours_display} (${r.percentage}%)`; } } } } }
+    });
+  }
+
+  // Barres empilées par Agent
+  const agComp = data.agentComparison || data.hoursByAgent || [];
+  const agCompM2 = data.agentComparisonMonth2 || [];
+  if (agComp.length > 0 && document.getElementById('chartAgentBar333')) {
+    const mkDs = (src, suffix) => [
+      { label: 'Production'+suffix, data: src.map(a => +((a.Production||a.total_minutes||0)/60).toFixed(2)), backgroundColor: '#1e3a5f', stack: 'sa'+suffix },
+      { label: 'Admin & Reporting'+suffix, data: src.map(a => +((a['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor: '#f59e0b', stack: 'sa'+suffix },
+      { label: 'Contrôle'+suffix, data: src.map(a => +((a['Contrôle']||0)/60).toFixed(2)), backgroundColor: '#10b981', stack: 'sa'+suffix },
+      { label: 'Non productif'+suffix, data: src.map(a => +(Math.max(0, 8 - (a.total_minutes||0)/60).toFixed(2))), backgroundColor: '#ef4444', stack: 'sa'+suffix }
+    ];
+    const ds = mkDs(agComp, data.month2?' ('+data.month+')':'');
+    if (agCompM2.length) ds.push(...mkDs(agCompM2, ' ('+data.month2+')'));
+    chefCharts.agentBar = new Chart(document.getElementById('chartAgentBar333'), {
+      type: 'bar',
+      data: { labels: agComp.map(a => a.agent_name||a.agent_name), datasets: ds },
+      options: { indexAxis: 'y', plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } } }, scales: { x: { stacked: true, ticks: { callback: v => v+'h' } }, y: { stacked: true, ticks: { font: { size: 11 } } } }, responsive: true }
     });
   }
 }

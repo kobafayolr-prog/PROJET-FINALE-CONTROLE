@@ -322,64 +322,116 @@ function renderLayout(title, content) {
 // ============================================
 // DASHBOARD
 // ============================================
+
+// Mois sélectionnés pour le filtre comparatif
+let adminMonth1 = new Date().toISOString().slice(0, 7);
+let adminMonth2 = '';
+
 async function renderDashboard() {
   renderLayout('Administration', '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i></div>');
-  const stats = await api('/api/admin/stats');
+  await loadDashboardStats();
+}
 
+async function loadDashboardStats() {
+  const m2Param = adminMonth2 ? `&month2=${adminMonth2}` : '';
+  const stats = await api(`/api/admin/stats?month=${adminMonth1}${m2Param}`);
   const totalMin = stats.hoursByObjective.reduce((s, o) => s + o.total_minutes, 0);
   const totalHours = minutesToHours(totalMin);
 
+  // ── Helpers 333
+  const C333 = { 'Production': '#1e3a5f', 'Administration & Reporting': '#f59e0b', 'Contrôle': '#10b981' };
+  const I333 = { 'Production': 'fa-briefcase', 'Administration & Reporting': 'fa-file-alt', 'Contrôle': 'fa-check-circle' };
+
+  function render333Rows(data, label) {
+    if (!data || !data.length) return `<div style="color:#9ca3af;font-size:13px;padding:12px 0">Aucune donnée — ${label}</div>`;
+    return data.map(r => {
+      const color = C333[r.type] || '#6b7280';
+      const pct2 = stats.ratio333Month2 ? (stats.ratio333Month2.find(x=>x.type===r.type)?.percentage || 0) : null;
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="width:12px;height:12px;border-radius:3px;background:${color};flex-shrink:0"></span>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:12px;color:#374151"><i class="fas ${I333[r.type]||'fa-circle'}" style="margin-right:4px;color:${color}"></i>${r.type}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+            <div style="flex:1;background:#e5e7eb;border-radius:3px;height:7px;overflow:hidden">
+              <div style="width:${r.percentage}%;background:${color};height:7px;border-radius:3px"></div>
+            </div>
+            <span style="font-weight:700;color:${color};font-size:13px;width:36px">${r.percentage}%</span>
+            <span style="color:#9ca3af;font-size:11px">${r.hours_display}</span>
+            ${pct2 !== null ? `<span style="font-size:11px;color:#6b7280;margin-left:4px">(${label==='Mois 2'?pct2:pct2}% M2)</span>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function deptCapHtml(dept) {
+    const capMin = dept.agent_count * 480;
+    const npMin  = Math.max(0, capMin - dept.total_minutes);
+    const npPct  = capMin > 0 ? Math.round((npMin / capMin) * 100) : 0;
+    const pMin   = dept.Production || 0;
+    const aMin   = dept['Administration & Reporting'] || 0;
+    const cMin   = dept['Contrôle'] || 0;
+    const repPct = dept.total_minutes > 0 ? Math.round(((aMin + cMin) / dept.total_minutes) * 100) : 0;
+    return `<div style="font-size:11px;color:#6b7280;margin-top:4px">
+      ${dept.agent_count} agent(s) · Cap. ${minutesToHours(capMin)} · Non-prod: <b style="color:#ef4444">${minutesToHours(npMin)}</b> (${npPct}%)
+      · Reporting+Ctrl: <b style="color:#f59e0b">${repPct}%</b>
+    </div>`;
+  }
+
+  function agentCapHtml(ag) {
+    const npMin  = Math.max(0, 480 - ag.total_minutes);
+    const npPct  = Math.round((npMin / 480) * 100);
+    const aMin   = ag['Administration & Reporting'] || 0;
+    const cMin   = ag['Contrôle'] || 0;
+    const repPct = ag.total_minutes > 0 ? Math.round(((aMin + cMin) / ag.total_minutes) * 100) : 0;
+    return `<small style="color:#9ca3af"> · Non-prod: <b style="color:#ef4444">${minutesToHours(npMin)}</b> (${npPct}%) · Reporting: <b style="color:#f59e0b">${repPct}%</b></small>`;
+  }
+
   document.getElementById('content').innerHTML = `
-  <div class="grid-2" style="margin-bottom:20px">
-    <!-- Heures par Objectif -->
-    <div class="chart-card">
-      <div class="chart-title"><i class="fas fa-chart-bar" style="color:#1e3a5f"></i> Heures par Objectif Stratégique</div>
-      <canvas id="chartObjectives" height="200"></canvas>
-    </div>
-    <!-- Heures par Département -->
-    <div class="chart-card">
-      <div class="chart-title"><i class="fas fa-chart-bar" style="color:#1e3a5f"></i> Heures par Département</div>
-      <canvas id="chartDepts" height="200"></canvas>
+
+  <!-- ══ FILTRE PÉRIODE ══ -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-body" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 18px">
+      <i class="fas fa-calendar-alt" style="color:#1e3a5f;font-size:16px"></i>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:13px;font-weight:600;color:#374151">Mois 1</label>
+        <input type="month" id="filterM1" value="${adminMonth1}" style="border:1px solid #d1d5db;border-radius:8px;padding:6px 10px;font-size:13px;color:#1e3a5f;outline:none">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:13px;font-weight:600;color:#374151">Mois 2 (comparaison)</label>
+        <input type="month" id="filterM2" value="${adminMonth2}" style="border:1px solid #d1d5db;border-radius:8px;padding:6px 10px;font-size:13px;color:#6b7280;outline:none">
+        <button onclick="document.getElementById('filterM2').value='';adminMonth2='';loadDashboardStats()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px" title="Effacer">✕</button>
+      </div>
+      <button onclick="adminMonth1=document.getElementById('filterM1').value;adminMonth2=document.getElementById('filterM2').value;loadDashboardStats()"
+        style="background:#1e3a5f;color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer">
+        <i class="fas fa-search" style="margin-right:6px"></i>Appliquer
+      </button>
+      ${stats.month2 ? `<span style="background:#eff6ff;color:#1e3a5f;font-size:12px;padding:4px 10px;border-radius:6px;font-weight:600"><i class="fas fa-code-branch" style="margin-right:4px"></i>Comparaison : ${stats.month} vs ${stats.month2}</span>` : `<span style="color:#9ca3af;font-size:12px">Période : <b>${stats.month}</b></span>`}
     </div>
   </div>
+
+  <!-- ══ RANGÉE 1 : Productivité du jour ══ -->
   <div class="grid-2" style="margin-bottom:20px">
-    <!-- Tendance Mensuelle -->
     <div class="chart-card">
       <div class="chart-title"><i class="fas fa-chart-line" style="color:#1e3a5f"></i> Tendance Mensuelle</div>
       <canvas id="chartTrend" height="200"></canvas>
     </div>
-    <!-- Productivité -->
     <div class="chart-card">
-      <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Productivité du Jour ${stats.is_weekend ? '<span style="background:#fef3c7;color:#92400e;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:8px"><i class="fas fa-moon"></i> Week-end</span>' : '(base 8h/agent)'}</div>
-      ${stats.is_weekend ? `
-      <div style="text-align:center;padding:30px 20px;color:#92400e;background:#fef9c3;border-radius:10px;margin:10px 0">
-        <i class="fas fa-calendar-times" style="font-size:32px;margin-bottom:10px;display:block"></i>
-        <div style="font-weight:700;font-size:15px">Week-end — Pas de journée de travail attendue</div>
-        <div style="font-size:12px;margin-top:6px;color:#78350f">Les statistiques reprennent automatiquement lundi</div>
-      </div>` : `
+      <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Productivité du Jour ${stats.is_weekend ? '<span style="background:#fef3c7;color:#92400e;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px"><i class="fas fa-moon"></i> Week-end</span>' : '(base 8h/agent)'}</div>
+      ${stats.is_weekend ? `<div style="text-align:center;padding:30px;color:#92400e;background:#fef9c3;border-radius:10px">
+        <i class="fas fa-calendar-times" style="font-size:28px;display:block;margin-bottom:8px"></i>
+        <div style="font-weight:700">Week-end — Aucune journée attendue</div></div>` : `
       <div style="display:flex;align-items:center;gap:20px">
         <div style="flex:1"><canvas id="chartProductivity" height="220"></canvas></div>
         <div>
-          <div style="font-size:11px;color:#6b7280;margin-bottom:10px;text-align:center">${stats.productivity.total_agents} agent(s) — Capacité: ${Math.floor(stats.productivity.total_capacity_today/60)}h</div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-            <span style="width:12px;height:12px;border-radius:3px;background:#22c55e;display:inline-block"></span>
-            <span style="font-size:12px;color:#555">Validées par le chef</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-            <span style="width:12px;height:12px;border-radius:3px;background:#f59e0b;display:inline-block"></span>
-            <span style="font-size:12px;color:#555">En attente de validation</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
-            <span style="width:12px;height:12px;border-radius:3px;background:#ef4444;display:inline-block"></span>
-            <span style="font-size:12px;color:#555">Non pointées</span>
-          </div>
+          <div style="font-size:11px;color:#6b7280;margin-bottom:8px;text-align:center">${stats.productivity.total_agents} agent(s) · Cap. ${Math.floor(stats.productivity.total_capacity_today/60)}h</div>
           <div style="padding:8px;background:#f0fdf4;border-radius:8px;text-align:center;margin-bottom:6px">
-            <div style="font-size:16px;font-weight:800;color:#16a34a">${stats.productivity.validated_hours_today || stats.productivity.productive_hours_today}</div>
-            <div style="font-size:10px;color:#6b7280">Validées (${stats.productivity.validated_pct || stats.productivity.productive_pct}%)</div>
+            <div style="font-size:16px;font-weight:800;color:#16a34a">${stats.productivity.validated_hours_today||stats.productivity.productive_hours_today}</div>
+            <div style="font-size:10px;color:#6b7280">Validées (${stats.productivity.validated_pct||stats.productivity.productive_pct}%)</div>
           </div>
           <div style="padding:8px;background:#fffbeb;border-radius:8px;text-align:center;margin-bottom:6px">
-            <div style="font-size:16px;font-weight:800;color:#d97706">${stats.productivity.pending_hours_today || '0h 00m'}</div>
-            <div style="font-size:10px;color:#6b7280">En attente (${stats.productivity.pending_pct || 0}%)</div>
+            <div style="font-size:16px;font-weight:800;color:#d97706">${stats.productivity.pending_hours_today||'0h 00m'}</div>
+            <div style="font-size:10px;color:#6b7280">En attente (${stats.productivity.pending_pct||0}%)</div>
           </div>
           <div style="padding:8px;background:#fee2e2;border-radius:8px;text-align:center">
             <div style="font-size:16px;font-weight:800;color:#dc2626">${stats.productivity.non_productive_hours_today}</div>
@@ -389,52 +441,132 @@ async function renderDashboard() {
       </div>`}
     </div>
   </div>
-  <!-- Tableau Productivité par Agent (Aujourd'hui) -->
+
+  <!-- ══ RANGÉE 2 : Méthode 3-3-3 ══ -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-body">
+      <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Méthode 3-3-3 — Répartition du temps${stats.month2 ? ` <span style="font-size:12px;font-weight:400;color:#6b7280">(${stats.month} vs ${stats.month2})</span>` : ` <span style="font-size:12px;font-weight:400;color:#6b7280">${stats.month}</span>`}</div>
+      <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;margin-top:12px">
+        <!-- Pie chart Mois 1 -->
+        <div style="text-align:center;flex:0 0 auto">
+          <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">${stats.month}</div>
+          <canvas id="chart333M1" width="180" height="180"></canvas>
+        </div>
+        ${stats.month2 ? `
+        <!-- Pie chart Mois 2 -->
+        <div style="text-align:center;flex:0 0 auto">
+          <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">${stats.month2}</div>
+          <canvas id="chart333M2" width="180" height="180"></canvas>
+        </div>` : ''}
+        <!-- Légende + détails -->
+        <div style="flex:1;min-width:220px">
+          <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">${stats.month}</div>
+          ${render333Rows(stats.ratio333, 'Mois 1')}
+          ${stats.month2 ? `<div style="height:1px;background:#e5e7eb;margin:14px 0"></div>
+          <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">${stats.month2}</div>
+          ${render333Rows(stats.ratio333Month2||[], 'Mois 2')}` : ''}
+          <div style="margin-top:14px;padding:10px 14px;background:#eff6ff;border-radius:8px;border-left:4px solid #1e3a5f">
+            <div style="font-size:11px;color:#1e3a5f;font-weight:600"><i class="fas fa-info-circle" style="margin-right:4px"></i>Efficience Production</div>
+            <div style="font-size:20px;font-weight:800;color:#1e3a5f;margin-top:3px">
+              ${(stats.ratio333||[]).find(r=>r.type==='Production')?.percentage||0}%
+              ${stats.ratio333Month2 ? `<span style="font-size:13px;color:#6b7280;font-weight:400"> → ${(stats.ratio333Month2||[]).find(r=>r.type==='Production')?.percentage||0}%</span>` : ''}
+            </div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px">Objectif : ≥ 70% en Production</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ RANGÉE 3 : Comparaison par Département ══ -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-body">
+      <div class="chart-title"><i class="fas fa-chart-bar" style="color:#1e3a5f"></i> Comparaison par Département — Répartition 3-3-3${stats.month2 ? ` <span style="font-size:12px;font-weight:400;color:#6b7280">(${stats.month} vs ${stats.month2})</span>` : ''}</div>
+      <canvas id="chartDeptBar" height="${stats.month2 ? 260 : 200}"></canvas>
+      <!-- Tableau récap heures non-productives par département -->
+      <div style="margin-top:16px;overflow-x:auto">
+        <table style="width:100%;font-size:12px">
+          <thead><tr style="background:#f9fafb">
+            <th style="padding:8px;text-align:left">DÉPARTEMENT</th>
+            <th style="padding:8px;text-align:center">AGENTS</th>
+            <th style="padding:8px;text-align:center;color:#1e3a5f">PRODUCTION</th>
+            <th style="padding:8px;text-align:center;color:#f59e0b">ADMIN & REPORTING</th>
+            <th style="padding:8px;text-align:center;color:#10b981">CONTRÔLE</th>
+            <th style="padding:8px;text-align:center;color:#ef4444">NON PRODUCTIF</th>
+            <th style="padding:8px;text-align:center">CAPACITÉ</th>
+          </tr></thead>
+          <tbody>
+            ${(stats.deptComparison||[]).map(d => {
+              const cap = d.agent_count * 480;
+              const np  = Math.max(0, cap - d.total_minutes);
+              const npPct = cap > 0 ? Math.round(np/cap*100) : 0;
+              const aMin = d['Administration & Reporting']||0;
+              const cMin = d['Contrôle']||0;
+              const repPct = d.total_minutes > 0 ? Math.round((aMin+cMin)/d.total_minutes*100) : 0;
+              return `<tr style="border-bottom:1px solid #f3f4f6">
+                <td style="padding:8px;font-weight:600">${d.dept_name}</td>
+                <td style="padding:8px;text-align:center">${d.agent_count}</td>
+                <td style="padding:8px;text-align:center;color:#1e3a5f;font-weight:700">${minutesToHours(d.Production||0)}</td>
+                <td style="padding:8px;text-align:center;color:#f59e0b;font-weight:700">
+                  ${minutesToHours(aMin)}
+                  <div style="font-size:10px;color:#9ca3af">${repPct}% du total</div>
+                </td>
+                <td style="padding:8px;text-align:center;color:#10b981;font-weight:700">${minutesToHours(cMin)}</td>
+                <td style="padding:8px;text-align:center">
+                  <span style="font-weight:700;color:#ef4444">${minutesToHours(np)}</span>
+                  <div style="font-size:10px;color:#9ca3af">${npPct}% cap.</div>
+                </td>
+                <td style="padding:8px;text-align:center;color:#6b7280">${minutesToHours(cap)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ RANGÉE 4 : Comparaison par Agent ══ -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-body">
+      <div class="chart-title"><i class="fas fa-users" style="color:#1e3a5f"></i> Comparaison par Agent — Temps de Reporting vs Production${stats.month2 ? ` <span style="font-size:12px;font-weight:400;color:#6b7280">(${stats.month} vs ${stats.month2})</span>` : ''}</div>
+      <canvas id="chartAgentBar" height="${Math.max(180, (stats.agentComparison||[]).length * (stats.month2?40:28))}"></canvas>
+    </div>
+  </div>
+
+  <!-- ══ RANGÉE 5 : Productivité par Agent aujourd'hui ══ -->
   <div class="card" style="margin-bottom:20px">
     <div class="card-body">
       <div class="chart-title"><i class="fas fa-user-clock" style="color:#1e3a5f"></i> Productivité par Agent — Aujourd'hui ${stats.is_weekend ? '(Week-end)' : '(base 8h)'}</div>
       ${stats.is_weekend ? '<div style="text-align:center;padding:20px;color:#9ca3af">Aucun calcul de productivité les week-ends</div>' : `
-      <table style="width:100%">
+      <div style="overflow-x:auto"><table style="width:100%">
         <thead><tr>
-          <th>AGENT</th>
-          <th>DÉPARTEMENT</th>
+          <th>AGENT</th><th>DÉPARTEMENT</th>
           <th style="color:#16a34a">✅ VALIDÉES</th>
           <th style="color:#d97706">⏳ EN ATTENTE</th>
           <th style="color:#ef4444">❌ NON POINTÉES</th>
-          <th>PROGRESSION</th>
-          <th>STATUT</th>
+          <th>PROGRESSION</th><th>STATUT</th>
         </tr></thead>
         <tbody>
-          ${(stats.productivity.agents_detail || []).map(a => {
+          ${(stats.productivity.agents_detail||[]).map(a => {
             const pct = a.productive_pct;
-            const valMin = a.validated_minutes || 0;
-            const pendMin = a.pending_minutes || 0;
-            const nonMin = a.non_pointed || a.non_productive_minutes || 0;
-            const color = pct >= 80 ? '#16a34a' : (pct >= 50 ? '#f59e0b' : '#dc2626');
-            const badge = pct >= 80 ? 'badge-active' : (pct >= 50 ? 'badge-warning' : 'badge-inactive');
-            const label = pct >= 80 ? 'Bon' : (pct >= 50 ? 'Moyen' : 'Faible');
+            const valMin = a.validated_minutes||0;
+            const pendMin = a.pending_minutes||0;
+            const color = pct>=80?'#16a34a':(pct>=50?'#f59e0b':'#dc2626');
+            const badge = pct>=80?'badge-active':(pct>=50?'badge-warning':'badge-inactive');
+            const label = pct>=80?'Bon':(pct>=50?'Moyen':'Faible');
             const valW = Math.round((valMin/480)*100);
             const pendW = Math.round((pendMin/480)*100);
             return `<tr>
               <td style="font-weight:600">${a.agent_name}</td>
-              <td style="color:#6b7280;font-size:12px">${a.department_name || '—'}</td>
-              <td>
-                <span style="font-weight:700;color:#16a34a">${a.validated_hours || a.productive_hours}</span>
-                <span style="font-size:10px;color:#6b7280"> (${a.validated_pct || a.productive_pct}%)</span>
-              </td>
-              <td>
-                <span style="font-weight:700;color:#d97706">${a.pending_hours || '0h 00m'}</span>
-                <span style="font-size:10px;color:#6b7280"> (${a.pending_pct || 0}%)</span>
-              </td>
-              <td>
-                <span style="font-weight:700;color:#dc2626">${a.non_pointed_hours || a.non_productive_hours}</span>
-                <span style="font-size:10px;color:#6b7280"> (${a.non_productive_pct}%)</span>
-              </td>
-              <td style="min-width:140px">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div style="flex:1;height:10px;background:#f3f4f6;border-radius:5px;overflow:hidden;display:flex">
-                    <div style="height:100%;width:${valW}%;background:#22c55e;transition:width 0.3s" title="Validé"></div>
-                    <div style="height:100%;width:${pendW}%;background:#f59e0b;transition:width 0.3s" title="En attente"></div>
+              <td style="color:#6b7280;font-size:12px">${a.department_name||'—'}</td>
+              <td><span style="font-weight:700;color:#16a34a">${a.validated_hours||a.productive_hours}</span> <span style="font-size:10px;color:#9ca3af">(${a.validated_pct||a.productive_pct}%)</span></td>
+              <td><span style="font-weight:700;color:#d97706">${a.pending_hours||'0h 00m'}</span> <span style="font-size:10px;color:#9ca3af">(${a.pending_pct||0}%)</span></td>
+              <td><span style="font-weight:700;color:#dc2626">${a.non_pointed_hours||a.non_productive_hours}</span> <span style="font-size:10px;color:#9ca3af">(${a.non_productive_pct}%)</span></td>
+              <td style="min-width:130px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="flex:1;height:9px;background:#f3f4f6;border-radius:5px;overflow:hidden;display:flex">
+                    <div style="height:100%;width:${valW}%;background:#22c55e"></div>
+                    <div style="height:100%;width:${pendW}%;background:#f59e0b"></div>
                   </div>
                   <span style="font-size:12px;font-weight:700;color:${color}">${pct}%</span>
                 </div>
@@ -442,187 +574,123 @@ async function renderDashboard() {
               <td><span class="badge ${badge}">${label}</span></td>
             </tr>`;
           }).join('')}
-          ${(stats.productivity.agents_detail || []).length === 0 ? '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:20px">Aucun agent actif</td></tr>' : ''}
+          ${!(stats.productivity.agents_detail||[]).length ? '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:20px">Aucun agent actif</td></tr>' : ''}
         </tbody>
-      </table>`}
+      </table></div>`}
     </div>
   </div>
 
-  <!-- Tableau Objectifs avec % cible vs réel -->
-  <div class="card">
+  <!-- ══ RANGÉE 6 : Objectifs 3-3-3 ══ -->
+  <div class="card" style="margin-bottom:20px">
     <div class="card-body">
-      <div class="chart-title"><i class="fas fa-bullseye" style="color:#1e3a5f"></i> Objectifs Stratégiques - Cibles vs Réalisé</div>
+      <div class="chart-title"><i class="fas fa-bullseye" style="color:#1e3a5f"></i> Objectifs Banque — Méthode 3-3-3 (Cible vs Réalisé)</div>
       <table style="width:100%">
         <thead><tr>
-          <th>OBJECTIF</th><th>HEURES</th><th>% RÉALISÉ</th><th>% CIBLE</th><th>ÉCART</th><th>STATUT</th>
+          <th>CATÉGORIE</th><th>HEURES RÉALISÉES</th><th>% RÉALISÉ</th><th>% CIBLE</th><th>ÉCART</th><th>BARRE</th>
         </tr></thead>
         <tbody>
-          ${stats.hoursByObjective.map(o => {
+          ${(stats.hoursByObjective||[]).map(o => {
             const ecart = o.percentage - o.target_percentage;
-            const ecartClass = ecart >= 0 ? 'pct-ok' : (ecart > -10 ? 'pct-warning' : 'pct-danger');
+            const ecartClass = ecart>=0?'pct-ok':(ecart>-10?'pct-warning':'pct-danger');
             return `<tr>
               <td><span class="badge badge-obj" style="background:${o.color}">${o.name}</span></td>
               <td style="font-weight:700">${o.hours_display}</td>
-              <td>
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div class="progress-bar" style="width:100px">
-                    <div class="progress-fill" style="width:${o.percentage}%;background:${o.color}"></div>
-                  </div>
-                  <span style="font-weight:700;color:${o.color}">${o.percentage}%</span>
-                </div>
+              <td><span style="font-weight:700;color:${o.color}">${o.percentage}%</span></td>
+              <td style="color:#6b7280">${o.target_percentage}%</td>
+              <td class="${ecartClass}">${ecart>=0?'+':''}${ecart}%</td>
+              <td style="min-width:120px">
+                <div class="progress-bar"><div class="progress-fill" style="width:${o.percentage}%;background:${o.color}"></div></div>
               </td>
-              <td style="font-weight:700;color:#6b7280">${o.target_percentage}%</td>
-              <td class="${ecartClass}">${ecart >= 0 ? '+' : ''}${ecart}%</td>
-              <td><span class="badge badge-active">Actif</span></td>
             </tr>`;
           }).join('')}
         </tbody>
       </table>
     </div>
-  </div>
-
-  <!-- Méthode 3-3-3 : Ratio d'Efficience -->
-  <div class="card">
-    <div class="card-body">
-      <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Méthode 3-3-3 — Ratio d'Efficience Global</div>
-      <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap">
-        <div style="flex:0 0 220px"><canvas id="chart333" height="220"></canvas></div>
-        <div style="flex:1;min-width:200px">
-          ${(stats.ratio333||[]).map(r => {
-            const color = r.type==='Production'?'#1e3a5f':r.type==='Administration & Reporting'?'#f59e0b':'#10b981';
-            const icon  = r.type==='Production'?'fa-briefcase':r.type==='Administration & Reporting'?'fa-file-alt':'fa-check-circle';
-            return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-              <span style="width:14px;height:14px;border-radius:3px;background:${color};flex-shrink:0"></span>
-              <div style="flex:1">
-                <div style="font-weight:700;font-size:13px;color:#1e3a5f"><i class="fas ${icon}" style="margin-right:5px;color:${color}"></i>${r.type}</div>
-                <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
-                  <div style="flex:1;background:#e5e7eb;border-radius:4px;height:8px">
-                    <div style="width:${r.percentage}%;background:${color};height:8px;border-radius:4px;transition:width .5s"></div>
-                  </div>
-                  <span style="font-weight:700;color:${color};font-size:14px;width:40px">${r.percentage}%</span>
-                  <span style="color:#6b7280;font-size:12px">${r.hours_display}</span>
-                </div>
-              </div>
-            </div>`;
-          }).join('')}
-          <div style="margin-top:16px;padding:10px 14px;background:#eff6ff;border-radius:8px;border-left:4px solid #1e3a5f">
-            <div style="font-size:12px;color:#1e3a5f;font-weight:600"><i class="fas fa-info-circle" style="margin-right:5px"></i>Ratio d'Efficience</div>
-            <div style="font-size:22px;font-weight:800;color:#1e3a5f;margin-top:4px">
-              ${(stats.ratio333||[]).find(r=>r.type==='Production')?.percentage||0}%
-              <span style="font-size:13px;font-weight:400;color:#6b7280">de Production</span>
-            </div>
-            <div style="font-size:11px;color:#6b7280;margin-top:2px">Objectif : viser ≥ 70% en Production</div>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>`;
 
-  // Charts
+  // ── Initialiser tous les graphiques
   destroyCharts();
 
-  // Objectifs chart
-  if (stats.hoursByObjective.length > 0) {
-    adminCharts.objectives = new Chart(document.getElementById('chartObjectives'), {
-      type: 'bar',
-      data: {
-        labels: stats.hoursByObjective.map(o => o.name.substring(0, 20)),
-        datasets: [{
-          data: stats.hoursByObjective.map(o => (o.total_minutes / 60).toFixed(2)),
-          backgroundColor: stats.hoursByObjective.map(o => o.color)
-        }]
-      },
-      options: { plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => v + 'h' } } } }
-    });
-  }
-
-  // Depts chart
-  if (stats.hoursByDept.length > 0) {
-    adminCharts.depts = new Chart(document.getElementById('chartDepts'), {
-      type: 'bar',
-      data: {
-        labels: stats.hoursByDept.map(d => d.name.replace('Direction ', 'Dir. ')),
-        datasets: [{ data: stats.hoursByDept.map(d => (d.total_minutes / 60).toFixed(2)), backgroundColor: '#22c55e' }]
-      },
-      options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { font: { size: 10 } } }, y: { ticks: { callback: v => v + 'h' } } }, indexAxis: 'y' }
-    });
-  }
-
-  // Trend chart
-  if (stats.monthlyTrend.length > 0) {
+  // Tendance mensuelle
+  if (stats.monthlyTrend && stats.monthlyTrend.length > 0) {
     adminCharts.trend = new Chart(document.getElementById('chartTrend'), {
       type: 'line',
       data: {
         labels: stats.monthlyTrend.map(m => m.month).reverse(),
-        datasets: [{ data: stats.monthlyTrend.map(m => (m.total_minutes / 60).toFixed(2)).reverse(), borderColor: '#1e3a5f', backgroundColor: 'rgba(30,58,95,0.1)', tension: 0.4, fill: true }]
+        datasets: [{ data: stats.monthlyTrend.map(m => (m.total_minutes/60).toFixed(2)).reverse(), borderColor: '#1e3a5f', backgroundColor: 'rgba(30,58,95,0.1)', tension: 0.4, fill: true, label: 'Heures' }]
       },
-      options: { plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => v + 'h' } } } }
+      options: { plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => v+'h' } } } }
     });
   }
 
-  // Donut productivité — 3 couleurs (seulement si jour ouvrable)
+  // Donut productivité
   if (!stats.is_weekend && document.getElementById('chartProductivity')) {
-    const valMin     = stats.productivity.validated_minutes_today  || 0;
-    const pendMin    = stats.productivity.pending_minutes_today     || 0;
-    const nonMin     = stats.productivity.non_productive_minutes_today || 0;
-    const totalCap   = stats.productivity.total_capacity_today || 1;
+    const cap = stats.productivity.total_capacity_today || 1;
     adminCharts.productivity = new Chart(document.getElementById('chartProductivity'), {
       type: 'doughnut',
       data: {
         labels: ['Validées', 'En attente', 'Non pointées'],
-        datasets: [{
-          data: [valMin, pendMin, nonMin],
-          backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
-          borderWidth: 2
-        }]
+        datasets: [{ data: [stats.productivity.validated_minutes_today||0, stats.productivity.pending_minutes_today||0, stats.productivity.non_productive_minutes_today||0], backgroundColor: ['#22c55e','#f59e0b','#ef4444'], borderWidth: 2 }]
       },
-      options: {
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: function(ctx) {
-                const val = ctx.raw;
-                const pct = Math.round((val / totalCap) * 100);
-                const h = Math.floor(val / 60);
-                const m = val % 60;
-                return ` ${h}h${String(m).padStart(2,'0')} (${pct}%)`;
-              }
-            }
-          }
-        },
-        cutout: '60%'
-      }
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => { const h=Math.floor(ctx.raw/60),m=ctx.raw%60; return ` ${h}h${String(m).padStart(2,'0')} (${Math.round(ctx.raw/cap*100)}%)`; } } } }, cutout: '60%' }
     });
   }
 
-  // Graphique donut Méthode 3-3-3
-  if (stats.ratio333 && stats.ratio333.length > 0 && document.getElementById('chart333')) {
-    const colors333 = ['#1e3a5f', '#f59e0b', '#10b981'];
-    adminCharts.chart333 = new Chart(document.getElementById('chart333'), {
-      type: 'doughnut',
-      data: {
-        labels: stats.ratio333.map(r => r.type),
-        datasets: [{
-          data: stats.ratio333.map(r => r.minutes),
-          backgroundColor: colors333,
-          borderWidth: 2
-        }]
-      },
-      options: {
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: function(ctx) {
-                const r = stats.ratio333[ctx.dataIndex];
-                return ` ${r.hours_display} (${r.percentage}%)`;
-              }
-            }
-          }
-        },
-        cutout: '62%'
-      }
+  // Pie chart 3-3-3 Mois 1
+  if (stats.ratio333 && stats.ratio333.length && document.getElementById('chart333M1')) {
+    adminCharts.chart333M1 = new Chart(document.getElementById('chart333M1'), {
+      type: 'pie',
+      data: { labels: stats.ratio333.map(r=>r.type), datasets: [{ data: stats.ratio333.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => { const r=stats.ratio333[ctx.dataIndex]; return ` ${r.hours_display} (${r.percentage}%)`; } } } } }
+    });
+  }
+
+  // Pie chart 3-3-3 Mois 2
+  if (stats.ratio333Month2 && stats.ratio333Month2.length && document.getElementById('chart333M2')) {
+    adminCharts.chart333M2 = new Chart(document.getElementById('chart333M2'), {
+      type: 'pie',
+      data: { labels: stats.ratio333Month2.map(r=>r.type), datasets: [{ data: stats.ratio333Month2.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => { const r=stats.ratio333Month2[ctx.dataIndex]; return ` ${r.hours_display} (${r.percentage}%)`; } } } } }
+    });
+  }
+
+  // Barres empilées par Département
+  if (stats.deptComparison && stats.deptComparison.length && document.getElementById('chartDeptBar')) {
+    const depts = stats.deptComparison;
+    const deptsM2 = stats.deptComparisonMonth2 || [];
+    const labels = depts.map(d => d.dept_name.replace('Direction ','Dir. ').replace('Département','Dept'));
+    const mkDs = (src, suffix) => [
+      { label: 'Production'+suffix, data: src.map(d=>+(d.Production/60).toFixed(2)), backgroundColor: '#1e3a5f', stack: 'stack'+suffix },
+      { label: 'Admin & Reporting'+suffix, data: src.map(d=>+((d['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor: '#f59e0b', stack: 'stack'+suffix },
+      { label: 'Contrôle'+suffix, data: src.map(d=>+((d['Contrôle']||0)/60).toFixed(2)), backgroundColor: '#10b981', stack: 'stack'+suffix },
+      { label: 'Non productif'+suffix, data: src.map(d=>+(Math.max(0,d.agent_count*8-(d.total_minutes/60)).toFixed(2))), backgroundColor: '#ef4444', stack: 'stack'+suffix }
+    ];
+    const datasets = mkDs(depts, stats.month2?' ('+stats.month+')':'');
+    if (deptsM2.length) datasets.push(...mkDs(deptsM2, ' ('+stats.month2+')'));
+    adminCharts.deptBar = new Chart(document.getElementById('chartDeptBar'), {
+      type: 'bar',
+      data: { labels, datasets },
+      options: { indexAxis: 'y', plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } } }, scales: { x: { stacked: true, ticks: { callback: v=>v+'h' } }, y: { stacked: true, ticks: { font: { size: 11 } } } }, responsive: true }
+    });
+  }
+
+  // Barres empilées par Agent
+  if (stats.agentComparison && stats.agentComparison.length && document.getElementById('chartAgentBar')) {
+    const agents = stats.agentComparison;
+    const agentsM2 = stats.agentComparisonMonth2 || [];
+    const agLabels = agents.map(a => a.agent_name);
+    const mkAgDs = (src, suffix) => [
+      { label: 'Production'+suffix, data: src.map(a=>+(a.Production/60).toFixed(2)), backgroundColor: '#1e3a5f', stack: 'stk'+suffix },
+      { label: 'Admin & Reporting'+suffix, data: src.map(a=>+((a['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor: '#f59e0b', stack: 'stk'+suffix },
+      { label: 'Contrôle'+suffix, data: src.map(a=>+((a['Contrôle']||0)/60).toFixed(2)), backgroundColor: '#10b981', stack: 'stk'+suffix },
+      { label: 'Non productif'+suffix, data: src.map(a=>+(Math.max(0,8-(a.total_minutes/60)).toFixed(2))), backgroundColor: '#ef4444', stack: 'stk'+suffix }
+    ];
+    const agDatasets = mkAgDs(agents, stats.month2?' ('+stats.month+')':'');
+    if (agentsM2.length) agDatasets.push(...mkAgDs(agentsM2, ' ('+stats.month2+')'));
+    adminCharts.agentBar = new Chart(document.getElementById('chartAgentBar'), {
+      type: 'bar',
+      data: { labels: agLabels, datasets: agDatasets },
+      options: { indexAxis: 'y', plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } } }, scales: { x: { stacked: true, ticks: { callback: v=>v+'h' } }, y: { stacked: true, ticks: { font: { size: 11 } } } }, responsive: true }
     });
   }
 }
