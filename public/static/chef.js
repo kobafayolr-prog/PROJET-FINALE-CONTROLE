@@ -99,6 +99,79 @@ function destroyCharts() {
 }
 
 // ============================================
+// TODAY LIVE — Statut temps réel agents
+// ============================================
+async function refreshLive() {
+  const grid = document.getElementById('live-agents-grid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="text-align:center;padding:20px;color:#9ca3af"><i class="fas fa-spinner fa-spin"></i> Chargement...</div>';
+
+  const data = await api('/api/chef/live');
+  if (!data || data.error) {
+    grid.innerHTML = '<div style="color:#ef4444;padding:16px">Erreur de chargement</div>';
+    return;
+  }
+
+  // Résumé
+  const wEl = document.getElementById('live-working');
+  const pEl = document.getElementById('live-paused');
+  const nEl = document.getElementById('live-not-started');
+  if (wEl) wEl.textContent = data.summary.working_now;
+  if (pEl) pEl.textContent = data.summary.paused;
+  if (nEl) nEl.textContent = data.summary.not_started;
+
+  if (data.is_weekend) {
+    grid.innerHTML = `<div style="text-align:center;padding:24px;color:#92400e;background:#fef9c3;border-radius:10px;grid-column:1/-1">
+      <i class="fas fa-moon" style="font-size:28px;margin-bottom:8px;display:block"></i>
+      <div style="font-weight:700">Week-end — Pas de journée attendue</div>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = data.agents.map(a => {
+    const statusConfig = {
+      working:     { bg: '#dcfce7', border: '#16a34a', icon: 'fa-play-circle', iconColor: '#16a34a', label: 'En cours', labelColor: '#16a34a' },
+      paused:      { bg: '#fef9c3', border: '#ca8a04', icon: 'fa-pause-circle', iconColor: '#ca8a04', label: 'En pause',  labelColor: '#ca8a04' },
+      not_started: { bg: '#fee2e2', border: '#dc2626', icon: 'fa-times-circle', iconColor: '#dc2626', label: 'Pas pointé', labelColor: '#dc2626' },
+      weekend:     { bg: '#f3f4f6', border: '#d1d5db', icon: 'fa-moon',        iconColor: '#9ca3af', label: 'Week-end',  labelColor: '#9ca3af' }
+    };
+    const s = statusConfig[a.live_status] || statusConfig.not_started;
+    const pct = a.productive_pct || 0;
+    const pctColor = pct >= 80 ? '#16a34a' : pct >= 50 ? '#f59e0b' : '#dc2626';
+    const taskInfo = a.is_active_now && a.current_task
+      ? `<div style="font-size:10px;color:#1e3a5f;background:#eff6ff;padding:3px 8px;border-radius:4px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${a.current_task}"><i class="fas fa-tasks"></i> ${a.current_task}</div>`
+      : '';
+    return `
+    <div style="background:${s.bg};border:1.5px solid ${s.border};border-radius:10px;padding:12px 14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-weight:700;font-size:13px;color:#1e3a5f">${a.agent_name}</span>
+        <span style="color:${s.labelColor};font-size:11px;font-weight:600"><i class="fas ${s.icon}" style="color:${s.iconColor}"></i> ${s.label}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7280;margin-bottom:6px">
+        <span>✅ ${a.total_pointed_hours}</span>
+        <span style="font-weight:700;color:${pctColor}">${pct}%</span>
+        <span>${a.sessions_done_today} session(s)</span>
+      </div>
+      <div style="height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${pctColor};transition:width .5s"></div>
+      </div>
+      ${taskInfo}
+    </div>`;
+  }).join('');
+}
+
+// Auto-refresh live toutes les 60 secondes si la carte est visible
+let liveRefreshInterval = null;
+function startLiveRefresh() {
+  if (liveRefreshInterval) clearInterval(liveRefreshInterval);
+  refreshLive();
+  liveRefreshInterval = setInterval(() => {
+    if (document.getElementById('live-agents-grid')) refreshLive();
+    else { clearInterval(liveRefreshInterval); liveRefreshInterval = null; }
+  }, 60000);
+}
+
+// ============================================
 // ROUTING
 // ============================================
 function getCurrentPage() {
@@ -268,6 +341,31 @@ async function loadChefDashboard() {
     </div>
   </div>
 
+  <!-- ══ TODAY LIVE : statut temps réel ══ -->
+  <div class="chart-card" style="margin-bottom:16px" id="live-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="chart-title" style="margin:0"><i class="fas fa-satellite-dish" style="color:#16a34a"></i> Statut Live — Aujourd'hui <span style="font-size:11px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:10px;margin-left:6px"><i class="fas fa-circle" style="font-size:8px"></i> Temps réel</span></div>
+      <button onclick="refreshLive()" style="background:none;border:1px solid #d1d5db;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;color:#6b7280"><i class="fas fa-sync-alt"></i> Actualiser</button>
+    </div>
+    <div id="live-summary" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:100px;background:#dcfce7;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:#16a34a" id="live-working">—</div>
+        <div style="font-size:11px;color:#6b7280">🟢 En train de bosser</div>
+      </div>
+      <div style="flex:1;min-width:100px;background:#fef9c3;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:#ca8a04" id="live-paused">—</div>
+        <div style="font-size:11px;color:#6b7280">🟡 A pointé / Pause</div>
+      </div>
+      <div style="flex:1;min-width:100px;background:#fee2e2;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:#dc2626" id="live-not-started">—</div>
+        <div style="font-size:11px;color:#6b7280">🔴 Pas encore pointé</div>
+      </div>
+    </div>
+    <div id="live-agents-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+      <div style="text-align:center;padding:20px;color:#9ca3af"><i class="fas fa-spinner fa-spin"></i> Chargement...</div>
+    </div>
+  </div>
+
   <!-- Productivité équipe aujourd'hui -->
   <div class="chart-card" style="margin-bottom:16px">
     <div class="chart-title"><i class="fas fa-user-clock" style="color:#1e3a5f"></i> Productivité de l'Équipe — Aujourd'hui ${data.is_weekend ? '<span style="background:#fef3c7;color:#92400e;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px"><i class="fas fa-moon"></i> Week-end</span>' : '(base 8h/agent)'}</div>
@@ -330,33 +428,110 @@ async function loadChefDashboard() {
     </table>`}
   </div>
 
-  <!-- Détail par Agent — Ce mois -->
+  <!-- Détail par Agent — Ce mois (avec ratios 3-3-3) -->
   <div class="chart-card">
-    <div class="chart-title"><i class="fas fa-list" style="color:#1e3a5f"></i> Détail par Agent — Ce mois</div>
+    <div class="chart-title"><i class="fas fa-list" style="color:#1e3a5f"></i> Détail par Agent — Ce mois
+      <span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:8px">Capacité = jours ouvrés × 8h/agent</span>
+    </div>
     <div class="table-wrapper">
-      <table>
+      <table style="font-size:12px">
         <thead><tr>
-          <th>AGENT</th><th>SESSIONS</th><th>TOTAL HEURES</th><th>HEURES VALIDÉES</th><th>% VALIDÉ</th>
+          <th>AGENT</th>
+          <th style="text-align:center">SESSIONS</th>
+          <th style="text-align:center;color:#1e3a5f">🔵 PRODUCTION</th>
+          <th style="text-align:center;color:#f59e0b">🟡 ADMIN & REPORTING</th>
+          <th style="text-align:center;color:#10b981">🟢 CONTRÔLE</th>
+          <th style="text-align:center;color:#ef4444">🔴 NON POINTÉ</th>
+          <th style="text-align:center">CAPACITÉ</th>
+          <th style="text-align:center">% PRODUCTIF</th>
         </tr></thead>
         <tbody>
-          ${data.agentDetail.map(a => `<tr>
-            <td style="font-weight:600;color:#1e3a5f">${a.agent_name}</td>
-            <td>${a.total_sessions}</td>
-            <td style="font-weight:700">${a.total_hours}</td>
-            <td style="font-weight:700;color:#16a34a">${a.validated_hours}</td>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px">
-                <div style="width:80px;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden">
-                  <div style="width:${Math.min(100, Math.round(a.pct_validated))}%;height:100%;background:#1e3a5f;border-radius:3px"></div>
+          ${(data.agentComparison || []).map(a => {
+            const cap = a.capacity_minutes || 480;
+            const prod = a.Production || 0;
+            const admin = a['Administration & Reporting'] || 0;
+            const ctrl = a['Contrôle'] || 0;
+            const total = a.total_minutes || 0;
+            const np = Math.max(0, cap - total);
+            const pct = cap > 0 ? Math.round(total * 100 / cap) : 0;
+            const npPct = Math.max(0, 100 - pct);
+            const col = pct >= 80 ? '#16a34a' : pct >= 50 ? '#f59e0b' : '#dc2626';
+            const prodPct = total > 0 ? Math.round(prod * 100 / total) : 0;
+            const adminPct = total > 0 ? Math.round(admin * 100 / total) : 0;
+            const ctrlPct = total > 0 ? Math.round(ctrl * 100 / total) : 0;
+            return `<tr>
+              <td style="font-weight:600;color:#1e3a5f">${a.agent_name}</td>
+              <td style="text-align:center">${(data.agentDetail||[]).find(x=>x.agent_name===a.agent_name)?.total_sessions||'—'}</td>
+              <td style="text-align:center">
+                <span style="font-weight:700;color:#1e3a5f">${minutesToHours(prod)}</span>
+                <div style="font-size:10px;color:#9ca3af">${prodPct}% du pointé</div>
+              </td>
+              <td style="text-align:center">
+                <span style="font-weight:700;color:#f59e0b">${minutesToHours(admin)}</span>
+                <div style="font-size:10px;color:#9ca3af">${adminPct}% du pointé</div>
+              </td>
+              <td style="text-align:center">
+                <span style="font-weight:700;color:#10b981">${minutesToHours(ctrl)}</span>
+                <div style="font-size:10px;color:#9ca3af">${ctrlPct}% du pointé</div>
+              </td>
+              <td style="text-align:center">
+                <span style="font-weight:700;color:#ef4444">${minutesToHours(np)}</span>
+                <div style="font-size:10px;color:#9ca3af">${npPct}% cap.</div>
+              </td>
+              <td style="text-align:center;color:#6b7280">${minutesToHours(cap)}</td>
+              <td style="text-align:center">
+                <div style="display:flex;align-items:center;gap:6px;justify-content:center">
+                  <div style="width:60px;height:8px;background:#f3f4f6;border-radius:4px;overflow:hidden;display:flex">
+                    <div style="height:100%;width:${pct}%;background:${col}"></div>
+                  </div>
+                  <span style="font-size:12px;font-weight:800;color:${col}">${pct}%</span>
                 </div>
-                <span style="font-size:12px;font-weight:700;color:#1e3a5f">${Math.round(a.pct_validated)}%</span>
-              </div>
-            </td>
-          </tr>`).join('')}
+              </td>
+            </tr>`;
+          }).join('')}
+          ${!(data.agentComparison||[]).length ? '<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:20px">Aucune donnée</td></tr>' : ''}
         </tbody>
       </table>
     </div>
   </div>
+
+  <!-- ══ BANDEAU ALERTES 3-3-3 DÉPARTEMENT ══ -->
+  ${(() => {
+    const CIBLES = { 'Production': 70, 'Administration & Reporting': 20, 'Contrôle': 10 };
+    const r = data.ratio333 || [];
+    const alerts = r.filter(x => {
+      const tgt = CIBLES[x.type] || 0;
+      return Math.abs(x.percentage - tgt) > 5;
+    });
+    if (!alerts.length) return `
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+      <i class="fas fa-check-circle" style="color:#16a34a;font-size:18px"></i>
+      <span style="color:#15803d;font-size:13px;font-weight:600">Méthode 3-3-3 : toutes les catégories de votre département sont dans les cibles ce mois-ci.</span>
+    </div>`;
+    return `<div style="background:#fff;border-radius:10px;padding:12px 18px;margin-bottom:16px;border-left:4px solid #ef4444;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <i class="fas fa-exclamation-triangle" style="color:#ef4444;font-size:16px"></i>
+        <span style="font-weight:700;color:#1e3a5f;font-size:14px">Alertes 3-3-3 — ${alerts.length} catégorie(s) hors cible</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${alerts.map(x => {
+          const tgt = CIBLES[x.type] || 0;
+          const ecart = x.percentage - tgt;
+          const over = ecart > 0;
+          const severe = Math.abs(ecart) > 10;
+          const bg = severe ? (over ? '#fee2e2' : '#fef9c3') : (over ? '#fff7ed' : '#fffbeb');
+          const col = severe ? (over ? '#dc2626' : '#b45309') : '#d97706';
+          const color = x.type==='Production'?'#1e3a5f':x.type==='Administration & Reporting'?'#f59e0b':'#10b981';
+          return `<div style="background:${bg};border-radius:8px;padding:6px 14px;display:flex;align-items:center;gap:8px">
+            <span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block"></span>
+            <span style="font-weight:600;color:#1e3a5f;font-size:13px">${x.type}</span>
+            <span style="color:${col};font-size:12px;font-weight:700"><i class="fas fa-arrow-${over?'up':'down'}"></i> ${over?'+':''}${ecart}% vs cible ${tgt}%</span>
+            ${severe ? `<span style="font-size:10px;background:${col};color:#fff;padding:1px 6px;border-radius:4px;font-weight:700">⚠ CRITIQUE</span>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  })()}
 
   <!-- Méthode 3-3-3 — Ratio d'Efficience du Département -->
   <div class="chart-card" style="margin-bottom:20px">
@@ -406,6 +581,8 @@ async function loadChefDashboard() {
   </div>`;
 
   destroyCharts();
+  // Démarrer le rafraîchissement live après le rendu
+  startLiveRefresh();
 
   if (data.hoursByAgent && data.hoursByAgent.length > 0 && document.getElementById('chartAgents')) {
     chefCharts.agents = new Chart(document.getElementById('chartAgents'), {
@@ -899,11 +1076,42 @@ function getStatusBadge(status) {
 }
 
 function exportCSV(data, name) {
-  if (!data || !data.length) { toast('Aucune donnee', 'error'); return; }
-  const headers = Object.keys(data[0]).join(',');
-  const rows = data.map(r => Object.values(r).map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(','));
-  const csv = [headers, ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
+  if (!data || !data.length) { toast('Aucune donnée à exporter', 'error'); return; }
+
+  // Enrichissement : ajout colonnes calculées pour les sessions
+  let enriched = data;
+  if (name === 'rapports' || name === 'sessions') {
+    enriched = data.map(r => {
+      const dur = r.duration_minutes || 0;
+      const h = Math.floor(dur / 60), m = dur % 60;
+      const cat = r.task_type === 'Production' || r.task_type === 'Productive' ? 'Production'
+                : r.task_type === 'Administration & Reporting' || r.task_type === 'Non productive' ? 'Administration & Reporting'
+                : r.task_type === 'Contrôle' ? 'Contrôle' : 'Production';
+      const extra = {
+        heures_decimales: (dur / 60).toFixed(2),
+        heures_affichage: `${h}h ${String(m).padStart(2,'0')}m`,
+        categorie_333: cat,
+        mois: r.start_time ? r.start_time.slice(0, 7) : '',
+        journee: r.start_time ? r.start_time.slice(0, 10) : ''
+      };
+      return { ...r, ...extra };
+    });
+  }
+
+  // Labels lisibles
+  const labelMap = {
+    agent_name: 'Agent', department_name: 'Département', task_name: 'Tâche',
+    process_name: 'Processus', objective_name: 'Objectif',
+    duration_minutes: 'Durée (min)', start_time: 'Début', end_time: 'Fin',
+    status: 'Statut', session_type: 'Type', comment: 'Commentaire',
+    heures_decimales: 'Heures (décimal)', heures_affichage: 'Heures (affichage)',
+    categorie_333: 'Catégorie 3-3-3', mois: 'Mois', journee: 'Journée'
+  };
+  const headers = Object.keys(enriched[0]).map(k => labelMap[k] || k);
+  const rows = enriched.map(r => Object.values(r).map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(','));
+  // BOM UTF-8 pour Excel
+  const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name + '_' + new Date().toISOString().split('T')[0] + '.csv';

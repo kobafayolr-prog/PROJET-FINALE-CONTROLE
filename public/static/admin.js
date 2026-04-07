@@ -410,6 +410,41 @@ async function loadDashboardStats() {
     </div>
   </div>
 
+  <!-- ══ BANDEAU ALERTES 3-3-3 ══ -->
+  ${(() => {
+    const alerts = (stats.hoursByObjective||[]).filter(o => {
+      const ecart = o.percentage - o.target_percentage;
+      return ecart > 5 || ecart < -5;
+    });
+    if (!alerts.length) return `
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+      <i class="fas fa-check-circle" style="color:#16a34a;font-size:18px"></i>
+      <span style="color:#15803d;font-size:13px;font-weight:600">Toutes les catégories 3-3-3 sont dans les cibles ce mois-ci.</span>
+    </div>`;
+    return `<div style="background:#fff;border-radius:10px;padding:12px 18px;margin-bottom:16px;border-left:4px solid #ef4444;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <i class="fas fa-exclamation-triangle" style="color:#ef4444;font-size:16px"></i>
+        <span style="font-weight:700;color:#1e3a5f;font-size:14px">Alertes 3-3-3 — ${alerts.length} catégorie(s) hors cible</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${alerts.map(o => {
+          const ecart = o.percentage - o.target_percentage;
+          const over = ecart > 0;
+          const severe = Math.abs(ecart) > 10;
+          const bg = severe ? (over ? '#fee2e2' : '#fef9c3') : (over ? '#fff7ed' : '#fffbeb');
+          const col = severe ? (over ? '#dc2626' : '#b45309') : '#d97706';
+          const icon = over ? 'fa-arrow-up' : 'fa-arrow-down';
+          return `<div style="background:${bg};border-radius:8px;padding:6px 14px;display:flex;align-items:center;gap:8px">
+            <span style="width:10px;height:10px;border-radius:50%;background:${o.color};display:inline-block"></span>
+            <span style="font-weight:600;color:#1e3a5f;font-size:13px">${o.name}</span>
+            <span style="color:${col};font-size:12px;font-weight:700"><i class="fas ${icon}"></i> ${over?'+':''}${ecart}% vs cible ${o.target_percentage}%</span>
+            ${severe ? '<span style="font-size:10px;background:'+col+';color:#fff;padding:1px 6px;border-radius:4px;font-weight:700">⚠ CRITIQUE</span>' : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  })()}
+
   <!-- ══ RANGÉE 1 : Productivité du jour ══ -->
   <div class="grid-2" style="margin-bottom:20px">
     <div class="chart-card">
@@ -501,7 +536,7 @@ async function loadDashboardStats() {
           </tr></thead>
           <tbody>
             ${(stats.deptComparison||[]).map(d => {
-              const cap = d.agent_count * 480;
+              const cap = d.capacity_minutes || d.agent_count * (stats.working_days||22) * 480;
               const np  = Math.max(0, cap - d.total_minutes);
               const npPct = cap > 0 ? Math.round(np/cap*100) : 0;
               const aMin = d['Administration & Reporting']||0;
@@ -670,31 +705,37 @@ async function loadDashboardStats() {
     const deptsM2 = stats.deptComparisonMonth2 || [];
     const labels  = depts.map(d => d.dept_name.replace('Direction ','Dir. ').replace('Département','Dept'));
 
-    // Précalcul des capacités par département pour les pourcentages
+    // Précalcul des capacités par département pour les pourcentages (capacité mensuelle réelle)
     const deptCapMap = {};
-    depts.forEach(d => { deptCapMap[d.dept_name] = d.agent_count * 8; });
+    depts.forEach(d => { deptCapMap[d.dept_name] = (d.capacity_minutes || d.agent_count * (stats.working_days||22) * 480) / 60; });
 
-    const mkDeptDs = (src, moisLabel, stackId) => [
-      {
-        label: 'Heures productives' + moisLabel,
-        data: src.map(d => +(d.total_minutes / 60).toFixed(2)),
-        backgroundColor: '#1e3a5f',
-        stack: stackId,
-        _cap: src.map(d => d.agent_count * 8)
-      },
-      {
-        label: 'Heures non-productives' + moisLabel,
-        data: src.map(d => +(Math.max(0, d.agent_count * 8 - d.total_minutes / 60).toFixed(2))),
-        backgroundColor: '#ef4444cc',
-        stack: stackId,
-        _cap: src.map(d => d.agent_count * 8)
-      }
-    ];
+    const mkDeptDs = (src, moisLabel, stackId, wd) => {
+      const wdFinal = wd || stats.working_days || 22;
+      return [
+        {
+          label: 'Heures productives' + moisLabel,
+          data: src.map(d => +(d.total_minutes / 60).toFixed(2)),
+          backgroundColor: '#1e3a5f',
+          stack: stackId,
+          _cap: src.map(d => (d.capacity_minutes || d.agent_count * wdFinal * 480) / 60)
+        },
+        {
+          label: 'Heures non-productives' + moisLabel,
+          data: src.map(d => {
+            const cap = (d.capacity_minutes || d.agent_count * wdFinal * 480) / 60;
+            return +(Math.max(0, cap - d.total_minutes / 60).toFixed(2));
+          }),
+          backgroundColor: '#ef4444cc',
+          stack: stackId,
+          _cap: src.map(d => (d.capacity_minutes || d.agent_count * wdFinal * 480) / 60)
+        }
+      ];
+    };
 
     // Sans mois2 → stack unique → 1 barre bicolore par département
     // Avec mois2 → 2 stacks distincts → 2 barres bicolores côte à côte par département
-    const datasets = mkDeptDs(depts, stats.month2 ? ' ('+stats.month+')' : '', 'M1');
-    if (deptsM2.length) datasets.push(...mkDeptDs(deptsM2, ' ('+stats.month2+')', 'M2'));
+    const datasets = mkDeptDs(depts, stats.month2 ? ' ('+stats.month+')' : '', 'M1', stats.working_days);
+    if (deptsM2.length) datasets.push(...mkDeptDs(deptsM2, ' ('+stats.month2+')', 'M2', stats.working_days_month2));
 
     adminCharts.deptBar = new Chart(document.getElementById('chartDeptBar'), {
       type: 'bar',
@@ -836,10 +877,41 @@ function getStatusBadge(status) {
 
 function exportCSV(data, name) {
   if (!data || !data.length) { toast('Aucune donnée à exporter', 'error'); return; }
-  const headers = Object.keys(data[0]).join(',');
-  const rows = data.map(r => Object.values(r).map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(','));
-  const csv = [headers, ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
+
+  // Enrichissement pour les sessions : ajout colonnes calculées
+  let enriched = data;
+  if (name === 'sessions' || name === 'rapports') {
+    enriched = data.map(r => {
+      const dur = r.duration_minutes || 0;
+      const h = Math.floor(dur / 60), m = dur % 60;
+      const extra = {
+        heures_decimales: (dur / 60).toFixed(2),
+        heures_affichage: `${h}h ${String(m).padStart(2,'0')}m`,
+        categorie_333: r.task_type === 'Production' || r.task_type === 'Productive' ? 'Production'
+                     : r.task_type === 'Administration & Reporting' || r.task_type === 'Non productive' ? 'Administration & Reporting'
+                     : r.task_type === 'Contrôle' ? 'Contrôle' : 'Production',
+        mois: r.start_time ? r.start_time.slice(0, 7) : '',
+        journee: r.start_time ? r.start_time.slice(0, 10) : ''
+      };
+      return { ...r, ...extra };
+    });
+  }
+
+  // Colonnes lisibles (remplacer les noms techniques)
+  const labelMap = {
+    agent_name: 'Agent', dept_name: 'Département', task_name: 'Tâche',
+    process_name: 'Processus', objective_name: 'Objectif',
+    duration_minutes: 'Durée (min)', start_time: 'Début', end_time: 'Fin',
+    status: 'Statut', session_type: 'Type', comment: 'Commentaire',
+    heures_decimales: 'Heures (décimal)', heures_affichage: 'Heures (affichage)',
+    categorie_333: 'Catégorie 3-3-3', mois: 'Mois', journee: 'Journée'
+  };
+
+  const headers = Object.keys(enriched[0]).map(k => labelMap[k] || k);
+  const rows = enriched.map(r => Object.values(r).map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(','));
+  // BOM UTF-8 pour Excel
+  const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name + '_' + new Date().toISOString().split('T')[0] + '.csv';
@@ -866,7 +938,7 @@ async function renderUsers() {
     <div class="card-body">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>NOM</th><th>EMAIL</th><th>RÔLE</th><th>DÉPARTEMENT</th><th>STATUT</th><th>DERNIÈRE CONNEXION</th><th>ACTIONS</th></tr></thead>
+          <thead><tr><th>NOM</th><th>EMAIL</th><th>RÔLE</th><th>DÉPARTEMENT</th><th style="text-align:center">SAMEDI</th><th>STATUT</th><th>DERNIÈRE CONNEXION</th><th>ACTIONS</th></tr></thead>
           <tbody>
             ${allUsers.map(u => {
               const initials = getInitials(u.first_name + ' ' + u.last_name);
@@ -879,6 +951,7 @@ async function renderUsers() {
                 <td>${u.email}</td>
                 <td>${getRoleBadge(u.role)}</td>
                 <td>${u.department_name || '-'}</td>
+                <td style="text-align:center">${u.works_saturday ? '<span title="Travaille le samedi" style="color:#1e3a5f;font-size:16px">✅</span>' : '<span title="Ne travaille pas le samedi" style="color:#d1d5db;font-size:16px">—</span>'}</td>
                 <td><span class="badge ${u.status==='Actif'?'badge-active':'badge-inactive'}">${u.status}</span></td>
                 <td>${formatDate(u.last_login)}</td>
                 <td style="white-space:nowrap">
@@ -943,11 +1016,26 @@ function showUserModal(userId = null) {
           </select>
         </div>
       </div>
-      <div class="form-group"><label class="form-label">Statut</label>
-        <select class="form-control" id="u_status">
-          <option value="Actif" ${user?.status==='Actif'?'selected':''}>Actif</option>
-          <option value="Inactif" ${user?.status==='Inactif'?'selected':''}>Inactif</option>
-        </select>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Statut</label>
+          <select class="form-control" id="u_status">
+            <option value="Actif" ${user?.status==='Actif'?'selected':''}>Actif</option>
+            <option value="Inactif" ${user?.status==='Inactif'?'selected':''}>Inactif</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Travaille le samedi</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+              <div style="position:relative;display:inline-block;width:44px;height:24px">
+                <input type="checkbox" id="u_saturday" ${user?.works_saturday ? 'checked' : ''} style="opacity:0;width:0;height:0;position:absolute">
+                <span id="u_saturday_track" style="position:absolute;inset:0;background:${user?.works_saturday ? '#1e3a5f' : '#d1d5db'};border-radius:24px;transition:.3s;cursor:pointer" onclick="this.style.background=document.getElementById('u_saturday').checked?'#d1d5db':'#1e3a5f';document.getElementById('u_saturday').checked=!document.getElementById('u_saturday').checked"></span>
+                <span style="position:absolute;left:${user?.works_saturday ? '22px' : '2px'};top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.3s;pointer-events:none" id="u_saturday_thumb"></span>
+              </div>
+              <span id="u_saturday_label" style="color:${user?.works_saturday ? '#1e3a5f' : '#6b7280'};font-weight:${user?.works_saturday ? '600' : '400'}">${user?.works_saturday ? 'Oui' : 'Non'}</span>
+            </label>
+          </div>
+        </div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px">
         <button type="button" class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Annuler</button>
@@ -970,7 +1058,8 @@ function showUserModal(userId = null) {
       password: pwd,
       role: document.getElementById('u_role').value,
       department_id: document.getElementById('u_dept').value || null,
-      status: document.getElementById('u_status').value
+      status: document.getElementById('u_status').value,
+      works_saturday: document.getElementById('u_saturday').checked
     };
     try {
       const r = userId ? await api('/api/admin/users/' + userId, { method: 'PUT', body: JSON.stringify(data) })

@@ -204,6 +204,122 @@ async function loadDgDashboard() {
     </div>
   </div>
 
+  <!-- ══ ALERTES 3-3-3 DG ══ -->
+  ${(() => {
+    const alerts = (data.ratio333||[]).filter(r => {
+      const targets = {'Production':70,'Administration & Reporting':20,'Contrôle':10};
+      const tgt = targets[r.label||r.type]||0;
+      return Math.abs(r.percentage - tgt) > 5;
+    });
+    if (!alerts.length) return `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+      <i class="fas fa-check-circle" style="color:#16a34a;font-size:18px"></i>
+      <span style="color:#15803d;font-size:13px;font-weight:600">Méthode 3-3-3 : toutes les catégories sont dans les cibles ce mois-ci.</span>
+    </div>`;
+    return `<div style="background:#fff;border-radius:10px;padding:12px 18px;margin-bottom:16px;border-left:4px solid #ef4444;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+      <div style="font-weight:700;color:#1e3a5f;margin-bottom:8px"><i class="fas fa-exclamation-triangle" style="color:#ef4444;margin-right:6px"></i>Alertes 3-3-3 — ${alerts.length} catégorie(s) hors cible</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${alerts.map(r => {
+          const targets = {'Production':70,'Administration & Reporting':20,'Contrôle':10};
+          const tgt = targets[r.label||r.type]||0;
+          const ecart = r.percentage - tgt;
+          const col = ecart > 0 ? '#dc2626' : '#b45309';
+          return `<div style="background:${ecart>0?'#fee2e2':'#fef9c3'};border-radius:8px;padding:6px 14px;font-size:12px">
+            <b style="color:#1e3a5f">${r.label||r.type}</b>
+            <span style="color:${col};font-weight:700;margin-left:8px">${ecart>0?'+':''}${ecart}%</span>
+            <span style="color:#6b7280;margin-left:4px">vs cible ${tgt}%</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  })()}
+
+  <!-- ══ CLASSEMENT DÉPARTEMENTS ══ -->
+  ${(() => {
+    const depts = [...(data.byDept333||data.deptComparison||data.byDept||[])];
+    if (!depts.length) return '';
+    // Trier par % productif décroissant — utilise capacity_minutes (mensuelle réelle)
+    const sorted = depts.map(d => {
+      const cap = d.capacity_minutes || (d.agent_count||0)*(data.working_days||22)*480;
+      const pct = cap > 0 ? Math.round((d.total_minutes||0)*100/cap) : 0;
+      const npPct = Math.max(0,100-pct);
+      return {...d, pct_prod: pct, pct_np: npPct, cap_min: cap};
+    }).sort((a,b) => b.pct_prod - a.pct_prod);
+    const medals = ['🥇','🥈','🥉'];
+    return `<div class="chart-card" style="margin-bottom:20px">
+      <div class="chart-title"><i class="fas fa-trophy" style="color:#f59e0b;margin-right:8px"></i>Classement des Départements — Taux de Productivité Mensuel</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead><tr style="background:#f9fafb">
+            <th style="padding:8px;text-align:center">#</th>
+            <th style="padding:8px;text-align:left">DÉPARTEMENT</th>
+            <th style="padding:8px;text-align:center">AGENTS</th>
+            <th style="padding:8px;text-align:center">HEURES POINTÉES</th>
+            <th style="padding:8px;text-align:center">CAPACITÉ</th>
+            <th style="padding:8px;text-align:center">% PRODUCTIF</th>
+            <th style="padding:8px;text-align:center">% NON PRODUCTIF</th>
+            <th style="padding:8px;min-width:120px">PROGRESSION</th>
+          </tr></thead>
+          <tbody>
+            ${sorted.map((d,i) => {
+              const col = d.pct_prod>=80?'#16a34a':d.pct_prod>=50?'#f59e0b':'#dc2626';
+              const bg  = d.pct_prod<50?'#fff5f5':i===0?'#f0fdf4':'#fff';
+              const risk = d.pct_prod < 50 ? '<span style="background:#fee2e2;color:#dc2626;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:700;margin-left:6px">⚠ RISQUE</span>' : '';
+              return `<tr style="border-bottom:1px solid #f3f4f6;background:${bg}">
+                <td style="padding:8px;text-align:center;font-size:16px">${medals[i]||'#'+(i+1)}</td>
+                <td style="padding:8px;font-weight:600;color:#1e3a5f">${d.dept_name}${risk}</td>
+                <td style="padding:8px;text-align:center">${d.agent_count||0}</td>
+                <td style="padding:8px;text-align:center;font-weight:700">${minutesToDisplay(d.total_minutes||0)}</td>
+                <td style="padding:8px;text-align:center;color:#6b7280">${minutesToDisplay(d.cap_min)}</td>
+                <td style="padding:8px;text-align:center"><span style="font-size:15px;font-weight:800;color:${col}">${d.pct_prod}%</span></td>
+                <td style="padding:8px;text-align:center"><span style="font-size:13px;font-weight:700;color:#ef4444">${d.pct_np}%</span></td>
+                <td style="padding:8px">
+                  <div style="height:10px;background:#f3f4f6;border-radius:5px;overflow:hidden;display:flex">
+                    <div style="height:100%;width:${d.pct_prod}%;background:${col}"></div>
+                    <div style="height:100%;width:${d.pct_np}%;background:#ef4444cc"></div>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  })()}
+
+  <!-- ══ CARTE DES RISQUES ══ -->
+  ${(() => {
+    const depts = (data.byDept333||data.deptComparison||data.byDept||[]);
+    const at_risk = depts.filter(d => {
+      const cap = d.capacity_minutes || (d.agent_count||0)*(data.working_days||22)*480;
+      const pct = cap > 0 ? Math.round((d.total_minutes||0)*100/cap) : 0;
+      return pct < 50;
+    });
+    if (!at_risk.length) return `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+      <i class="fas fa-shield-alt" style="color:#16a34a;font-size:18px"></i>
+      <span style="color:#15803d;font-size:13px;font-weight:600">Aucun département en zone de risque ce mois-ci (&lt;50% productivité).</span>
+    </div>`;
+    return `<div style="background:#fff;border-radius:10px;padding:14px 18px;margin-bottom:16px;border-left:4px solid #dc2626;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+      <div style="font-weight:700;color:#1e3a5f;margin-bottom:10px;font-size:14px"><i class="fas fa-fire" style="color:#dc2626;margin-right:6px"></i>Carte des Risques — ${at_risk.length} département(s) en zone critique (&lt;50%)</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+        ${at_risk.map(d => {
+          const cap = d.capacity_minutes || (d.agent_count||0)*(data.working_days||22)*480;
+          const pct = cap > 0 ? Math.round((d.total_minutes||0)*100/cap) : 0;
+          const npMin = Math.max(0, cap - (d.total_minutes||0));
+          const aMin = d['Administration & Reporting']||0;
+          const totalMin = d.total_minutes||0;
+          const adminPct = totalMin > 0 ? Math.round(aMin*100/totalMin) : 0;
+          return `<div style="background:#fff5f5;border:1.5px solid #fecaca;border-radius:10px;padding:12px">
+            <div style="font-weight:700;color:#1e3a5f;margin-bottom:6px;font-size:13px">${d.dept_name}</div>
+            <div style="font-size:22px;font-weight:800;color:#dc2626;margin-bottom:4px">${pct}% <span style="font-size:12px;font-weight:400;color:#6b7280">productif</span></div>
+            <div style="font-size:11px;color:#6b7280;margin-bottom:4px"><i class="fas fa-clock" style="color:#ef4444"></i> Non-productif : <b style="color:#ef4444">${minutesToDisplay(npMin)}</b></div>
+            ${adminPct > 30 ? `<div style="font-size:11px;background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:4px;margin-top:4px"><i class="fas fa-file-alt"></i> Reporting élevé : ${adminPct}% du temps pointé</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:#6b7280"><i class="fas fa-info-circle"></i> Ces départements nécessitent une attention particulière. Vérifier les raisons des heures non-pointées.</div>
+    </div>`;
+  })()}
+
   <!-- Barres empilées par Département -->
   <div class="chart-card" style="margin-bottom:20px">
     <div class="chart-title"><i class="fas fa-chart-bar" style="color:#1e3a5f;margin-right:8px"></i>Comparaison par Département — Répartition 3-3-3</div>
@@ -220,19 +336,20 @@ async function loadDgDashboard() {
         </tr></thead>
         <tbody>
           ${(data.byDept333||data.byDept||[]).map(d => {
-            const cap = (d.agent_count||0)*480;
+            const cap = d.capacity_minutes || (d.agent_count||0)*480;
             const np  = Math.max(0, cap-(d.total_minutes||0));
             const npPct = cap>0?Math.round(np/cap*100):0;
+            const prodPct = cap>0?Math.round((d.Production||d.total_minutes||0)/cap*100):0;
             const aMin = d['Administration & Reporting']||0;
             const cMin = d['Contrôle']||0;
             const pMin = d['Production']||d.total_minutes||0;
             return `<tr style="border-bottom:1px solid #f3f4f6">
               <td style="padding:8px;font-weight:600">${d.dept_name}</td>
               <td style="padding:8px;text-align:center">${d.agent_count||0}</td>
-              <td style="padding:8px;text-align:center;color:#1e3a5f;font-weight:700">${minutesToDisplay(pMin)}</td>
+              <td style="padding:8px;text-align:center;color:#1e3a5f;font-weight:700">${minutesToDisplay(pMin)} <small style="color:#9ca3af">(${prodPct}%)</small></td>
               <td style="padding:8px;text-align:center;color:#f59e0b;font-weight:700">${minutesToDisplay(aMin)}</td>
               <td style="padding:8px;text-align:center;color:#10b981;font-weight:700">${minutesToDisplay(cMin)}</td>
-              <td style="padding:8px;text-align:center"><span style="font-weight:700;color:#ef4444">${minutesToDisplay(np)}</span> <small style="color:#9ca3af">(${npPct}%)</small></td>
+              <td style="padding:8px;text-align:center"><span style="font-weight:700;color:#ef4444">${minutesToDisplay(np)}</span> <small style="color:#9ca3af">(${npPct}% cap.)</small></td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -287,39 +404,128 @@ async function loadDgDashboard() {
       options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${r333M2[ctx.dataIndex].hours_display} (${r333M2[ctx.dataIndex].percentage}%)` } } } }
     });
   }
-  // Barres dept
+  // Barres dept (capacité mensuelle réelle via capacity_minutes)
   const depts = data.byDept333||data.deptComparison||data.byDept||[];
   const deptsM2 = data.deptComparisonMonth2||[];
   if (depts.length && document.getElementById('dgChartDeptBar')) {
     const labels = depts.map(d=>d.dept_name.replace('Direction ','Dir. '));
-    const mkDs = (src, suffix) => [
-      { label:'Production'+suffix, data:src.map(d=>+((d.Production||d.total_minutes||0)/60).toFixed(2)), backgroundColor:'#1e3a5f', stack:'stk'+suffix },
-      { label:'Admin & Reporting'+suffix, data:src.map(d=>+((d['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor:'#f59e0b', stack:'stk'+suffix },
-      { label:'Contrôle'+suffix, data:src.map(d=>+((d['Contrôle']||0)/60).toFixed(2)), backgroundColor:'#10b981', stack:'stk'+suffix },
-      { label:'Non productif'+suffix, data:src.map(d=>+(Math.max(0,(d.agent_count||0)*8-(d.total_minutes||0)/60).toFixed(2))), backgroundColor:'#ef4444', stack:'stk'+suffix }
-    ];
-    const ds = mkDs(depts, data.month2?' ('+data.month+')':'');
-    if (deptsM2.length) ds.push(...mkDs(deptsM2, ' ('+data.month2+')'));
+    const mkDs = (src, moisLabel, stackId) => {
+      // Calculer la capacité par département
+      return [
+        {
+          label: 'Production' + moisLabel,
+          data: src.map(d => +((d.Production||d.total_minutes||0)/60).toFixed(2)),
+          backgroundColor: '#1e3a5f',
+          stack: stackId,
+          _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
+        },
+        {
+          label: 'Admin & Reporting' + moisLabel,
+          data: src.map(d => +((d['Administration & Reporting']||0)/60).toFixed(2)),
+          backgroundColor: '#f59e0b',
+          stack: stackId,
+          _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
+        },
+        {
+          label: 'Contrôle' + moisLabel,
+          data: src.map(d => +((d['Contrôle']||0)/60).toFixed(2)),
+          backgroundColor: '#10b981',
+          stack: stackId,
+          _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
+        },
+        {
+          label: 'Non productif' + moisLabel,
+          data: src.map(d => {
+            const cap = (d.capacity_minutes||d.agent_count*8*22||0)/60;
+            return +(Math.max(0, cap - (d.total_minutes||0)/60).toFixed(2));
+          }),
+          backgroundColor: '#ef4444cc',
+          stack: stackId,
+          _cap: src.map(d => (d.capacity_minutes||d.agent_count*8*22||1)/60)
+        }
+      ];
+    };
+    const ds = mkDs(depts, data.month2?' ('+data.month+')':'', 'M1');
+    if (deptsM2.length) ds.push(...mkDs(deptsM2, ' ('+data.month2+')', 'M2'));
     dgCharts.deptBar = new Chart(document.getElementById('dgChartDeptBar'), {
-      type:'bar', data:{ labels, datasets:ds },
-      options:{ indexAxis:'y', plugins:{ legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:12 } } }, scales:{ x:{ stacked:true, ticks:{callback:v=>v+'h'} }, y:{ stacked:true } }, responsive:true }
+      type: 'bar', data: { labels, datasets: ds },
+      options: {
+        indexAxis: 'y', responsive: true,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const val = ctx.raw;
+                const cap = ctx.dataset._cap ? ctx.dataset._cap[ctx.dataIndex] : 1;
+                const pct = cap > 0 ? Math.round(val / cap * 100) : 0;
+                const h = Math.floor(val), m = Math.round((val-h)*60);
+                const capH = Math.floor(cap), capM = Math.round((cap-capH)*60);
+                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m — ${pct}% de la cap. mensuelle (${capH}h${capM>0?String(capM).padStart(2,'0')+'m':''})`;
+              }
+            }
+          }
+        },
+        scales: { x: { stacked: true, ticks: { callback: v => v+'h' }, grid: { color: '#f3f4f6' } }, y: { stacked: true, ticks: { font: { size: 11 } } } }
+      }
     });
   }
-  // Barres agent
+  // Barres agent (capacité mensuelle via capacity_minutes)
   const agents = data.byAgent333||data.agentComparison||[];
   const agentsM2 = data.agentComparisonMonth2||[];
   if (agents.length && document.getElementById('dgChartAgentBar')) {
-    const mkAgDs = (src, suffix) => [
-      { label:'Production'+suffix, data:src.map(a=>+(a.Production/60).toFixed(2)), backgroundColor:'#1e3a5f', stack:'sa'+suffix },
-      { label:'Admin & Reporting'+suffix, data:src.map(a=>+((a['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor:'#f59e0b', stack:'sa'+suffix },
-      { label:'Contrôle'+suffix, data:src.map(a=>+((a['Contrôle']||0)/60).toFixed(2)), backgroundColor:'#10b981', stack:'sa'+suffix },
-      { label:'Non productif'+suffix, data:src.map(a=>+(Math.max(0,8-a.total_minutes/60).toFixed(2))), backgroundColor:'#ef4444', stack:'sa'+suffix }
+    const mkAgDs = (src, moisLabel, stackId) => [
+      {
+        label: 'Production' + moisLabel,
+        data: src.map(a => +((a.Production||0)/60).toFixed(2)),
+        backgroundColor: '#1e3a5f', stack: stackId,
+        _cap: src.map(a => (a.capacity_minutes||480)/60)
+      },
+      {
+        label: 'Admin & Reporting' + moisLabel,
+        data: src.map(a => +((a['Administration & Reporting']||0)/60).toFixed(2)),
+        backgroundColor: '#f59e0b', stack: stackId,
+        _cap: src.map(a => (a.capacity_minutes||480)/60)
+      },
+      {
+        label: 'Contrôle' + moisLabel,
+        data: src.map(a => +((a['Contrôle']||0)/60).toFixed(2)),
+        backgroundColor: '#10b981', stack: stackId,
+        _cap: src.map(a => (a.capacity_minutes||480)/60)
+      },
+      {
+        label: 'Non productif' + moisLabel,
+        data: src.map(a => {
+          const cap = (a.capacity_minutes||480)/60;
+          return +(Math.max(0, cap - (a.total_minutes||0)/60).toFixed(2));
+        }),
+        backgroundColor: '#ef4444cc', stack: stackId,
+        _cap: src.map(a => (a.capacity_minutes||480)/60)
+      }
     ];
-    const agDs = mkAgDs(agents, data.month2?' ('+data.month+')':'');
-    if (agentsM2.length) agDs.push(...mkAgDs(agentsM2, ' ('+data.month2+')'));
+    const agDs = mkAgDs(agents, data.month2?' ('+data.month+')':'', 'M1');
+    if (agentsM2.length) agDs.push(...mkAgDs(agentsM2, ' ('+data.month2+')', 'M2'));
     dgCharts.agentBar = new Chart(document.getElementById('dgChartAgentBar'), {
-      type:'bar', data:{ labels:agents.map(a=>a.agent_name), datasets:agDs },
-      options:{ indexAxis:'y', plugins:{ legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:12 } } }, scales:{ x:{ stacked:true, ticks:{callback:v=>v+'h'} }, y:{ stacked:true } }, responsive:true }
+      type: 'bar', data: { labels: agents.map(a=>a.agent_name), datasets: agDs },
+      options: {
+        indexAxis: 'y', responsive: true,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const val = ctx.raw;
+                const capH = ctx.dataset._cap ? ctx.dataset._cap[ctx.dataIndex] : 8;
+                const pct = capH > 0 ? Math.round(val / capH * 100) : 0;
+                const h = Math.floor(val), m = Math.round((val-h)*60);
+                const cH = Math.floor(capH), cM = Math.round((capH-cH)*60);
+                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m — ${pct}% cap. mensuelle (${cH}h${cM>0?String(cM).padStart(2,'0')+'m':''})`;
+              }
+            }
+          }
+        },
+        scales: { x: { stacked: true, ticks: { callback: v => v+'h' }, grid: { color: '#f3f4f6' } }, y: { stacked: true, ticks: { font: { size: 11 } } } }
+      }
     });
   }
 }

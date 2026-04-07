@@ -367,6 +367,7 @@ app.post('/api/admin/users', async (c) => {
     const role = sanitizeString(body.role || '')
     const department_id = body.department_id
     const status = body.status || 'Actif'
+    const works_saturday = body.works_saturday ? 1 : 0
 
     const VALID_ROLES = ['Agent', 'Chef de Service', 'Chef de Département', 'Directeur de Département', 'Directeur Général', 'Administrateur']
     if (!validateEmail(email)) return c.json({ error: 'Email invalide' }, 400)
@@ -376,8 +377,8 @@ app.post('/api/admin/users', async (c) => {
     const passwordHash = await hashPassword(password)
 
     const result = await c.env.DB.prepare(
-      'INSERT INTO users (first_name, last_name, email, password_hash, role, department_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(first_name, last_name, email, passwordHash, role, department_id || null, status).run()
+      'INSERT INTO users (first_name, last_name, email, password_hash, role, department_id, status, works_saturday) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(first_name, last_name, email, passwordHash, role, department_id || null, status, works_saturday).run()
 
     await c.env.DB.prepare(
       'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
@@ -395,21 +396,22 @@ app.put('/api/admin/users/:id', async (c) => {
 
   try {
     const id = c.req.param('id')
-    const { first_name, last_name, email, password, role, department_id, status } = await c.req.json()
+    const { first_name, last_name, email, password, role, department_id, status, works_saturday } = await c.req.json()
 
     const VALID_ROLES = ['Agent', 'Chef de Service', 'Chef de Département', 'Directeur de Département', 'Directeur Général', 'Administrateur']
     if (role && !VALID_ROLES.includes(role)) return c.json({ error: 'Rôle invalide' }, 400)
     if (password && password.length < 8) return c.json({ error: 'Mot de passe trop court (minimum 8 caractères)' }, 400)
 
+    const worksSat = works_saturday ? 1 : 0
     if (password) {
       const passwordHash = await hashPassword(password)
       await c.env.DB.prepare(
-        'UPDATE users SET first_name=?, last_name=?, email=?, password_hash=?, role=?, department_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
-      ).bind(first_name, last_name, email, passwordHash, role, department_id || null, status, id).run()
+        'UPDATE users SET first_name=?, last_name=?, email=?, password_hash=?, role=?, department_id=?, status=?, works_saturday=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+      ).bind(first_name, last_name, email, passwordHash, role, department_id || null, status, worksSat, id).run()
     } else {
       await c.env.DB.prepare(
-        'UPDATE users SET first_name=?, last_name=?, email=?, role=?, department_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
-      ).bind(first_name, last_name, email, role, department_id || null, status, id).run()
+        'UPDATE users SET first_name=?, last_name=?, email=?, role=?, department_id=?, status=?, works_saturday=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+      ).bind(first_name, last_name, email, role, department_id || null, status, worksSat, id).run()
     }
 
     await c.env.DB.prepare(
@@ -682,27 +684,31 @@ app.get('/api/admin/stats', async (c) => {
   // Helper pour construire les requêtes avec filtre mois
   const monthFilter = (m: string) => `strftime('%Y-%m', ws.start_time) = '${m}'`
 
-  // ── Calcul des jours ouvrés réels d'un mois (lundi à vendredi)
-  // Pour le mois en cours : on compte jusqu'à aujourd'hui seulement (cumul partiel)
-  // Pour les mois passés  : on compte tous les jours ouvrés du mois complet
-  const calcWorkingDays = (m: string): number => {
+  // ── Calcul des jours travaillés réels d'un mois selon le profil de l'agent
+  // includeSaturday=false → lundi-vendredi | includeSaturday=true → lundi-samedi
+  // Mois en cours → compte jusqu'à aujourd'hui | Mois passé → mois complet
+  const calcWorkingDays = (m: string, includeSaturday = false): number => {
     const [y, mo] = m.split('-').map(Number)
     const today = new Date()
     const isCurrentMonth = today.getFullYear() === y && (today.getMonth() + 1) === mo
-    // Dernier jour à considérer : aujourd'hui si mois en cours, sinon fin du mois
     const lastDay = isCurrentMonth
       ? today.getDate()
-      : new Date(y, mo, 0).getDate() // dernier jour du mois
+      : new Date(y, mo, 0).getDate()
     let count = 0
     for (let d = 1; d <= lastDay; d++) {
       const dow = new Date(y, mo - 1, d).getDay() // 0=dim, 6=sam
-      if (dow !== 0 && dow !== 6) count++
+      if (dow === 0) continue  // dimanche toujours exclu
+      if (dow === 6 && !includeSaturday) continue  // samedi exclu si non concerné
+      count++
     }
-    return count || 1 // minimum 1 pour éviter division par zéro
+    return count || 1
   }
 
-  const workingDaysMonth  = calcWorkingDays(month)
-  const workingDaysMonth2 = month2 ? calcWorkingDays(month2) : null
+  // Jours ouvrés standard (lun-ven) et avec samedi pour ce mois
+  const workingDaysMonth     = calcWorkingDays(month, false)
+  const workingDaysSatMonth  = calcWorkingDays(month, true)
+  const workingDaysMonth2    = month2 ? calcWorkingDays(month2, false) : null
+  const workingDaysSatMonth2 = month2 ? calcWorkingDays(month2, true)  : null
 
   // ── Requête ratio 3-3-3 par mois avec décomposition par département et agent ──
   async function getRatio333ForMonth(m: string) {
@@ -730,10 +736,11 @@ app.get('/api/admin/stats', async (c) => {
        ORDER BY d.name`
     ).all()
 
-    // Ratio 3-3-3 par agent
+    // Ratio 3-3-3 par agent (+ works_saturday pour le calcul de capacité individuel)
     const ratio333ByAgent = await c.env.DB.prepare(
       `SELECT u.first_name||' '||u.last_name as agent_name, u.id as agent_id,
        d.name as dept_name,
+       u.works_saturday,
        COALESCE(t.task_type,'Production') as type_333,
        COALESCE(SUM(ws.duration_minutes),0) as total_minutes
        FROM work_sessions ws
@@ -741,13 +748,17 @@ app.get('/api/admin/stats', async (c) => {
        LEFT JOIN users u ON ws.user_id=u.id
        LEFT JOIN departments d ON u.department_id=d.id
        WHERE ${STATUSES} AND ${monthFilter(m)}
-       GROUP BY u.id, u.first_name, u.last_name, d.name, COALESCE(t.task_type,'Production')
+       GROUP BY u.id, u.first_name, u.last_name, d.name, u.works_saturday, COALESCE(t.task_type,'Production')
        ORDER BY d.name, u.last_name`
     ).all()
 
-    // Capacité théorique par département (nb agents actifs × jours ouvrés du mois × 8h)
+    // Capacité théorique par département
+    // On compte séparément agents avec/sans samedi pour calculer la capacité exacte
     const deptCapacity = await c.env.DB.prepare(
-      `SELECT d.id as dept_id, d.name as dept_name, COUNT(u.id) as agent_count
+      `SELECT d.id as dept_id, d.name as dept_name,
+       COUNT(u.id) as agent_count,
+       SUM(CASE WHEN u.works_saturday=1 THEN 1 ELSE 0 END) as agents_with_saturday,
+       SUM(CASE WHEN u.works_saturday=0 THEN 1 ELSE 0 END) as agents_without_saturday
        FROM departments d
        LEFT JOIN users u ON u.department_id=d.id AND u.status='Actif' AND u.role IN ('Agent','Chef de Service')
        WHERE d.status='Actif'
@@ -893,15 +904,22 @@ app.get('/api/admin/stats', async (c) => {
   const ratio333Result = build333Result(r333Main.ratio333 as any[])
 
   // Construire comparaison par département avec capacité mensuelle réelle
-  // capacity = agent_count × jours_ouvrés_du_mois × 480 min (8h)
-  const buildDeptComparison = (raw: any[], capacities: any[], workingDays: number) => {
+  // Capacité = (agents_sans_samedi × wd_std + agents_avec_samedi × wd_sat) × 480 min
+  const buildDeptComparison = (raw: any[], capacities: any[], wdStd: number, wdSat: number) => {
     const depts: Record<string, any> = {}
     ;(raw as any[]).forEach((r: any) => {
       if (!depts[r.dept_name]) {
-        const cap = (capacities as any[]).find((cap_item: any) => cap_item.dept_name === r.dept_name)
+        const cap = (capacities as any[]).find((ci: any) => ci.dept_name === r.dept_name)
+        const agentsSat = cap?.agents_with_saturday || 0
+        const agentsNoSat = cap?.agents_without_saturday || 0
+        // Capacité mixte : agents avec samedi × wd_sat + agents sans samedi × wd_std
+        const capacity = (agentsSat * wdSat + agentsNoSat * wdStd) * 480
         depts[r.dept_name] = {
           dept_name: r.dept_name,
           agent_count: cap?.agent_count || 0,
+          agents_with_saturday: agentsSat,
+          agents_without_saturday: agentsNoSat,
+          capacity_minutes: capacity,
           Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0
         }
       }
@@ -909,62 +927,63 @@ app.get('/api/admin/stats', async (c) => {
     })
     return Object.values(depts).map((d: any) => {
       const total = d.Production + d['Administration & Reporting'] + d['Contrôle']
-      // Capacité mensuelle = agents × jours ouvrés × 8h
-      const capacity = d.agent_count * workingDays * 480
-      const pct = capacity > 0 ? Math.round(total * 100 / capacity) : 0
+      const pct = d.capacity_minutes > 0 ? Math.round(total * 100 / d.capacity_minutes) : 0
       return {
         ...d,
         total_minutes: total,
-        capacity_minutes: capacity,
-        working_days: workingDays,
         productive_pct: pct,
         non_productive_pct: Math.max(0, 100 - pct),
         hours_display: minutesToHours(total),
-        capacity_hours_display: minutesToHours(capacity)
+        capacity_hours_display: minutesToHours(d.capacity_minutes)
       }
     })
   }
 
-  // Construire comparaison par agent avec capacité mensuelle réelle
-  // capacity = jours_ouvrés_du_mois × 480 min (8h)
-  const buildAgentComparison = (raw: any[], workingDays: number) => {
+  // Construire comparaison par agent avec capacité individuelle
+  // Chaque agent a sa propre capacité selon works_saturday
+  const buildAgentComparison = (raw: any[], wdStd: number, wdSat: number) => {
     const agents: Record<string, any> = {}
     ;(raw as any[]).forEach((r: any) => {
       if (!agents[r.agent_id]) {
-        agents[r.agent_id] = { agent_name: r.agent_name, dept_name: r.dept_name, Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+        const wd = r.works_saturday ? wdSat : wdStd
+        const capacity = wd * 480
+        agents[r.agent_id] = {
+          agent_name: r.agent_name,
+          dept_name: r.dept_name,
+          works_saturday: r.works_saturday || 0,
+          capacity_minutes: capacity,
+          working_days: wd,
+          Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0
+        }
       }
       agents[r.agent_id][normalize333(r.type_333)] += r.total_minutes
     })
     return Object.values(agents).map((a: any) => {
       const total = a.Production + a['Administration & Reporting'] + a['Contrôle']
-      // Capacité mensuelle = jours ouvrés × 8h
-      const capacity = workingDays * 480
-      const pct = capacity > 0 ? Math.round(total * 100 / capacity) : 0
+      const pct = a.capacity_minutes > 0 ? Math.round(total * 100 / a.capacity_minutes) : 0
       return {
         ...a,
         total_minutes: total,
-        capacity_minutes: capacity,
-        working_days: workingDays,
         productive_pct: pct,
         non_productive_pct: Math.max(0, 100 - pct),
         hours_display: minutesToHours(total),
-        capacity_hours_display: minutesToHours(capacity)
+        capacity_hours_display: minutesToHours(a.capacity_minutes)
       }
     })
   }
 
-  const deptComparison = buildDeptComparison(r333Main.ratio333ByDept as any[], r333Main.deptCapacity as any[], workingDaysMonth)
-  const agentComparison = buildAgentComparison(r333Main.ratio333ByAgent as any[], workingDaysMonth)
+  const deptComparison  = buildDeptComparison(r333Main.ratio333ByDept as any[], r333Main.deptCapacity as any[], workingDaysMonth, workingDaysSatMonth)
+  const agentComparison = buildAgentComparison(r333Main.ratio333ByAgent as any[], workingDaysMonth, workingDaysSatMonth)
 
   // Mois 2 pour comparaison (optionnel)
   let ratio333Month2 = null
   let deptComparisonMonth2 = null
   let agentComparisonMonth2 = null
-  if (month2 && workingDaysMonth2) {
+  if (month2 && workingDaysMonth2 && workingDaysSatMonth2) {
     const r333M2 = await getRatio333ForMonth(month2)
     ratio333Month2 = build333Result(r333M2.ratio333 as any[])
-    deptComparisonMonth2 = buildDeptComparison(r333M2.ratio333ByDept as any[], r333M2.deptCapacity as any[], workingDaysMonth2)
-    agentComparisonMonth2 = buildAgentComparison(r333M2.ratio333ByAgent as any[], workingDaysMonth2)
+    deptComparisonMonth2 = buildDeptComparison(r333M2.ratio333ByDept as any[], r333M2.deptCapacity as any[], workingDaysMonth2, workingDaysSatMonth2)
+    agentComparisonMonth2 = buildAgentComparison(r333M2.ratio333ByAgent as any[], workingDaysMonth2, workingDaysSatMonth2)
   }
 
   return c.json({
@@ -1259,11 +1278,29 @@ app.post('/api/agent/sessions/stop', async (c) => {
     const endTime = new Date()
     const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000)
 
+    // — Limite : session > 8h (480 min) = probablement un oubli, on plafonne à 8h
+    const MAX_SESSION_MINUTES = 480
+    const finalDuration = Math.min(durationMinutes, MAX_SESSION_MINUTES)
+    const wasAutoStopped = durationMinutes > MAX_SESSION_MINUTES
+
     await c.env.DB.prepare(
       'UPDATE work_sessions SET end_time=CURRENT_TIMESTAMP, duration_minutes=?, status="Terminé", updated_at=CURRENT_TIMESTAMP WHERE id=?'
-    ).bind(durationMinutes, active.id).run()
+    ).bind(finalDuration, active.id).run()
 
-    return c.json({ message: 'Session arrêtée', duration_minutes: durationMinutes })
+    // Log d’audit si session anom ale (> 8h)
+    if (wasAutoStopped) {
+      await c.env.DB.prepare(
+        'INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)'
+      ).bind(user.id, 'SESSION_ANOMALIE', `Session ID ${active.id} plafonnée à 8h (durée réelle: ${durationMinutes} min)`).run()
+    }
+
+    return c.json({
+      message: wasAutoStopped
+        ? `Session arrêtée. Durée plafonnée à 8h (durée réelle : ${Math.floor(durationMinutes/60)}h${durationMinutes%60}m)`
+        : 'Session arrêtée',
+      duration_minutes: finalDuration,
+      was_auto_stopped: wasAutoStopped
+    })
   } catch (e: any) {
     return c.json({ error: e.message }, 500)
   }
@@ -1284,6 +1321,8 @@ app.post('/api/agent/sessions/manual', async (c) => {
     const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000)
 
     if (durationMinutes < 0) return c.json({ error: 'La date de fin doit être après la date de début' }, 400)
+    // Limite saisie manuelle : max 8h par session
+    if (durationMinutes > 480) return c.json({ error: 'Une session ne peut pas dépasser 8h (480 min). Divisez en plusieurs sessions.' }, 400)
 
     const result = await c.env.DB.prepare(
       'INSERT INTO work_sessions (user_id, task_id, objective_id, department_id, start_time, end_time, duration_minutes, session_type, status, comment) VALUES (?, ?, ?, ?, ?, ?, ?, "Manuelle", "Terminé", ?)'
@@ -1526,6 +1565,80 @@ app.get('/api/chef/dashboard', async (c) => {
       non_productive_pct: nbAgents > 0 && capPerAgentChef > 0 ? Math.round((totalNonPointedTeam / (nbAgents * capPerAgentChef)) * 100) : 0
     }
   })
+})
+
+// ============================================
+// CHEF - LIVE (statut temps réel des agents)
+// ============================================
+
+app.get('/api/chef/live', async (c) => {
+  const user = await getUser(c)
+  if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
+    return c.json({ error: 'Non autorisé' }, 401)
+  }
+  const deptId = user.department_id
+  const todayDow = new Date().getDay()
+  const isWeekend = todayDow === 0 || todayDow === 6
+
+  // Statut détaillé de chaque agent pour AUJOURD'HUI
+  const liveData = await c.env.DB.prepare(
+    `SELECT
+       u.id, u.first_name || ' ' || u.last_name as agent_name,
+       u.works_saturday,
+       -- Session EN COURS maintenant
+       MAX(CASE WHEN ws.status = 'En cours' THEN 1 ELSE 0 END) as is_active_now,
+       -- Tâche en cours
+       MAX(CASE WHEN ws.status = 'En cours' THEN t.name ELSE NULL END) as current_task,
+       MAX(CASE WHEN ws.status = 'En cours' THEN t.task_type ELSE NULL END) as current_task_type,
+       MAX(CASE WHEN ws.status = 'En cours' THEN ws.start_time ELSE NULL END) as session_start,
+       -- Totaux du jour
+       COALESCE(SUM(CASE WHEN ws.status = 'Validé'     THEN ws.duration_minutes ELSE 0 END), 0) as validated_min,
+       COALESCE(SUM(CASE WHEN ws.status = 'En attente' THEN ws.duration_minutes ELSE 0 END), 0) as pending_min,
+       COALESCE(SUM(CASE WHEN ws.status = 'En cours'   THEN ws.duration_minutes ELSE 0 END), 0) as inprogress_min,
+       COUNT(CASE WHEN ws.status IN ('Validé','En attente','Terminé') THEN 1 END) as sessions_done_today
+     FROM users u
+     LEFT JOIN work_sessions ws ON ws.user_id = u.id
+       AND date(ws.start_time) = date('now')
+       AND ws.status IN ('Validé', 'En attente', 'En cours', 'Terminé')
+     LEFT JOIN tasks t ON ws.task_id = t.id
+     WHERE u.department_id = ? AND u.role IN ('Agent','Chef de Service') AND u.status = 'Actif'
+     GROUP BY u.id, u.first_name, u.last_name, u.works_saturday
+     ORDER BY u.last_name`
+  ).bind(deptId).all()
+
+  const agents = (liveData.results as any[]).map((a: any) => {
+    const totalPointed = a.validated_min + a.pending_min + a.inprogress_min
+    const cap = isWeekend ? 0 : 480
+    const nonPointed = cap > 0 ? Math.max(cap - totalPointed, 0) : 0
+    const pct = cap > 0 ? Math.round(totalPointed * 100 / cap) : 0
+
+    // Statut live
+    let liveStatus = 'not_started'
+    if (isWeekend) liveStatus = 'weekend'
+    else if (a.is_active_now) liveStatus = 'working'
+    else if (totalPointed > 0) liveStatus = 'paused'
+
+    return {
+      ...a,
+      live_status: liveStatus,
+      total_pointed_min: totalPointed,
+      total_pointed_hours: minutesToHours(totalPointed),
+      non_pointed_min: nonPointed,
+      non_pointed_hours: minutesToHours(nonPointed),
+      productive_pct: pct,
+      capacity_min: cap
+    }
+  })
+
+  const summary = {
+    total: agents.length,
+    working_now: agents.filter((a: any) => a.live_status === 'working').length,
+    paused: agents.filter((a: any) => a.live_status === 'paused').length,
+    not_started: agents.filter((a: any) => a.live_status === 'not_started').length,
+    is_weekend: isWeekend
+  }
+
+  return c.json({ agents, summary, is_weekend: isWeekend })
 })
 
 // ============================================
@@ -1914,6 +2027,26 @@ app.get('/api/dg/dashboard', async (c) => {
     const STATUSES = `ws.status IN ('Validé','Terminé')`
     const mf = (m: string) => `strftime('%Y-%m',ws.start_time)='${m}'`
 
+    // Calculer les jours ouvrés pour les mois DG (identique à la fonction admin)
+    const calcDgWorkingDays = (monthStr: string, includeSaturday: boolean): number => {
+      const [y, mo] = monthStr.split('-').map(Number)
+      const now = new Date()
+      const isCurrentMonth = y === now.getFullYear() && mo === now.getMonth() + 1
+      const lastDay = isCurrentMonth ? now.getDate() : new Date(y, mo, 0).getDate()
+      let count = 0
+      for (let d = 1; d <= lastDay; d++) {
+        const dow = new Date(y, mo - 1, d).getDay()
+        if (dow === 0) continue
+        if (dow === 6 && !includeSaturday) continue
+        count++
+      }
+      return count || 1
+    }
+    const dgWdStd  = calcDgWorkingDays(month, false)
+    const dgWdSat  = calcDgWorkingDays(month, true)
+    const dgWdStd2 = month2 ? calcDgWorkingDays(month2, false) : null
+    const dgWdSat2 = month2 ? calcDgWorkingDays(month2, true) : null
+
     const totalUsers = await c.env.DB.prepare(
       `SELECT COUNT(*) as c FROM users WHERE status='Actif' AND role NOT IN ('Administrateur','Directeur Général')`
     ).first() as any
@@ -1925,16 +2058,18 @@ app.get('/api/dg/dashboard', async (c) => {
       `SELECT COUNT(*) as c FROM work_sessions WHERE status='Terminé'`
     ).first() as any
 
-    // ── Capacité par département (nombre d'agents actifs)
+    // ── Capacité par département (nombre d'agents actifs + distinction samedi)
     const deptCap = await c.env.DB.prepare(
-      `SELECT d.name as dept_name, COUNT(u.id) as agent_count
+      `SELECT d.name as dept_name, COUNT(u.id) as agent_count,
+       SUM(CASE WHEN u.works_saturday=1 THEN 1 ELSE 0 END) as agents_with_saturday,
+       SUM(CASE WHEN u.works_saturday=0 THEN 1 ELSE 0 END) as agents_without_saturday
        FROM departments d
        LEFT JOIN users u ON u.department_id=d.id AND u.status='Actif' AND u.role IN ('Agent','Chef de Service')
        WHERE d.status='Actif' GROUP BY d.id, d.name`
     ).all()
 
-    // ── Ratio 3-3-3 par mois pour DG
-    async function getDgRatio333(m: string) {
+    // ── Ratio 3-3-3 par mois pour DG (avec capacité mensuelle réelle)
+    async function getDgRatio333(m: string, wdStd: number, wdSat: number) {
       const raw333 = await c.env.DB.prepare(
         `SELECT COALESCE(t.task_type,'Production') as type_333, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
          FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id
@@ -1947,6 +2082,7 @@ app.get('/api/dg/dashboard', async (c) => {
       ).all()
       const raw333Agent = await c.env.DB.prepare(
         `SELECT ws.user_id as agent_id, u.first_name||' '||u.last_name as agent_name, d.name as dept_name,
+         u.works_saturday,
          COALESCE(t.task_type,'Production') as type_333, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
          FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN users u ON ws.user_id=u.id JOIN departments d ON ws.department_id=d.id
          WHERE ${STATUSES} AND ${mf(m)} GROUP BY ws.user_id, t.task_type`
@@ -1966,29 +2102,72 @@ app.get('/api/dg/dashboard', async (c) => {
       const gTotal = Object.values(gMap).reduce((s,v)=>s+v,0)
       const ratio333 = Object.entries(gMap).map(([label,minutes])=>({ label, minutes, percentage: gTotal>0?Math.round(minutes*100/gTotal):0, hours_display: minutesToHours(minutes) }))
 
-      // Par département
+      // Par département (capacité mensuelle réelle : agents_sat × wdSat + agents_no_sat × wdStd) × 480
       const dMap: Record<string,any> = {}
       const caps = deptCap.results as any[]
       ;(raw333Dept.results as any[]).forEach((r: any) => {
-        if (!dMap[r.dept_name]) { const cap=caps.find((ci:any)=>ci.dept_name===r.dept_name); dMap[r.dept_name]={ dept_name:r.dept_name, agent_count:cap?.agent_count||0, 'Production':0,'Administration & Reporting':0,'Contrôle':0 } }
+        if (!dMap[r.dept_name]) {
+          const cap = caps.find((ci:any)=>ci.dept_name===r.dept_name)
+          const agSat = cap?.agents_with_saturday || 0
+          const agNoSat = cap?.agents_without_saturday || 0
+          const capacity = (agSat * wdSat + agNoSat * wdStd) * 480
+          dMap[r.dept_name] = {
+            dept_name: r.dept_name,
+            agent_count: cap?.agent_count || 0,
+            agents_with_saturday: agSat,
+            agents_without_saturday: agNoSat,
+            capacity_minutes: capacity,
+            working_days: wdStd,
+            'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0
+          }
+        }
         dMap[r.dept_name][norm(r.type_333)] += r.total_minutes
       })
-      const deptComparison = Object.values(dMap).map((d:any) => { const tot=d.Production+d['Administration & Reporting']+d['Contrôle']; return { ...d, total_minutes:tot, capacity_minutes:d.agent_count*480, hours_display:minutesToHours(tot) } })
+      const deptComparison = Object.values(dMap).map((d:any) => {
+        const tot = d.Production + d['Administration & Reporting'] + d['Contrôle']
+        const pct = d.capacity_minutes > 0 ? Math.round(tot*100/d.capacity_minutes) : 0
+        return {
+          ...d, total_minutes: tot,
+          productive_pct: pct,
+          non_productive_pct: Math.max(0, 100-pct),
+          hours_display: minutesToHours(tot),
+          capacity_hours_display: minutesToHours(d.capacity_minutes)
+        }
+      })
 
-      // Par agent
+      // Par agent (capacité individuelle selon works_saturday)
       const aMap: Record<string,any> = {}
       ;(raw333Agent.results as any[]).forEach((r: any) => {
-        if (!aMap[r.agent_id]) aMap[r.agent_id]={ agent_id:r.agent_id, agent_name:r.agent_name, dept_name:r.dept_name, 'Production':0,'Administration & Reporting':0,'Contrôle':0 }
+        if (!aMap[r.agent_id]) {
+          const wd = r.works_saturday ? wdSat : wdStd
+          const cap = wd * 480
+          aMap[r.agent_id] = {
+            agent_id: r.agent_id, agent_name: r.agent_name, dept_name: r.dept_name,
+            works_saturday: r.works_saturday || 0,
+            capacity_minutes: cap, working_days: wd,
+            'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0
+          }
+        }
         aMap[r.agent_id][norm(r.type_333)] += r.total_minutes
       })
-      const agentComparison = Object.values(aMap).map((a:any) => { const tot=a.Production+a['Administration & Reporting']+a['Contrôle']; return { ...a, total_minutes:tot, hours_display:minutesToHours(tot) } })
+      const agentComparison = Object.values(aMap).map((a:any) => {
+        const tot = a.Production + a['Administration & Reporting'] + a['Contrôle']
+        const pct = a.capacity_minutes > 0 ? Math.round(tot*100/a.capacity_minutes) : 0
+        return {
+          ...a, total_minutes: tot,
+          productive_pct: pct,
+          non_productive_pct: Math.max(0,100-pct),
+          hours_display: minutesToHours(tot),
+          capacity_hours_display: minutesToHours(a.capacity_minutes)
+        }
+      })
 
       return { ratio333, deptComparison, agentComparison }
     }
 
-    const dgM1 = await getDgRatio333(month)
+    const dgM1 = await getDgRatio333(month, dgWdStd, dgWdSat)
     let dgM2 = null
-    if (month2) dgM2 = await getDgRatio333(month2)
+    if (month2 && dgWdStd2 !== null && dgWdSat2 !== null) dgM2 = await getDgRatio333(month2, dgWdStd2, dgWdSat2)
 
     const monthlyTrend = await c.env.DB.prepare(
       `SELECT strftime('%Y-%m',start_time) as month, COALESCE(SUM(duration_minutes),0) as total_minutes
@@ -2009,6 +2188,8 @@ app.get('/api/dg/dashboard', async (c) => {
 
     return c.json({
       month, month2: month2||null,
+      working_days: dgWdStd,
+      working_days_month2: dgWdStd2,
       total_users: totalUsers?.c || 0,
       total_hours_month: minutesToHours(totalHoursMonth?.m || 0),
       to_validate: toValidate?.c || 0,
@@ -2020,6 +2201,7 @@ app.get('/api/dg/dashboard', async (c) => {
       deptComparisonMonth2: dgM2?.deptComparison||null,
       agentComparison: dgM1.agentComparison,
       agentComparisonMonth2: dgM2?.agentComparison||null,
+      byDept333: dgM1.deptComparison,
       byAgent333: dgM1.agentComparison
     })
   } catch(e: any) { return c.json({ error: e.message }, 500) }
