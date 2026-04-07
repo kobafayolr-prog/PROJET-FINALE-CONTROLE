@@ -670,18 +670,24 @@ async function loadDashboardStats() {
     const deptsM2 = stats.deptComparisonMonth2 || [];
     const labels  = depts.map(d => d.dept_name.replace('Direction ','Dir. ').replace('Département','Dept'));
 
+    // Précalcul des capacités par département pour les pourcentages
+    const deptCapMap = {};
+    depts.forEach(d => { deptCapMap[d.dept_name] = d.agent_count * 8; });
+
     const mkDeptDs = (src, moisLabel, stackId) => [
       {
         label: 'Heures productives' + moisLabel,
         data: src.map(d => +(d.total_minutes / 60).toFixed(2)),
         backgroundColor: '#1e3a5f',
-        stack: stackId
+        stack: stackId,
+        _cap: src.map(d => d.agent_count * 8)
       },
       {
         label: 'Heures non-productives' + moisLabel,
         data: src.map(d => +(Math.max(0, d.agent_count * 8 - d.total_minutes / 60).toFixed(2))),
         backgroundColor: '#ef4444cc',
-        stack: stackId
+        stack: stackId,
+        _cap: src.map(d => d.agent_count * 8)
       }
     ];
 
@@ -701,8 +707,11 @@ async function loadDashboardStats() {
           tooltip: {
             callbacks: {
               label: ctx => {
-                const h = Math.floor(ctx.raw), m = Math.round((ctx.raw - h) * 60);
-                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m`;
+                const val = ctx.raw;
+                const cap = ctx.dataset._cap ? ctx.dataset._cap[ctx.dataIndex] : 8;
+                const pct = cap > 0 ? Math.round(val / cap * 100) : 0;
+                const h = Math.floor(val), m = Math.round((val - h) * 60);
+                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m  (${pct}% des ${cap}h cap.)`;
               }
             }
           }
@@ -754,8 +763,10 @@ async function loadDashboardStats() {
           tooltip: {
             callbacks: {
               label: ctx => {
-                const h = Math.floor(ctx.raw), m = Math.round((ctx.raw - h) * 60);
-                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m`;
+                const val = ctx.raw;
+                const pct = Math.round(val / 8 * 100);
+                const h = Math.floor(val), m = Math.round((val - h) * 60);
+                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m  (${pct}% des 8h cap.)`;
               }
             }
           }
@@ -1464,7 +1475,7 @@ async function renderTasks() {
     <div class="card-body">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>TÂCHE</th><th>PROCESSUS</th><th>DÉPARTEMENT</th><th>OBJECTIF</th><th>TYPE</th><th>STATUT</th><th>ACTIONS</th></tr></thead>
+          <thead><tr><th>TÂCHE</th><th>PROCESSUS</th><th>ACTIVITÉS</th><th>OBJECTIF</th><th>TYPE</th><th>STATUT</th><th>ACTIONS</th></tr></thead>
           <tbody>
             ${allTasksData.map(t => `<tr>
               <td>
