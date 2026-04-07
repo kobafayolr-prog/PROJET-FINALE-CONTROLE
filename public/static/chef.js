@@ -504,85 +504,6 @@ async function loadChefDashboard() {
     </div>
   </div>
 
-  <!-- ══ BANDEAU ALERTES 3-3-3 DÉPARTEMENT ══ -->
-  ${(() => {
-    const CIBLES = { 'Production': 70, 'Administration & Reporting': 20, 'Contrôle': 10 };
-    const r = data.ratio333 || [];
-    const alerts = r.filter(x => {
-      const tgt = CIBLES[x.type] || 0;
-      return Math.abs(x.percentage - tgt) > 5;
-    });
-    if (!alerts.length) return `
-    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
-      <i class="fas fa-check-circle" style="color:#16a34a;font-size:18px"></i>
-      <span style="color:#15803d;font-size:13px;font-weight:600">Méthode 3-3-3 : toutes les catégories de votre département sont dans les cibles ce mois-ci.</span>
-    </div>`;
-    return `<div style="background:#fff;border-radius:10px;padding:12px 18px;margin-bottom:16px;border-left:4px solid #ef4444;box-shadow:0 2px 8px rgba(0,0,0,.06)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <i class="fas fa-exclamation-triangle" style="color:#ef4444;font-size:16px"></i>
-        <span style="font-weight:700;color:#1e3a5f;font-size:14px">Alertes 3-3-3 — ${alerts.length} catégorie(s) hors cible</span>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${alerts.map(x => {
-          const tgt = CIBLES[x.type] || 0;
-          const ecart = x.percentage - tgt;
-          const over = ecart > 0;
-          const severe = Math.abs(ecart) > 10;
-          const bg = severe ? (over ? '#fee2e2' : '#fef9c3') : (over ? '#fff7ed' : '#fffbeb');
-          const col = severe ? (over ? '#dc2626' : '#b45309') : '#d97706';
-          const color = x.type==='Production'?'#1e3a5f':x.type==='Administration & Reporting'?'#f59e0b':'#10b981';
-          return `<div style="background:${bg};border-radius:8px;padding:6px 14px;display:flex;align-items:center;gap:8px">
-            <span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block"></span>
-            <span style="font-weight:600;color:#1e3a5f;font-size:13px">${x.type}</span>
-            <span style="color:${col};font-size:12px;font-weight:700"><i class="fas fa-arrow-${over?'up':'down'}"></i> ${over?'+':''}${ecart}% vs cible ${tgt}%</span>
-            ${severe ? `<span style="font-size:10px;background:${col};color:#fff;padding:1px 6px;border-radius:4px;font-weight:700">⚠ CRITIQUE</span>` : ''}
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`;
-  })()}
-
-  <!-- Méthode 3-3-3 — Ratio d'Efficience du Département -->
-  <div class="chart-card" style="margin-bottom:20px">
-    <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Méthode 3-3-3 — Efficience du Département${data.month2?` <span style="font-size:12px;font-weight:400;color:#6b7280">(${data.month||chefMonth1} vs ${data.month2})</span>`:''}</div>
-    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-top:10px">
-      <div style="text-align:center">
-        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">${data.month||chefMonth1}</div>
-        <canvas id="chart333ChefM1" width="160" height="160"></canvas>
-      </div>
-      ${data.month2 ? `<div style="text-align:center">
-        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">${data.month2}</div>
-        <canvas id="chart333ChefM2" width="160" height="160"></canvas>
-      </div>` : ''}
-      <div style="flex:1;min-width:180px">
-        ${(data.ratio333||[]).map(r => {
-          const color = r.type==='Production'?'#1e3a5f':r.type==='Administration & Reporting'?'#f59e0b':'#10b981';
-          const pct2 = data.month2&&data.ratio333Month2 ? (data.ratio333Month2.find(x=>x.type===r.type)?.percentage||0) : null;
-          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-            <span style="width:12px;height:12px;border-radius:3px;background:${color};flex-shrink:0"></span>
-            <div style="flex:1">
-              <div style="font-weight:600;font-size:12px;color:#374151">${r.type}</div>
-              <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-                <div style="flex:1;background:#e5e7eb;border-radius:4px;height:7px"><div style="width:${r.percentage}%;background:${color};height:7px;border-radius:4px"></div></div>
-                <span style="font-weight:700;color:${color};font-size:13px;width:36px">${r.percentage}%</span>
-                <span style="color:#6b7280;font-size:11px">${r.hours_display}</span>
-                ${pct2!==null?`<span style="color:#9ca3af;font-size:11px">→ ${pct2}% M2</span>`:''}
-              </div>
-            </div>
-          </div>`;
-        }).join('')}
-        <div style="margin-top:12px;padding:8px 12px;background:#eff6ff;border-radius:8px;border-left:4px solid #1e3a5f">
-          <div style="font-size:11px;color:#1e3a5f;font-weight:600">Efficience Production</div>
-          <div style="font-size:20px;font-weight:800;color:#1e3a5f">
-            ${(data.ratio333||[]).find(r=>r.type==='Production')?.percentage||0}%
-            ${data.month2&&data.ratio333Month2 ? `<span style="font-size:12px;font-weight:400;color:#6b7280"> → ${(data.ratio333Month2||[]).find(r=>r.type==='Production')?.percentage||0}%</span>` : ''}
-          </div>
-          <div style="font-size:11px;color:#6b7280;margin-top:2px">Objectif : ≥ 70% en Production</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Toggle vue mensuelle / cumulative -->
   <div id="chef-bar-toggle-wrap" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
     <span style="font-size:13px;font-weight:600;color:#374151"><i class="fas fa-layer-group" style="margin-right:6px;color:#1e3a5f"></i>Vue des barres :</span>
@@ -659,24 +580,6 @@ async function loadChefDashboard() {
         },
         cutout: '55%'
       }
-    });
-  }
-
-  // Pie 3-3-3 Mois 1
-  if (data.ratio333 && data.ratio333.length > 0 && document.getElementById('chart333ChefM1')) {
-    chefCharts.p333M1 = new Chart(document.getElementById('chart333ChefM1'), {
-      type: 'pie',
-      data: { labels: data.ratio333.map(r=>r.type), datasets: [{ data: data.ratio333.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
-      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => { const r=data.ratio333[ctx.dataIndex]; return ` ${r.hours_display} (${r.percentage}%)`; } } } } }
-    });
-  }
-
-  // Pie 3-3-3 Mois 2
-  if (data.ratio333Month2 && data.ratio333Month2.length > 0 && document.getElementById('chart333ChefM2')) {
-    chefCharts.p333M2 = new Chart(document.getElementById('chart333ChefM2'), {
-      type: 'pie',
-      data: { labels: data.ratio333Month2.map(r=>r.type), datasets: [{ data: data.ratio333Month2.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
-      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => { const r=data.ratio333Month2[ctx.dataIndex]; return ` ${r.hours_display} (${r.percentage}%)`; } } } } }
     });
   }
 
