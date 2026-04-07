@@ -272,7 +272,7 @@ function renderLayout(title, content) {
         <i class="fas fa-building"></i> Départements
       </a>
       <a class="sidebar-item ${page==='objectives'?'active':''}" onclick="navigate('objectives')">
-        <i class="fas fa-bullseye"></i> Objectifs Stratégiques
+        <i class="fas fa-chart-pie"></i> Catégories 3-3-3
       </a>
       <a class="sidebar-item ${page==='processes'?'active':''}" onclick="navigate('processes')">
         <i class="fas fa-sitemap"></i> Processus
@@ -345,12 +345,12 @@ async function loadDashboardStats() {
   function render333Rows(data, label) {
     if (!data || !data.length) return `<div style="color:#9ca3af;font-size:13px;padding:12px 0">Aucune donnée — ${label}</div>`;
     return data.map(r => {
-      const color = C333[r.type] || '#6b7280';
-      const pct2 = stats.ratio333Month2 ? (stats.ratio333Month2.find(x=>x.type===r.type)?.percentage || 0) : null;
+      const color = C333[r.label] || '#6b7280';
+      const pct2 = stats.ratio333Month2 ? (stats.ratio333Month2.find(x=>x.label===r.label)?.percentage || 0) : null;
       return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         <span style="width:12px;height:12px;border-radius:3px;background:${color};flex-shrink:0"></span>
         <div style="flex:1">
-          <div style="font-weight:600;font-size:12px;color:#374151"><i class="fas ${I333[r.type]||'fa-circle'}" style="margin-right:4px;color:${color}"></i>${r.type}</div>
+          <div style="font-weight:600;font-size:12px;color:#374151"><i class="fas ${I333[r.label]||'fa-circle'}" style="margin-right:4px;color:${color}"></i>${r.label}</div>
           <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
             <div style="flex:1;background:#e5e7eb;border-radius:3px;height:7px;overflow:hidden">
               <div style="width:${r.percentage}%;background:${color};height:7px;border-radius:3px"></div>
@@ -468,8 +468,8 @@ async function loadDashboardStats() {
           <div style="margin-top:14px;padding:10px 14px;background:#eff6ff;border-radius:8px;border-left:4px solid #1e3a5f">
             <div style="font-size:11px;color:#1e3a5f;font-weight:600"><i class="fas fa-info-circle" style="margin-right:4px"></i>Efficience Production</div>
             <div style="font-size:20px;font-weight:800;color:#1e3a5f;margin-top:3px">
-              ${(stats.ratio333||[]).find(r=>r.type==='Production')?.percentage||0}%
-              ${stats.ratio333Month2 ? `<span style="font-size:13px;color:#6b7280;font-weight:400"> → ${(stats.ratio333Month2||[]).find(r=>r.type==='Production')?.percentage||0}%</span>` : ''}
+              ${(stats.ratio333||[]).find(r=>r.label==='Production')?.percentage||0}%
+              ${stats.ratio333Month2 ? `<span style="font-size:13px;color:#6b7280;font-weight:400"> → ${(stats.ratio333Month2||[]).find(r=>r.label==='Production')?.percentage||0}%</span>` : ''}
             </div>
             <div style="font-size:11px;color:#6b7280;margin-top:2px">Objectif : ≥ 70% en Production</div>
           </div>
@@ -640,7 +640,7 @@ async function loadDashboardStats() {
   if (stats.ratio333 && stats.ratio333.length && document.getElementById('chart333M1')) {
     adminCharts.chart333M1 = new Chart(document.getElementById('chart333M1'), {
       type: 'pie',
-      data: { labels: stats.ratio333.map(r=>r.type), datasets: [{ data: stats.ratio333.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
+      data: { labels: stats.ratio333.map(r=>r.label), datasets: [{ data: stats.ratio333.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
       options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => { const r=stats.ratio333[ctx.dataIndex]; return ` ${r.hours_display} (${r.percentage}%)`; } } } } }
     });
   }
@@ -649,7 +649,7 @@ async function loadDashboardStats() {
   if (stats.ratio333Month2 && stats.ratio333Month2.length && document.getElementById('chart333M2')) {
     adminCharts.chart333M2 = new Chart(document.getElementById('chart333M2'), {
       type: 'pie',
-      data: { labels: stats.ratio333Month2.map(r=>r.type), datasets: [{ data: stats.ratio333Month2.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
+      data: { labels: stats.ratio333Month2.map(r=>r.label), datasets: [{ data: stats.ratio333Month2.map(r=>r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }] },
       options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => { const r=stats.ratio333Month2[ctx.dataIndex]; return ` ${r.hours_display} (${r.percentage}%)`; } } } } }
     });
   }
@@ -1067,47 +1067,83 @@ function showDeptModal(id = null) {
 let allObjsData = [];
 
 async function renderObjectives() {
-  renderLayout('Objectifs Stratégiques', '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i></div>');
-  allObjsData = await api('/api/admin/objectives');
+  renderLayout('Catégories 3-3-3', '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i></div>');
 
-  const cards = allObjsData.map(o => `
-    <div class="objective-card" style="border-left-color:${o.color}">
-      <div style="position:absolute;top:12px;right:12px;display:flex;gap:4px">
-        <button onclick="showObjModal(${o.id})" class="edit-btn" style="right:unset;top:unset;position:static"><i class="fas fa-edit"></i></button>
-        <button class="btn-delete-obj" data-id="${o.id}" data-name="${o.name}" style="background:rgba(239,68,68,0.1);border:none;border-radius:4px;width:28px;height:28px;cursor:pointer;color:#ef4444;padding:0" title="Désactiver"><i class="fas fa-trash" style="font-size:11px;pointer-events:none"></i></button>
+  // Les 3 catégories sont fixes — on récupère les stats du mois courant
+  const month = new Date().toISOString().slice(0,7);
+  const TOKEN_VAL = token;
+  const stats = await api(`/api/admin/stats?month=${month}`);
+  const ratio = stats.ratio333 || [];
+
+  const OBJ_333 = [
+    { id: 10, name: 'Production',                 color: '#1e3a5f', icon: 'fa-briefcase',   target: 70, desc: 'Activités directement productives : traitement des opérations, service client, production bancaire.' },
+    { id: 11, name: 'Administration & Reporting', color: '#f59e0b', icon: 'fa-file-alt',    target: 20, desc: 'Activités administratives, reporting, réunions, formation et tâches de support.' },
+    { id: 12, name: 'Contrôle',                   color: '#10b981', icon: 'fa-check-circle', target: 10, desc: 'Activités de contrôle, audit, conformité, supervision et vérification.' }
+  ];
+
+  const cards = OBJ_333.map(o => {
+    const r = ratio.find(x => x.label === o.name) || { percentage: 0, hours_display: '0h 00m', minutes: 0 };
+    const ecart = r.percentage - o.target;
+    const ecartColor = ecart >= 0 ? '#16a34a' : (ecart > -15 ? '#f59e0b' : '#ef4444');
+    return `
+    <div style="border-radius:14px;border:2px solid ${o.color}20;background:#fff;padding:24px;position:relative;box-shadow:0 2px 8px ${o.color}15">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <div style="width:48px;height:48px;border-radius:12px;background:${o.color}15;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fas ${o.icon}" style="color:${o.color};font-size:20px"></i>
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:800;color:${o.color}">${o.name}</div>
+          <div style="font-size:11px;color:#9ca3af">Catégorie 3-3-3 · ID ${o.id}</div>
+        </div>
+        <span class="badge badge-active" style="margin-left:auto">Actif</span>
       </div>
-      <h3 style="color:${o.color}">${o.name}</h3>
-      <p>${o.description || ''}</p>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <span style="font-size:11px;color:#6b7280">Cible :</span>
-        <span style="font-weight:700;color:${o.color}">${o.target_percentage}%</span>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:16px;line-height:1.5">${o.desc}</p>
+      <div style="display:flex;gap:16px;margin-bottom:14px">
+        <div style="text-align:center;flex:1;padding:10px;background:${o.color}08;border-radius:8px">
+          <div style="font-size:20px;font-weight:800;color:${o.color}">${r.hours_display}</div>
+          <div style="font-size:10px;color:#9ca3af">Ce mois (${month})</div>
+        </div>
+        <div style="text-align:center;flex:1;padding:10px;background:#f9fafb;border-radius:8px">
+          <div style="font-size:20px;font-weight:800;color:${o.color}">${r.percentage}%</div>
+          <div style="font-size:10px;color:#9ca3af">Réalisé</div>
+        </div>
+        <div style="text-align:center;flex:1;padding:10px;background:#f9fafb;border-radius:8px">
+          <div style="font-size:20px;font-weight:800;color:#1e3a5f">${o.target}%</div>
+          <div style="font-size:10px;color:#9ca3af">Cible</div>
+        </div>
+        <div style="text-align:center;flex:1;padding:10px;background:${ecartColor}10;border-radius:8px">
+          <div style="font-size:20px;font-weight:800;color:${ecartColor}">${ecart>=0?'+':''}${ecart}%</div>
+          <div style="font-size:10px;color:#9ca3af">Écart</div>
+        </div>
       </div>
-      <span class="badge ${o.status==='Actif'?'badge-active':'badge-inactive'}">${o.status}</span>
-    </div>`).join('');
+      <div style="background:#f3f4f6;border-radius:6px;height:8px;overflow:hidden">
+        <div style="height:100%;width:${Math.min(r.percentage,100)}%;background:${o.color};border-radius:6px;transition:width .4s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:#9ca3af">
+        <span>0%</span><span>Cible : ${o.target}%</span><span>100%</span>
+      </div>
+    </div>`;
+  }).join('');
 
   document.getElementById('content').innerHTML = `
   <div class="page-header">
-    <div class="page-title"><i class="fas fa-bullseye"></i><h2>Objectifs Stratégiques</h2></div>
-    <button class="btn btn-primary" onclick="showObjModal()"><i class="fas fa-plus"></i> Nouvel objectif</button>
+    <div class="page-title"><i class="fas fa-chart-pie"></i><h2>Méthode 3-3-3 — Catégories & Objectifs</h2></div>
+    <span style="background:#eff6ff;color:#1e3a5f;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600">
+      <i class="fas fa-lock" style="margin-right:4px"></i>Catégories fixes · Non modifiables
+    </span>
   </div>
-  <div class="grid-auto">${cards}</div>`;
-
-  // Attacher les événements après rendu DOM
-  document.querySelectorAll('.btn-delete-obj').forEach(btn => {
-    btn.addEventListener('click', () => deleteObjective(btn.dataset.id, btn.dataset.name));
-  });
+  <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#92400e">
+    <i class="fas fa-info-circle" style="margin-right:6px"></i>
+    Ces 3 catégories constituent les objectifs stratégiques de BGFIBank CA selon la <b>méthode 3-3-3</b>.
+    Chaque tâche est rattachée à l'une de ces catégories. Les pourcentages sont calculés automatiquement sur les sessions du mois.
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px">
+    ${cards}
+  </div>`;
 }
 
 async function deleteObjective(id, name) {
-  name = name || id;
-  const ok = await showConfirmDialog('Voulez-vous vraiment désactiver cet objectif ?', name);
-  if (!ok) return;
-  const r = await api('/api/admin/objectives/' + id, { method: 'DELETE' });
-  if (r.error) { toast(r.error, 'error'); return; }
-  toast('Objectif désactivé');
-  renderObjectives();
-}
-function _keepRenderObjectives() {
+  toast('Les catégories 3-3-3 ne peuvent pas être supprimées.', 'error');
 }
 
 function showObjModal(id = null) {
@@ -1211,9 +1247,11 @@ function showProcModal(id = null) {
           ${allDepts.map(d => `<option value="${d.id}" ${p?.department_id===d.id?'selected':''}>${d.name}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label class="form-label">Objectif Stratégique</label>
+      <div class="form-group"><label class="form-label">Catégorie 3-3-3</label>
         <select class="form-control" id="p_obj">
-          ${allProcsObjs.map(o => `<option value="${o.id}" ${p?.objective_id===o.id?'selected':''}>${o.name}</option>`).join('')}
+          <option value="10" ${(!p?.objective_id||p?.objective_id===10)?'selected':''}>🔵 Production</option>
+          <option value="11" ${p?.objective_id===11?'selected':''}>🟡 Administration & Reporting</option>
+          <option value="12" ${p?.objective_id===12?'selected':''}>🟢 Contrôle</option>
         </select>
       </div>
       <div class="form-group"><label class="form-label">Statut</label>
@@ -1315,17 +1353,13 @@ function showTaskModal(id = null) {
           </select>
         </div>
       </div>
-      <div class="form-group"><label class="form-label">Objectif Stratégique</label>
-        <select class="form-control" id="t_obj">
-          ${allTasksObjs.map(o => `<option value="${o.id}" ${t?.objective_id===o.id?'selected':''}>${o.name}</option>`).join('')}
-        </select>
-      </div>
+      <input type="hidden" id="t_obj" value="${t?.objective_id||10}">
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Type (Méthode 3-3-3)</label>
-          <select class="form-control" id="t_type">
-            <option value="Production" ${(!t?.task_type||t?.task_type==='Production'||t?.task_type==='Productive')?'selected':''}>Production</option>
-            <option value="Administration & Reporting" ${(t?.task_type==='Administration & Reporting'||t?.task_type==='Non productive')?'selected':''}>Administration & Reporting</option>
-            <option value="Contrôle" ${t?.task_type==='Contrôle'?'selected':''}>Contrôle</option>
+        <div class="form-group"><label class="form-label">Catégorie 3-3-3 (= Objectif)</label>
+          <select class="form-control" id="t_type" onchange="syncObjFromType(this.value)">
+            <option value="Production" ${(!t?.task_type||t?.task_type==='Production'||t?.task_type==='Productive')?'selected':''}>🔵 Production</option>
+            <option value="Administration & Reporting" ${(t?.task_type==='Administration & Reporting'||t?.task_type==='Non productive')?'selected':''}>🟡 Administration & Reporting</option>
+            <option value="Contrôle" ${t?.task_type==='Contrôle'?'selected':''}>🟢 Contrôle</option>
           </select>
         </div>
         <div class="form-group"><label class="form-label">Statut</label>
@@ -1357,6 +1391,14 @@ function showTaskModal(id = null) {
 function filterProcessesByDept(deptId) {
   const sel = document.getElementById('t_proc');
   sel.innerHTML = allTasksProcs.filter(p => p.department_id == deptId).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+}
+
+// Synchronise l'objective_id caché selon la catégorie 3-3-3 choisie
+// Production=10, Administration & Reporting=11, Contrôle=12
+function syncObjFromType(type) {
+  const map = { 'Production': 10, 'Administration & Reporting': 11, 'Contrôle': 12 };
+  const el = document.getElementById('t_obj');
+  if (el) el.value = map[type] || 10;
 }
 
 // ============================================

@@ -591,14 +591,27 @@ app.get('/api/admin/tasks', async (c) => {
   return c.json(tasks.results)
 })
 
+// Helper : déduire objective_id depuis task_type (catégories 3-3-3 fixes)
+function objIdFrom333(task_type: string, provided_obj_id: any): number {
+  const map: Record<string,number> = {
+    'Production': 10, 'Productive': 10,
+    'Administration & Reporting': 11, 'Non productive': 11,
+    'Contrôle': 12
+  }
+  // Priorité : déduire depuis task_type, sinon utiliser l'id fourni
+  return map[task_type] || Number(provided_obj_id) || 10
+}
+
 app.post('/api/admin/tasks', async (c) => {
   const currentUser = await getUser(c)
   if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
   const { name, description, department_id, process_id, objective_id, task_type, status } = await c.req.json()
+  const normalizedType = task_type || 'Production'
+  const resolvedObjId = objIdFrom333(normalizedType, objective_id)
   const result = await c.env.DB.prepare(
     'INSERT INTO tasks (name, description, department_id, process_id, objective_id, task_type, status) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).bind(name, description || '', department_id, process_id, objective_id, task_type || 'Productive', status || 'Actif').run()
+  ).bind(name, description || '', department_id, process_id, resolvedObjId, normalizedType, status || 'Actif').run()
 
   return c.json({ id: result.meta.last_row_id, message: 'Tâche créée' })
 })
@@ -609,9 +622,11 @@ app.put('/api/admin/tasks/:id', async (c) => {
 
   const id = c.req.param('id')
   const { name, description, department_id, process_id, objective_id, task_type, status } = await c.req.json()
+  const normalizedType = task_type || 'Production'
+  const resolvedObjId = objIdFrom333(normalizedType, objective_id)
   await c.env.DB.prepare(
     'UPDATE tasks SET name=?, description=?, department_id=?, process_id=?, objective_id=?, task_type=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
-  ).bind(name, description || '', department_id, process_id, objective_id, task_type || 'Productive', status, id).run()
+  ).bind(name, description || '', department_id, process_id, resolvedObjId, normalizedType, status, id).run()
 
   return c.json({ message: 'Tâche mise à jour' })
 })
