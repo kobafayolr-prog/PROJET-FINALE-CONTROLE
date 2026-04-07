@@ -1,13 +1,16 @@
 /**
  * TimeTrack BGFIBank - Backend Node.js + Express + MySQL2
- * Même interface que la version Cloudflare Workers (D1/SQLite)
- * Toutes les routes et logiques sont identiques, seul le driver DB change.
+ * Version COMPLÈTE — 61 routes (identique à index.tsx)
+ * Sécurité : PBKDF2 (600 000 itérations), JWT avec expiration 8h,
+ *             rate-limiting, audit logs, CORS restreint
  */
 
+'use strict'
+
 const express = require('express')
-const mysql = require('mysql2/promise')
-const path = require('path')
-const crypto = require('crypto')
+const mysql   = require('mysql2/promise')
+const path    = require('path')
+const crypto  = require('crypto')
 
 const app = express()
 app.use(express.json())
@@ -16,57 +19,193 @@ app.use(express.json())
 // CONFIGURATION
 // ============================================
 
-const PORT = process.env.PORT || 3000
+const PORT       = process.env.PORT       || 3000
 const JWT_SECRET = process.env.JWT_SECRET || 'timetrack-bgfibank-secret-2024-x9k2p7m'
+const JWT_EXPIRY = parseInt(process.env.JWT_EXPIRY_SECONDS || '28800') // 8 heures par défaut
 
 const DB_CONFIG = {
-  host:     process.env.DB_HOST     || 'localhost',
-  port:     parseInt(process.env.DB_PORT || '3306'),
-  user:     process.env.DB_USER     || 'timetrack_user',
-  password: process.env.DB_PASSWORD || 'TimeTrack@BGFIBank2024!',
-  database: process.env.DB_NAME     || 'timetrack_db',
+  host:               process.env.DB_HOST     || 'localhost',
+  port:               parseInt(process.env.DB_PORT || '3306'),
+  user:               process.env.DB_USER     || 'timetrack_user',
+  password:           process.env.DB_PASSWORD || 'TimeTrack@BGFIBank2024!',
+  database:           process.env.DB_NAME     || 'timetrack_db',
   waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  timezone: '+00:00',
-  charset: 'utf8mb4'
+  connectionLimit:    10,
+  queueLimit:         0,
+  timezone:           '+00:00',
+  charset:            'utf8mb4'
 }
 
-// Pool de connexions MySQL
 let db
 
 async function initDB () {
   db = mysql.createPool(DB_CONFIG)
-  // Test connexion
   const conn = await db.getConnection()
   console.log('✅ Connecté à MySQL :', DB_CONFIG.host + ':' + DB_CONFIG.port + '/' + DB_CONFIG.database)
   conn.release()
 }
 
 // ============================================
-// HEADERS DE SÉCURITÉ
+// HEADERS DE SÉCURITÉ + CORS
 // ============================================
 
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '*').split(',')
+
 app.use((req, res, next) => {
+  const origin = req.headers.origin || ''
+  if (ALLOWED_ORIGINS[0] === '*') {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+  } else if (ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Vary', 'Origin')
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization')
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('X-Frame-Options', 'DENY')
   res.setHeader('X-XSS-Protection', '1; mode=block')
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization')
   if (req.method === 'OPTIONS') return res.status(204).end()
   next()
 })
 
 // ============================================
-// UTILITAIRES
+// UTILITAIRES GÉNÉRAUX
 // ============================================
 
-// Rate limiting en mémoire
+function sanitizeString (str) {
+  if (typeof str !== 'string') return ''
+  return str.trim().replace(/[<>"'%;()&+]/g, '')
+}
+
+function validateEmail (email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function minutesToHours (minutes) {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return `${h}h ${String(m).padStart(2, '0')}m`
+}
+
+// ============================================
+// HACHAGE MOT DE PASSE (PBKDF2 — identique au frontend)
+// Format stocké : pbkdf2:sha256:600000:<salt_hex>:<hash_hex>
+// ============================================
+
+function hashPassword (password) {
+  const salt = crypto.randomBytes(16).toString('hex')
+  const hash = crypto.pbkdf2Sync(password, salt, 600000, 32, 'sha256').toString('hex')
+  return `pbkdf2:sha256:600000:${salt}:${hash}`
+}
+
+function verifyPassword (password, storedHash) {
+  try {
+    if (!storedHash) return false
+    // Format PBKDF2
+    if (storedHash.startsWith('pbkdf2:')) {
+      const parts = storedHash.split(':')
+      if (parts.length !== 5) return false
+      const [, algo, iters, salt, expected] = parts
+      const iterations = parseInt(iters)
+      const computed = crypto.pbkdf2Sync(password, salt, iterations, 32, algo).toString('hex')
+      return crypto.timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(expected, 'hex'))
+    }
+    // Rétrocompatibilité SHA-256 simple (ancien format)
+    const sha256Hash = crypto.createHash('sha256').update(password).digest('hex')
+    return sha256Hash === storedHash
+  } catch { return false }
+}
+
+// ============================================
+// CHIFFREMENT XOR+BASE64 (consultation mot de passe admin)
+// ============================================
+
+function encryptPassword (password) {
+  const key = 'bgfibank2024'
+  let result = ''
+  for (let i = 0; i < password.length; i++) {
+    result += String.fromCharCode(password.charCodeAt(i) ^ key.charCodeAt(i % key.length))
+  }
+  return Buffer.from(result, 'binary').toString('base64')
+}
+
+function decryptPassword (encrypted) {
+  try {
+    const key = 'bgfibank2024'
+    const decoded = Buffer.from(encrypted, 'base64').toString('binary')
+    let result = ''
+    for (let i = 0; i < decoded.length; i++) {
+      result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length))
+    }
+    return result
+  } catch { return '••••••••' }
+}
+
+// ============================================
+// JWT MANUEL HMAC-SHA256 (avec expiration)
+// ============================================
+
+function base64url (buf) {
+  return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+}
+
+function signJWT (payload, expiresInSeconds = JWT_EXPIRY) {
+  const now = Math.floor(Date.now() / 1000)
+  const fullPayload = { ...payload, iat: now, exp: now + expiresInSeconds }
+  const header = base64url(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))
+  const body   = base64url(Buffer.from(JSON.stringify(fullPayload)))
+  const data   = `${header}.${body}`
+  const sig    = base64url(crypto.createHmac('sha256', JWT_SECRET).update(data).digest())
+  return `${data}.${sig}`
+}
+
+function verifyJWT (token) {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const data        = `${parts[0]}.${parts[1]}`
+    const expectedSig = base64url(crypto.createHmac('sha256', JWT_SECRET).update(data).digest())
+    if (expectedSig !== parts[2]) return null
+    const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString())
+    // Vérifier expiration
+    if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) return null
+    return payload
+  } catch { return null }
+}
+
+// ============================================
+// BLACKLIST JWT (logout serveur)
+// ============================================
+
+const tokenBlacklist = new Set()
+setInterval(() => {
+  if (tokenBlacklist.size > 10000) tokenBlacklist.clear()
+}, 60 * 60 * 1000)
+
+function getUser (req) {
+  try {
+    const auth = req.headers.authorization
+    if (!auth || !auth.startsWith('Bearer ')) return null
+    const token = auth.slice(7)
+    if (tokenBlacklist.has(token)) return null
+    return verifyJWT(token)
+  } catch { return null }
+}
+
+function getRawToken (req) {
+  const auth = req.headers.authorization
+  if (!auth || !auth.startsWith('Bearer ')) return null
+  return auth.slice(7)
+}
+
+// ============================================
+// RATE LIMITING (tentatives de connexion)
+// ============================================
+
 const loginAttempts = new Map()
-const MAX_ATTEMPTS = 3
+const MAX_ATTEMPTS  = 3
 const BLOCK_DURATION = 15 * 60 * 1000 // 15 min
 
 function checkRateLimit (ip) {
@@ -94,119 +233,52 @@ function recordFailedAttempt (ip) {
 
 function resetAttempts (ip) { loginAttempts.delete(ip) }
 
-function sanitizeString (str) {
-  if (typeof str !== 'string') return ''
-  return str.trim().replace(/[<>"'%;()&+]/g, '')
-}
-
-function validateEmail (email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-}
-
-function hashPassword (password) {
-  return crypto.createHash('sha256').update(password).digest('hex')
-}
-
-function minutesToHours (minutes) {
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return `${h}h ${String(m).padStart(2, '0')}m`
-}
-
-// Chiffrement XOR + base64 (identique au frontend)
-function encryptPassword (password) {
-  const key = 'bgfibank2024'
-  let result = ''
-  for (let i = 0; i < password.length; i++) {
-    result += String.fromCharCode(password.charCodeAt(i) ^ key.charCodeAt(i % key.length))
-  }
-  return Buffer.from(result, 'binary').toString('base64')
-}
-
-function decryptPassword (encrypted) {
-  try {
-    const key = 'bgfibank2024'
-    const decoded = Buffer.from(encrypted, 'base64').toString('binary')
-    let result = ''
-    for (let i = 0; i < decoded.length; i++) {
-      result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length))
-    }
-    return result
-  } catch {
-    return '••••••••'
-  }
-}
-
 // ============================================
-// JWT BLACKLIST (logout serveur)
+// CODES RESET MOT DE PASSE (en mémoire, 30 min)
 // ============================================
-const tokenBlacklist = new Set()
-// Nettoyage automatique toutes les heures (tokens expirés)
-setInterval(() => {
-  // On garde la blacklist bornée — on purge si elle grossit trop
-  if (tokenBlacklist.size > 10000) tokenBlacklist.clear()
-}, 60 * 60 * 1000)
 
-// ============================================
-// CODES RESET MOT DE PASSE (en mémoire)
-// ============================================
-const resetCodes = new Map() // email → { code, expiresAt, userId }
+const resetCodes = new Map()
 
 function generateResetCode () {
   return Math.random().toString(36).substring(2, 8).toUpperCase()
 }
 
-// JWT manuel HMAC-SHA256 (compatible avec le frontend existant)
-function base64url (buf) {
-  return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
-}
+// ============================================
+// HELPERS BASE DE DONNÉES
+// ============================================
 
-function signJWT (payload) {
-  const header = base64url(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))
-  const body   = base64url(Buffer.from(JSON.stringify(payload)))
-  const data   = `${header}.${body}`
-  const sig    = base64url(crypto.createHmac('sha256', JWT_SECRET).update(data).digest())
-  return `${data}.${sig}`
-}
-
-function verifyJWT (token) {
-  try {
-    const parts = token.split('.')
-    if (parts.length !== 3) return null
-    const data = `${parts[0]}.${parts[1]}`
-    const expectedSig = base64url(crypto.createHmac('sha256', JWT_SECRET).update(data).digest())
-    if (expectedSig !== parts[2]) return null
-    const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString())
-    return payload
-  } catch { return null }
-}
-
-function getUser (req) {
-  try {
-    const auth = req.headers.authorization
-    if (!auth || !auth.startsWith('Bearer ')) return null
-    const token = auth.slice(7)
-    if (tokenBlacklist.has(token)) return null
-    return verifyJWT(token)
-  } catch { return null }
-}
-
-function getRawToken (req) {
-  const auth = req.headers.authorization
-  if (!auth || !auth.startsWith('Bearer ')) return null
-  return auth.slice(7)
-}
-
-// Helper pour exécuter une requête et retourner les lignes
 async function query (sql, params = []) {
   const [rows] = await db.execute(sql, params)
   return rows
 }
 
-// Helper pour INSERT/UPDATE/DELETE → retourne insertId, affectedRows
 async function run (sql, params = []) {
   const [result] = await db.execute(sql, params)
   return result
+}
+
+// Helper : calcule les jours ouvrés d'un mois (lun-ven ou lun-sam)
+function calcWorkingDays (monthStr, includeSaturday = false) {
+  const [y, mo] = monthStr.split('-').map(Number)
+  const now = new Date()
+  const isCurrentMonth = y === now.getFullYear() && mo === now.getMonth() + 1
+  const lastDay = isCurrentMonth ? now.getDate() : new Date(y, mo, 0).getDate()
+  let count = 0
+  for (let d = 1; d <= lastDay; d++) {
+    const dow = new Date(y, mo - 1, d).getDay()
+    if (dow === 0) continue
+    if (dow === 6 && !includeSaturday) continue
+    count++
+  }
+  return count || 1
+}
+
+// Normalisation type 3-3-3
+function norm333 (t) {
+  if (!t || t === 'Productive' || t === 'Production') return 'Production'
+  if (t.includes('Admin') || t.includes('Reporting') || t === 'Non productive') return 'Administration & Reporting'
+  if (t.includes('Contr')) return 'Contrôle'
+  return 'Production'
 }
 
 // ============================================
@@ -221,8 +293,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (rateCheck.blocked) {
       return res.status(429).json({
         error: `Compte temporairement bloqué suite à ${MAX_ATTEMPTS} tentatives échouées. Réessayez dans ${rateCheck.minutesLeft} minute(s).`,
-        blocked: true,
-        minutesLeft: rateCheck.minutesLeft
+        blocked: true, minutesLeft: rateCheck.minutesLeft
       })
     }
 
@@ -248,14 +319,14 @@ app.post('/api/auth/login', async (req, res) => {
       })
     }
 
-    const passwordHash = hashPassword(password)
-    if (passwordHash !== user.password_hash) {
+    const valid = verifyPassword(password, user.password_hash)
+    if (!valid) {
       const result = recordFailedAttempt(ip)
-      await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
-        [user.id, 'LOGIN_FAILED', `Tentative de connexion échouée pour ${user.first_name} ${user.last_name} depuis IP ${ip}`])
+      await run('INSERT INTO audit_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
+        [user.id, 'LOGIN_FAILED', `Tentative de connexion échouée pour ${user.first_name} ${user.last_name}`, ip])
 
       if (result.blocked) {
-        return res.status(429).json({ error: 'Trop de tentatives échouées. Compte bloqué pendant 15 minutes.', blocked: true, minutesLeft: 15 })
+        return res.status(429).json({ error: 'Trop de tentatives échouées. Compte bloqué 15 minutes.', blocked: true, minutesLeft: 15 })
       }
       return res.status(401).json({
         error: `Email ou mot de passe incorrect. ${result.remaining} tentative(s) restante(s).`,
@@ -263,15 +334,23 @@ app.post('/api/auth/login', async (req, res) => {
       })
     }
 
+    // Migrer SHA-256 → PBKDF2 à la volée si nécessaire
+    if (!user.password_hash.startsWith('pbkdf2:')) {
+      const newHash = hashPassword(password)
+      const newEnc  = encryptPassword(password)
+      await run('UPDATE users SET password_hash=?, password_encrypted=? WHERE id=?', [newHash, newEnc, user.id])
+    }
+
     resetAttempts(ip)
     await run('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id])
-    await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
-      [user.id, 'LOGIN', `Connexion réussie de ${user.first_name} ${user.last_name}`])
+    await run('INSERT INTO audit_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
+      [user.id, 'LOGIN', `Connexion réussie de ${user.first_name} ${user.last_name}`, ip])
 
     const token = signJWT({
       id: user.id, email: user.email, role: user.role,
       department_id: user.department_id, first_name: user.first_name,
-      last_name: user.last_name, department_name: user.department_name
+      last_name: user.last_name, department_name: user.department_name,
+      works_saturday: user.works_saturday || 0
     })
 
     return res.json({
@@ -279,7 +358,8 @@ app.post('/api/auth/login', async (req, res) => {
       user: {
         id: user.id, first_name: user.first_name, last_name: user.last_name,
         email: user.email, role: user.role,
-        department_id: user.department_id, department_name: user.department_name
+        department_id: user.department_id, department_name: user.department_name,
+        works_saturday: user.works_saturday || 0
       }
     })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -291,14 +371,12 @@ app.get('/api/auth/me', (req, res) => {
   res.json({ user })
 })
 
-// Logout : met le token en blacklist
 app.post('/api/auth/logout', (req, res) => {
   const token = getRawToken(req)
   if (token) tokenBlacklist.add(token)
   res.json({ message: 'Déconnecté avec succès' })
 })
 
-// Admin génère un code temporaire (6 car., valide 30 min) pour réinitialiser le mot de passe d'un user
 app.post('/api/auth/reset-request', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
@@ -309,21 +387,14 @@ app.post('/api/auth/reset-request', async (req, res) => {
     if (!rows[0]) return res.status(404).json({ error: 'Utilisateur non trouvé' })
     const target = rows[0]
     const code = generateResetCode()
-    const expiresAt = Date.now() + 30 * 60 * 1000 // 30 min
+    const expiresAt = Date.now() + 30 * 60 * 1000
     resetCodes.set(target.email, { code, expiresAt, userId: target.id })
     await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
       [currentUser.id, 'RESET_PASSWORD_REQUEST', `Code de réinitialisation généré pour ${target.first_name} ${target.last_name} (ID ${target.id})`])
-    res.json({
-      message: 'Code généré',
-      code,
-      user_name: `${target.first_name} ${target.last_name}`,
-      email: target.email,
-      expires_in_minutes: 30
-    })
+    res.json({ message: 'Code généré', code, user_name: `${target.first_name} ${target.last_name}`, email: target.email, expires_in_minutes: 30 })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Appliquer le code de réinitialisation + nouveau mot de passe
 app.post('/api/auth/reset-confirm', async (req, res) => {
   try {
     const { email, code, new_password } = req.body
@@ -331,30 +402,29 @@ app.post('/api/auth/reset-confirm', async (req, res) => {
     if (new_password.length < 4) return res.status(400).json({ error: 'Mot de passe trop court (min 4 caractères)' })
     const entry = resetCodes.get(email)
     if (!entry) return res.status(400).json({ error: 'Aucun code en attente pour cet email' })
-    if (Date.now() > entry.expiresAt) {
-      resetCodes.delete(email)
-      return res.status(400).json({ error: 'Code expiré. Demandez un nouveau code à l\'administrateur.' })
-    }
+    if (Date.now() > entry.expiresAt) { resetCodes.delete(email); return res.status(400).json({ error: 'Code expiré' }) }
     if (entry.code !== code.toUpperCase()) return res.status(400).json({ error: 'Code incorrect' })
-    const passwordHash      = hashPassword(new_password)
-    const passwordEncrypted = encryptPassword(new_password)
-    await run('UPDATE users SET password_hash=?, password_encrypted=?, updated_at=NOW() WHERE id=?',
-      [passwordHash, passwordEncrypted, entry.userId])
+    const newHash = hashPassword(new_password)
+    const newEnc  = encryptPassword(new_password)
+    await run('UPDATE users SET password_hash=?, password_encrypted=?, updated_at=NOW() WHERE id=?', [newHash, newEnc, entry.userId])
     resetCodes.delete(email)
     await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
-      [entry.userId, 'RESET_PASSWORD_DONE', `Mot de passe réinitialisé via code temporaire`])
+      [entry.userId, 'RESET_PASSWORD_DONE', 'Mot de passe réinitialisé via code temporaire'])
     res.json({ message: 'Mot de passe réinitialisé avec succès' })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Notifications : retourne les dernières validations/rejets pour l'utilisateur connecté
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
 app.get('/api/notifications', async (req, res) => {
   const user = getUser(req)
   if (!user) return res.status(401).json({ error: 'Non autorisé' })
   try {
     const since = req.query.since || new Date(Date.now() - 5 * 60 * 1000).toISOString()
     let rows = []
-    if (user.role === 'Agent') {
+    if (user.role === 'Agent' || user.role === 'Chef de Service') {
       rows = await query(
         `SELECT ws.id, ws.status, ws.rejected_reason, ws.updated_at,
          t.name as task_name, o.name as objective_name,
@@ -367,7 +437,7 @@ app.get('/api/notifications', async (req, res) => {
          ORDER BY ws.updated_at DESC LIMIT 10`,
         [user.id, since]
       )
-    } else if (user.role === 'Chef de Département' || user.role === 'Administrateur') {
+    } else if (['Chef de Département', 'Directeur de Département', 'Directeur Général', 'Administrateur'].includes(user.role)) {
       rows = await query(
         `SELECT ws.id, ws.status, ws.updated_at,
          CONCAT(u.first_name, ' ', u.last_name) as agent_name,
@@ -392,28 +462,27 @@ app.get('/api/admin/users', async (req, res) => {
   const user = getUser(req)
   if (!user || user.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
   const rows = await query('SELECT u.*, d.name as department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.created_at DESC')
-  res.json(rows)
+  res.json(rows.map(r => ({ ...r, password_hash: undefined })))
 })
 
 app.post('/api/admin/users', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
   try {
-    const { first_name: fn, last_name: ln, email: em, password, role, department_id, status } = req.body
+    const { first_name: fn, last_name: ln, email: em, password, role, department_id, status, works_saturday } = req.body
     const first_name = sanitizeString(fn || '')
     const last_name  = sanitizeString(ln || '')
     const email      = sanitizeString(em || '')
     if (!validateEmail(email)) return res.status(400).json({ error: 'Email invalide' })
     if (!password || password.length < 4) return res.status(400).json({ error: 'Mot de passe trop court (min 4 caractères)' })
-
-    const passwordHash      = hashPassword(password)
-    const passwordEncrypted = encryptPassword(password)
+    const passwordHash = hashPassword(password)
+    const passwordEnc  = encryptPassword(password)
     const result = await run(
-      'INSERT INTO users (first_name, last_name, email, password_hash, password_encrypted, role, department_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [first_name, last_name, email, passwordHash, passwordEncrypted, role, department_id || null, status || 'Actif']
+      'INSERT INTO users (first_name, last_name, email, password_hash, password_encrypted, role, department_id, status, works_saturday) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [first_name, last_name, email, passwordHash, passwordEnc, role, department_id || null, status || 'Actif', works_saturday ? 1 : 0]
     )
     await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
-      [currentUser.id, 'CREATE_USER', `Création de l\'utilisateur ${first_name} ${last_name}`])
+      [currentUser.id, 'CREATE_USER', `Création de l'utilisateur ${first_name} ${last_name}`])
     res.json({ id: result.insertId, message: 'Utilisateur créé avec succès' })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -423,22 +492,22 @@ app.put('/api/admin/users/:id', async (req, res) => {
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
   try {
     const id = req.params.id
-    const { first_name, last_name, email, password, role, department_id, status } = req.body
+    const { first_name, last_name, email, password, role, department_id, status, works_saturday } = req.body
     if (password) {
-      const passwordHash      = hashPassword(password)
-      const passwordEncrypted = encryptPassword(password)
+      const newHash = hashPassword(password)
+      const newEnc  = encryptPassword(password)
       await run(
-        'UPDATE users SET first_name=?, last_name=?, email=?, password_hash=?, password_encrypted=?, role=?, department_id=?, status=?, updated_at=NOW() WHERE id=?',
-        [first_name, last_name, email, passwordHash, passwordEncrypted, role, department_id || null, status, id]
+        'UPDATE users SET first_name=?, last_name=?, email=?, password_hash=?, password_encrypted=?, role=?, department_id=?, status=?, works_saturday=?, updated_at=NOW() WHERE id=?',
+        [first_name, last_name, email, newHash, newEnc, role, department_id || null, status, works_saturday ? 1 : 0, id]
       )
     } else {
       await run(
-        'UPDATE users SET first_name=?, last_name=?, email=?, role=?, department_id=?, status=?, updated_at=NOW() WHERE id=?',
-        [first_name, last_name, email, role, department_id || null, status, id]
+        'UPDATE users SET first_name=?, last_name=?, email=?, role=?, department_id=?, status=?, works_saturday=?, updated_at=NOW() WHERE id=?',
+        [first_name, last_name, email, role, department_id || null, status, works_saturday ? 1 : 0, id]
       )
     }
     await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
-      [currentUser.id, 'UPDATE_USER', `Modification de l\'utilisateur ID ${id}`])
+      [currentUser.id, 'UPDATE_USER', `Modification de l'utilisateur ID ${id}`])
     res.json({ message: 'Utilisateur mis à jour' })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -446,12 +515,11 @@ app.put('/api/admin/users/:id', async (req, res) => {
 app.get('/api/admin/users/:id/password', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
-  const id = req.params.id
-  const rows = await query('SELECT password_encrypted FROM users WHERE id = ?', [id])
+  const rows = await query('SELECT password_encrypted FROM users WHERE id = ?', [req.params.id])
   if (!rows[0]) return res.status(404).json({ error: 'Utilisateur non trouvé' })
   const password = rows[0].password_encrypted ? decryptPassword(rows[0].password_encrypted) : '(mot de passe non disponible)'
   await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
-    [currentUser.id, 'VIEW_PASSWORD', `Consultation du mot de passe de l\'utilisateur ID ${id}`])
+    [currentUser.id, 'VIEW_PASSWORD', `Consultation du mot de passe de l'utilisateur ID ${req.params.id}`])
   res.json({ password })
 })
 
@@ -467,8 +535,7 @@ app.delete('/api/admin/users/:id', async (req, res) => {
 // ============================================
 
 app.get('/api/admin/departments', async (req, res) => {
-  const rows = await query('SELECT * FROM departments ORDER BY name')
-  res.json(rows)
+  res.json(await query('SELECT * FROM departments ORDER BY name'))
 })
 
 app.post('/api/admin/departments', async (req, res) => {
@@ -476,10 +543,8 @@ app.post('/api/admin/departments', async (req, res) => {
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
   try {
     const { name, code, description, status } = req.body
-    const result = await run(
-      'INSERT INTO departments (name, code, description, status) VALUES (?, ?, ?, ?)',
-      [name, code, description || '', status || 'Actif']
-    )
+    const result = await run('INSERT INTO departments (name, code, description, status) VALUES (?, ?, ?, ?)',
+      [name, code, description || '', status || 'Actif'])
     res.json({ id: result.insertId, message: 'Département créé' })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -488,16 +553,13 @@ app.put('/api/admin/departments/:id', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
   const { name, code, description, status } = req.body
-  await run(
-    'UPDATE departments SET name=?, code=?, description=?, status=?, updated_at=NOW() WHERE id=?',
-    [name, code, description || '', status, req.params.id]
-  )
+  await run('UPDATE departments SET name=?, code=?, description=?, status=?, updated_at=NOW() WHERE id=?',
+    [name, code, description || '', status, req.params.id])
   await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
     [currentUser.id, 'UPDATE_DEPT', `Département ID ${req.params.id} mis à jour`])
   res.json({ message: 'Département mis à jour' })
 })
 
-// Suppression logique département (passe en Inactif)
 app.delete('/api/admin/departments/:id', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
@@ -512,18 +574,15 @@ app.delete('/api/admin/departments/:id', async (req, res) => {
 // ============================================
 
 app.get('/api/admin/objectives', async (req, res) => {
-  const rows = await query('SELECT * FROM strategic_objectives ORDER BY name')
-  res.json(rows)
+  res.json(await query('SELECT * FROM strategic_objectives ORDER BY name'))
 })
 
 app.post('/api/admin/objectives', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
   const { name, description, color, target_percentage, status } = req.body
-  const result = await run(
-    'INSERT INTO strategic_objectives (name, description, color, target_percentage, status) VALUES (?, ?, ?, ?, ?)',
-    [name, description || '', color || '#1e3a5f', target_percentage || 0, status || 'Actif']
-  )
+  const result = await run('INSERT INTO strategic_objectives (name, description, color, target_percentage, status) VALUES (?, ?, ?, ?, ?)',
+    [name, description || '', color || '#1e3a5f', target_percentage || 0, status || 'Actif'])
   res.json({ id: result.insertId, message: 'Objectif créé' })
 })
 
@@ -531,16 +590,13 @@ app.put('/api/admin/objectives/:id', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
   const { name, description, color, target_percentage, status } = req.body
-  await run(
-    'UPDATE strategic_objectives SET name=?, description=?, color=?, target_percentage=?, status=?, updated_at=NOW() WHERE id=?',
-    [name, description || '', color || '#1e3a5f', target_percentage || 0, status, req.params.id]
-  )
+  await run('UPDATE strategic_objectives SET name=?, description=?, color=?, target_percentage=?, status=?, updated_at=NOW() WHERE id=?',
+    [name, description || '', color || '#1e3a5f', target_percentage || 0, status, req.params.id])
   await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
     [currentUser.id, 'UPDATE_OBJECTIVE', `Objectif ID ${req.params.id} mis à jour`])
   res.json({ message: 'Objectif mis à jour' })
 })
 
-// Suppression logique objectif
 app.delete('/api/admin/objectives/:id', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
@@ -555,24 +611,21 @@ app.delete('/api/admin/objectives/:id', async (req, res) => {
 // ============================================
 
 app.get('/api/admin/processes', async (req, res) => {
-  const rows = await query(
+  res.json(await query(
     `SELECT p.*, d.name as department_name, o.name as objective_name, o.color as objective_color
      FROM processes p
      JOIN departments d ON p.department_id = d.id
      JOIN strategic_objectives o ON p.objective_id = o.id
      ORDER BY p.name`
-  )
-  res.json(rows)
+  ))
 })
 
 app.post('/api/admin/processes', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
   const { name, description, department_id, objective_id, status } = req.body
-  const result = await run(
-    'INSERT INTO processes (name, description, department_id, objective_id, status) VALUES (?, ?, ?, ?, ?)',
-    [name, description || '', department_id, objective_id, status || 'Actif']
-  )
+  const result = await run('INSERT INTO processes (name, description, department_id, objective_id, status) VALUES (?, ?, ?, ?, ?)',
+    [name, description || '', department_id, objective_id, status || 'Actif'])
   res.json({ id: result.insertId, message: 'Processus créé' })
 })
 
@@ -580,16 +633,13 @@ app.put('/api/admin/processes/:id', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
   const { name, description, department_id, objective_id, status } = req.body
-  await run(
-    'UPDATE processes SET name=?, description=?, department_id=?, objective_id=?, status=?, updated_at=NOW() WHERE id=?',
-    [name, description || '', department_id, objective_id, status, req.params.id]
-  )
+  await run('UPDATE processes SET name=?, description=?, department_id=?, objective_id=?, status=?, updated_at=NOW() WHERE id=?',
+    [name, description || '', department_id, objective_id, status, req.params.id])
   await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
     [currentUser.id, 'UPDATE_PROCESS', `Processus ID ${req.params.id} mis à jour`])
   res.json({ message: 'Processus mis à jour' })
 })
 
-// Suppression logique processus
 app.delete('/api/admin/processes/:id', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
@@ -604,15 +654,14 @@ app.delete('/api/admin/processes/:id', async (req, res) => {
 // ============================================
 
 app.get('/api/admin/tasks', async (req, res) => {
-  const rows = await query(
+  res.json(await query(
     `SELECT t.*, d.name as department_name, p.name as process_name, o.name as objective_name, o.color as objective_color
      FROM tasks t
      JOIN departments d ON t.department_id = d.id
      JOIN processes p ON t.process_id = p.id
      JOIN strategic_objectives o ON t.objective_id = o.id
      ORDER BY t.name`
-  )
-  res.json(rows)
+  ))
 })
 
 app.post('/api/admin/tasks', async (req, res) => {
@@ -621,7 +670,7 @@ app.post('/api/admin/tasks', async (req, res) => {
   const { name, description, department_id, process_id, objective_id, task_type, status } = req.body
   const result = await run(
     'INSERT INTO tasks (name, description, department_id, process_id, objective_id, task_type, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [name, description || '', department_id, process_id, objective_id, task_type || 'Productive', status || 'Actif']
+    [name, description || '', department_id, process_id, objective_id, task_type || 'Production', status || 'Actif']
   )
   res.json({ id: result.insertId, message: 'Tâche créée' })
 })
@@ -632,14 +681,13 @@ app.put('/api/admin/tasks/:id', async (req, res) => {
   const { name, description, department_id, process_id, objective_id, task_type, status } = req.body
   await run(
     'UPDATE tasks SET name=?, description=?, department_id=?, process_id=?, objective_id=?, task_type=?, status=?, updated_at=NOW() WHERE id=?',
-    [name, description || '', department_id, process_id, objective_id, task_type || 'Productive', status, req.params.id]
+    [name, description || '', department_id, process_id, objective_id, task_type, status, req.params.id]
   )
   await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
     [currentUser.id, 'UPDATE_TASK', `Tâche ID ${req.params.id} mise à jour`])
   res.json({ message: 'Tâche mise à jour' })
 })
 
-// Suppression logique tâche
 app.delete('/api/admin/tasks/:id', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
@@ -654,160 +702,306 @@ app.delete('/api/admin/tasks/:id', async (req, res) => {
 // ============================================
 
 app.get('/api/admin/sessions', async (req, res) => {
-  const rows = await query(
+  res.json(await query(
     `SELECT ws.*,
      CONCAT(u.first_name, ' ', u.last_name) as agent_name,
-     d.name as department_name,
-     t.name as task_name,
-     o.name as objective_name,
-     o.color as objective_color
+     d.name as department_name, t.name as task_name,
+     o.name as objective_name, o.color as objective_color
      FROM work_sessions ws
      JOIN users u ON ws.user_id = u.id
      JOIN departments d ON ws.department_id = d.id
      JOIN tasks t ON ws.task_id = t.id
      JOIN strategic_objectives o ON ws.objective_id = o.id
-     ORDER BY ws.created_at DESC
-     LIMIT 200`
-  )
-  res.json(rows)
+     ORDER BY ws.created_at DESC LIMIT 200`
+  ))
 })
 
 // ============================================
-// ADMIN - STATS
+// ADMIN - STATS (avec jours ouvrés, 3-3-3, productivité)
 // ============================================
 
 app.get('/api/admin/stats', async (req, res) => {
   const user = getUser(req)
   if (!user || user.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
+  try {
+    const month  = req.query.month  || new Date().toISOString().slice(0, 7)
+    const month2 = req.query.month2 || null
 
-  const hoursByObjective = await query(
-    `SELECT o.name, o.color, o.target_percentage,
-     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
-     FROM strategic_objectives o
-     LEFT JOIN work_sessions ws ON ws.objective_id = o.id AND ws.status = 'Validé'
-     WHERE o.status = 'Actif'
-     GROUP BY o.id, o.name, o.color, o.target_percentage
-     ORDER BY total_minutes DESC`
-  )
+    const wdStd  = calcWorkingDays(month, false)
+    const wdSat  = calcWorkingDays(month, true)
+    const wdStd2 = month2 ? calcWorkingDays(month2, false) : null
+    const wdSat2 = month2 ? calcWorkingDays(month2, true)  : null
 
-  const hoursByDept = await query(
-    `SELECT d.name, COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
-     FROM departments d
-     LEFT JOIN work_sessions ws ON ws.department_id = d.id AND ws.status = 'Validé'
-     GROUP BY d.id, d.name
-     HAVING total_minutes > 0
-     ORDER BY total_minutes DESC`
-  )
+    const STATUSES = `ws.status IN ('Validé','En attente','En cours')`
+    const mf = (m) => `DATE_FORMAT(ws.start_time, '%Y-%m') = '${m}'`
 
-  // MySQL: DATE_FORMAT au lieu de strftime
-  const monthlyTrend = await query(
-    `SELECT DATE_FORMAT(start_time, '%Y-%m') as month,
-     COALESCE(SUM(duration_minutes), 0) as total_minutes
-     FROM work_sessions WHERE status = 'Validé'
-     GROUP BY DATE_FORMAT(start_time, '%Y-%m')
-     ORDER BY month DESC LIMIT 6`
-  )
+    // Fonction 3-3-3 pour un mois
+    async function getRatio333 (m) {
+      const ratio333 = await query(
+        `SELECT COALESCE(t.task_type,'Production') as type_333,
+         COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+         FROM work_sessions ws LEFT JOIN tasks t ON ws.task_id=t.id
+         WHERE ${STATUSES} AND ${mf(m)}
+         GROUP BY COALESCE(t.task_type,'Production')`
+      )
+      const ratio333ByDept = await query(
+        `SELECT d.name as dept_name, d.id as dept_id,
+         COALESCE(t.task_type,'Production') as type_333,
+         COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+         FROM work_sessions ws
+         LEFT JOIN tasks t ON ws.task_id=t.id
+         LEFT JOIN departments d ON ws.department_id=d.id
+         WHERE ${STATUSES} AND ${mf(m)}
+         GROUP BY d.id, d.name, COALESCE(t.task_type,'Production') ORDER BY d.name`
+      )
+      const ratio333ByAgent = await query(
+        `SELECT CONCAT(u.first_name,' ',u.last_name) as agent_name, u.id as agent_id,
+         d.name as dept_name, u.works_saturday,
+         COALESCE(t.task_type,'Production') as type_333,
+         COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+         FROM work_sessions ws
+         LEFT JOIN tasks t ON ws.task_id=t.id
+         LEFT JOIN users u ON ws.user_id=u.id
+         LEFT JOIN departments d ON u.department_id=d.id
+         WHERE ${STATUSES} AND ${mf(m)}
+         GROUP BY u.id, d.name, u.works_saturday, COALESCE(t.task_type,'Production') ORDER BY d.name, u.last_name`
+      )
+      const deptCapacity = await query(
+        `SELECT d.id as dept_id, d.name as dept_name,
+         COUNT(u.id) as agent_count,
+         SUM(CASE WHEN u.works_saturday=1 THEN 1 ELSE 0 END) as agents_with_saturday,
+         SUM(CASE WHEN u.works_saturday=0 THEN 1 ELSE 0 END) as agents_without_saturday
+         FROM departments d
+         LEFT JOIN users u ON u.department_id=d.id AND u.status='Actif' AND u.role IN ('Agent','Chef de Service')
+         WHERE d.status='Actif' GROUP BY d.id, d.name`
+      )
+      return { ratio333, ratio333ByDept, ratio333ByAgent, deptCapacity }
+    }
 
-  const totalAgents = await query(
-    `SELECT COUNT(*) as count FROM users WHERE role = 'Agent' AND status = 'Actif'`
-  )
-
-  // MySQL: DATE() et CURDATE() au lieu de date() et date('now')
-  const productivityToday = await query(
-    `SELECT 
-       u.id,
-       CONCAT(u.first_name, ' ', u.last_name) as agent_name,
-       d.name as department_name,
-       COALESCE(SUM(ws.duration_minutes), 0) as productive_minutes,
-       CASE WHEN 480 - COALESCE(SUM(ws.duration_minutes), 0) > 0 THEN 480 - COALESCE(SUM(ws.duration_minutes), 0) ELSE 0 END as non_productive_minutes
-     FROM users u
-     LEFT JOIN departments d ON u.department_id = d.id
-     LEFT JOIN work_sessions ws ON ws.user_id = u.id 
-       AND ws.status = 'Validé' 
-       AND DATE(ws.start_time) = CURDATE()
-     WHERE u.role = 'Agent' AND u.status = 'Actif'
-     GROUP BY u.id, u.first_name, u.last_name, d.name`
-  )
-
-  const agentsCount = totalAgents[0]?.count || 0
-  const totalProductiveToday  = productivityToday.reduce((s, a) => s + Math.min(a.productive_minutes, 480), 0)
-  const totalNonProductiveToday = productivityToday.reduce((s, a) => s + a.non_productive_minutes, 0)
-  const totalCapacityToday = agentsCount * 480
-
-  const totalMinutes = hoursByObjective.reduce((sum, o) => sum + o.total_minutes, 0)
-  const objectivesWithPct = hoursByObjective.map(o => ({
-    ...o,
-    percentage: totalMinutes > 0 ? Math.round((o.total_minutes / totalMinutes) * 100) : 0,
-    hours_display: minutesToHours(o.total_minutes)
-  }))
-
-  res.json({
-    hoursByObjective: objectivesWithPct,
-    hoursByDept,
-    monthlyTrend,
-    productivity: {
-      total_agents: agentsCount,
-      total_capacity_today: totalCapacityToday,
-      productive_minutes_today: totalProductiveToday,
-      non_productive_minutes_today: totalNonProductiveToday,
-      productive_hours_today: minutesToHours(totalProductiveToday),
-      non_productive_hours_today: minutesToHours(totalNonProductiveToday),
-      productive_pct: totalCapacityToday > 0 ? Math.round((totalProductiveToday / totalCapacityToday) * 100) : 0,
-      non_productive_pct: totalCapacityToday > 0 ? Math.round((totalNonProductiveToday / totalCapacityToday) * 100) : 0,
-      agents_detail: productivityToday.map(a => ({
-        ...a,
-        productive_hours: minutesToHours(Math.min(a.productive_minutes, 480)),
-        non_productive_hours: minutesToHours(a.non_productive_minutes),
-        productive_pct: Math.round((Math.min(a.productive_minutes, 480) / 480) * 100),
-        non_productive_pct: Math.round((a.non_productive_minutes / 480) * 100)
+    function build333Result (raw) {
+      const map = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+      raw.forEach(r => { const k = norm333(r.type_333); map[k] = (map[k] || 0) + Number(r.total_minutes) })
+      const total = Object.values(map).reduce((s, v) => s + v, 0)
+      return Object.entries(map).map(([label, minutes]) => ({
+        label, minutes, hours_display: minutesToHours(minutes),
+        percentage: total > 0 ? Math.round(minutes * 100 / total) : 0
       }))
     }
-  })
+
+    function buildDeptComparison (raw, caps, wStd, wSat) {
+      const depts = {}
+      raw.forEach(r => {
+        if (!depts[r.dept_name]) {
+          const cap = caps.find(ci => ci.dept_name === r.dept_name)
+          const agSat   = Number(cap?.agents_with_saturday || 0)
+          const agNoSat = Number(cap?.agents_without_saturday || 0)
+          const capacity = (agSat * wSat + agNoSat * wStd) * 480
+          depts[r.dept_name] = {
+            dept_name: r.dept_name, agent_count: cap?.agent_count || 0,
+            agents_with_saturday: agSat, agents_without_saturday: agNoSat,
+            capacity_minutes: capacity, Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0
+          }
+        }
+        depts[r.dept_name][norm333(r.type_333)] += Number(r.total_minutes)
+      })
+      return Object.values(depts).map(d => {
+        const tot = d.Production + d['Administration & Reporting'] + d['Contrôle']
+        const pct = d.capacity_minutes > 0 ? Math.round(tot * 100 / d.capacity_minutes) : 0
+        return { ...d, total_minutes: tot, productive_pct: pct, non_productive_pct: Math.max(0, 100 - pct),
+          hours_display: minutesToHours(tot), capacity_hours_display: minutesToHours(d.capacity_minutes) }
+      })
+    }
+
+    function buildAgentComparison (raw, wStd, wSat) {
+      const agents = {}
+      raw.forEach(r => {
+        if (!agents[r.agent_id]) {
+          const wd = r.works_saturday ? wSat : wStd
+          agents[r.agent_id] = {
+            agent_name: r.agent_name, dept_name: r.dept_name,
+            works_saturday: r.works_saturday || 0,
+            capacity_minutes: wd * 480, working_days: wd,
+            Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0
+          }
+        }
+        agents[r.agent_id][norm333(r.type_333)] += Number(r.total_minutes)
+      })
+      return Object.values(agents).map(a => {
+        const tot = a.Production + a['Administration & Reporting'] + a['Contrôle']
+        const pct = a.capacity_minutes > 0 ? Math.round(tot * 100 / a.capacity_minutes) : 0
+        return { ...a, total_minutes: tot, productive_pct: pct, non_productive_pct: Math.max(0, 100 - pct),
+          hours_display: minutesToHours(tot), capacity_hours_display: minutesToHours(a.capacity_minutes) }
+      })
+    }
+
+    const r1 = await getRatio333(month)
+    const ratio333Result = build333Result(r1.ratio333)
+    const deptComparison  = buildDeptComparison(r1.ratio333ByDept, r1.deptCapacity, wdStd, wdSat)
+    const agentComparison = buildAgentComparison(r1.ratio333ByAgent, wdStd, wdSat)
+
+    let ratio333Month2 = null, deptComparisonMonth2 = null, agentComparisonMonth2 = null
+    if (month2 && wdStd2 && wdSat2) {
+      const r2 = await getRatio333(month2)
+      ratio333Month2       = build333Result(r2.ratio333)
+      deptComparisonMonth2  = buildDeptComparison(r2.ratio333ByDept, r2.deptCapacity, wdStd2, wdSat2)
+      agentComparisonMonth2 = buildAgentComparison(r2.ratio333ByAgent, wdStd2, wdSat2)
+    }
+
+    const hoursByObjective = await query(
+      `SELECT o.name, o.color, o.target_percentage,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM strategic_objectives o
+       LEFT JOIN work_sessions ws ON ws.objective_id=o.id AND ${STATUSES} AND ${mf(month)}
+       WHERE o.status='Actif' GROUP BY o.id, o.name, o.color, o.target_percentage ORDER BY total_minutes DESC`
+    )
+    const hoursByDept = await query(
+      `SELECT d.name, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM departments d
+       LEFT JOIN work_sessions ws ON ws.department_id=d.id AND ${STATUSES} AND ${mf(month)}
+       GROUP BY d.id, d.name HAVING total_minutes>0 ORDER BY total_minutes DESC`
+    )
+    const monthlyTrend = await query(
+      `SELECT DATE_FORMAT(ws.start_time,'%Y-%m') as month, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM work_sessions ws WHERE ${STATUSES}
+       GROUP BY DATE_FORMAT(ws.start_time,'%Y-%m') ORDER BY month DESC LIMIT 6`
+    )
+    const totalAgentsRow = await query(`SELECT COUNT(*) as count FROM users WHERE role IN ('Agent','Chef de Service') AND status='Actif'`)
+    const totalAgents = totalAgentsRow[0]?.count || 0
+
+    const todayDow = new Date().getDay()
+    const isWeekend = todayDow === 0 || todayDow === 6
+    const capacityPerAgent = isWeekend ? 0 : 480
+    const totalCapacityToday = totalAgents * capacityPerAgent
+
+    const productivityToday = await query(
+      `SELECT u.id, CONCAT(u.first_name,' ',u.last_name) as agent_name, d.name as department_name,
+       COALESCE(SUM(CASE WHEN ws.status='Validé'     THEN ws.duration_minutes ELSE 0 END),0) as validated_minutes,
+       COALESCE(SUM(CASE WHEN ws.status='En attente' THEN ws.duration_minutes ELSE 0 END),0) as pending_minutes,
+       COALESCE(SUM(CASE WHEN ws.status='En cours'   THEN ws.duration_minutes ELSE 0 END),0) as inprogress_minutes
+       FROM users u
+       LEFT JOIN departments d ON u.department_id=d.id
+       LEFT JOIN work_sessions ws ON ws.user_id=u.id AND DATE(ws.start_time)=CURDATE() AND ws.status IN ('Validé','En attente','En cours')
+       WHERE u.role IN ('Agent','Chef de Service') AND u.status='Actif'
+       GROUP BY u.id, u.first_name, u.last_name, d.name`
+    )
+
+    const agentsTodayMapped = productivityToday.map(a => {
+      const total_pointed = Math.min(a.validated_minutes + a.pending_minutes + a.inprogress_minutes, capacityPerAgent || 480)
+      const non_pointed   = capacityPerAgent > 0 ? Math.max(capacityPerAgent - (a.validated_minutes + a.pending_minutes + a.inprogress_minutes), 0) : 0
+      return {
+        ...a, total_pointed, non_pointed,
+        validated_hours:   minutesToHours(a.validated_minutes),
+        pending_hours:     minutesToHours(a.pending_minutes),
+        inprogress_hours:  minutesToHours(a.inprogress_minutes),
+        non_pointed_hours: minutesToHours(non_pointed),
+        productive_minutes: total_pointed, non_productive_minutes: non_pointed,
+        productive_pct: capacityPerAgent > 0 ? Math.round((total_pointed / capacityPerAgent) * 100) : 0,
+        is_weekend: isWeekend
+      }
+    })
+
+    const totalPointedToday    = agentsTodayMapped.reduce((s, a) => s + a.total_pointed, 0)
+    const totalNonPointedToday = agentsTodayMapped.reduce((s, a) => s + a.non_pointed, 0)
+    const totalValidatedToday  = agentsTodayMapped.reduce((s, a) => s + Math.min(a.validated_minutes, capacityPerAgent || 480), 0)
+    const totalPendingToday    = agentsTodayMapped.reduce((s, a) => s + Math.min(a.pending_minutes, capacityPerAgent || 480), 0)
+
+    const objTotal = hoursByObjective.reduce((s, o) => s + Number(o.total_minutes), 0)
+
+    res.json({
+      month, month2: month2 || null,
+      working_days: wdStd, working_days_month2: wdStd2,
+      hoursByObjective: hoursByObjective.map(o => ({
+        ...o, total_minutes: Number(o.total_minutes),
+        percentage: objTotal > 0 ? Math.round(Number(o.total_minutes) * 100 / objTotal) : 0,
+        hours_display: minutesToHours(Number(o.total_minutes))
+      })),
+      hoursByDept, monthlyTrend,
+      ratio333: ratio333Result, ratio333Month2,
+      deptComparison, deptComparisonMonth2,
+      agentComparison, agentComparisonMonth2,
+      is_weekend: isWeekend,
+      productivity: {
+        total_agents: totalAgents, total_capacity_today: totalCapacityToday,
+        is_weekend: isWeekend,
+        validated_minutes_today: totalValidatedToday, validated_hours_today: minutesToHours(totalValidatedToday),
+        validated_pct: totalCapacityToday > 0 ? Math.round(totalValidatedToday / totalCapacityToday * 100) : 0,
+        pending_minutes_today: totalPendingToday, pending_hours_today: minutesToHours(totalPendingToday),
+        productive_minutes_today: totalPointedToday, non_productive_minutes_today: totalNonPointedToday,
+        productive_hours_today: minutesToHours(totalPointedToday), non_productive_hours_today: minutesToHours(totalNonPointedToday),
+        productive_pct:     totalCapacityToday > 0 ? Math.round(totalPointedToday    / totalCapacityToday * 100) : 0,
+        non_productive_pct: totalCapacityToday > 0 ? Math.round(totalNonPointedToday / totalCapacityToday * 100) : 0,
+        agents_detail: agentsTodayMapped
+      }
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ============================================
-// ADMIN - RAPPORTS & AUDIT
+// ADMIN - RAPPORTS & EXPORT CSV ENRICHI
 // ============================================
 
 app.get('/api/admin/reports', async (req, res) => {
   const user = getUser(req)
   if (!user || user.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
-  // Filtres optionnels : date_from, date_to, dept_id, status, export=csv
   const { date_from, date_to, dept_id, status: statusFilter, export: exportType } = req.query
   let sql = `SELECT ws.*,
-     CONCAT(u.first_name, ' ', u.last_name) as agent_name,
-     d.name as department_name,
-     t.name as task_name,
-     p.name as process_name,
-     o.name as objective_name,
-     o.color as objective_color
+     CONCAT(u.first_name,' ',u.last_name) as agent_name, d.name as department_name,
+     t.name as task_name, p.name as process_name, t.task_type,
+     o.name as objective_name, o.color as objective_color, ws.rejected_reason
      FROM work_sessions ws
-     JOIN users u ON ws.user_id = u.id
-     JOIN departments d ON ws.department_id = d.id
-     JOIN tasks t ON ws.task_id = t.id
-     JOIN processes p ON t.process_id = p.id
-     JOIN strategic_objectives o ON ws.objective_id = o.id
-     WHERE 1=1`
+     JOIN users u ON ws.user_id=u.id JOIN departments d ON ws.department_id=d.id
+     JOIN tasks t ON ws.task_id=t.id JOIN processes p ON t.process_id=p.id
+     JOIN strategic_objectives o ON ws.objective_id=o.id WHERE 1=1`
   const params = []
-  if (date_from)     { sql += ' AND DATE(ws.start_time) >= ?'; params.push(date_from) }
-  if (date_to)       { sql += ' AND DATE(ws.start_time) <= ?'; params.push(date_to) }
-  if (dept_id)       { sql += ' AND ws.department_id = ?';     params.push(dept_id) }
-  if (statusFilter)  { sql += ' AND ws.status = ?';            params.push(statusFilter) }
+  if (date_from)    { sql += ' AND DATE(ws.start_time) >= ?'; params.push(date_from) }
+  if (date_to)      { sql += ' AND DATE(ws.start_time) <= ?'; params.push(date_to) }
+  if (dept_id)      { sql += ' AND ws.department_id = ?';     params.push(dept_id) }
+  if (statusFilter) { sql += ' AND ws.status = ?';            params.push(statusFilter) }
   sql += ' ORDER BY ws.start_time DESC'
   const rows = await query(sql, params)
 
   if (exportType === 'csv') {
-    const header = 'ID,Agent,Département,Tâche,Processus,Objectif,Type,Statut,Début,Fin,Durée (min),Commentaire,Rejet\n'
-    const csvRows = rows.map(r => [
-      r.id, `"${r.agent_name}"`, `"${r.department_name}"`, `"${r.task_name}"`,
-      `"${r.process_name}"`, `"${r.objective_name}"`, r.session_type, r.status,
-      r.start_time ? new Date(r.start_time).toLocaleString('fr-FR') : '',
-      r.end_time   ? new Date(r.end_time).toLocaleString('fr-FR') : '',
-      r.duration_minutes, `"${r.comment || ''}"`, `"${r.rejected_reason || ''}"`
-    ].join(',')).join('\n')
+    // Calcul des pourcentages 3-3-3 par agent/mois
+    const agentMonthMap = {}
+    for (const r of rows) {
+      if (r.status !== 'Validé') continue
+      const key = `${r.agent_name}|${(r.start_time ? new Date(r.start_time).toISOString() : '').slice(0, 7)}`
+      if (!agentMonthMap[key]) agentMonthMap[key] = { prod: 0, admin: 0, ctrl: 0, total: 0 }
+      const cat = norm333(r.task_type)
+      const dur = Number(r.duration_minutes || 0)
+      agentMonthMap[key].total += dur
+      if (cat === 'Production') agentMonthMap[key].prod += dur
+      else if (cat === 'Administration & Reporting') agentMonthMap[key].admin += dur
+      else if (cat === 'Contrôle') agentMonthMap[key].ctrl += dur
+    }
+    const pct = (num, den) => den > 0 ? (num / den * 100).toFixed(1) + '%' : '0%'
+    const hhmm = (min) => { const h = Math.floor(min / 60), m = min % 60; return `${h}h ${String(m).padStart(2, '0')}m` }
+
+    const header = 'Agent,Département,Tâche,Processus,Objectif,Date début,Date fin,Durée (min),Heures (hh:mm),Heures (décimal),Catégorie 3-3-3,Mois,Journée,Type,Statut,Motif rejet,% Productif (mois),% Admin-Reporting (mois),% Contrôle (mois),% Non productif (mois),Temps reporting (mois hh:mm)\n'
+    const csvRows = rows.map(r => {
+      const dur  = Number(r.duration_minutes || 0)
+      const cat  = norm333(r.task_type)
+      const st   = r.start_time ? new Date(r.start_time).toISOString() : ''
+      const mois = st.slice(0, 7)
+      const jour = st.slice(0, 10)
+      const key  = `${r.agent_name}|${mois}`
+      const am   = agentMonthMap[key] || { prod: 0, admin: 0, ctrl: 0, total: 0 }
+      const np   = Math.max(0, am.total - am.prod - am.admin - am.ctrl)
+      return [
+        `"${r.agent_name || ''}"`, `"${r.department_name || ''}"`, `"${r.task_name || ''}"`,
+        `"${r.process_name || ''}"`, `"${r.objective_name || ''}"`,
+        r.start_time ? new Date(r.start_time).toLocaleString('fr-FR') : '',
+        r.end_time   ? new Date(r.end_time).toLocaleString('fr-FR')   : '',
+        dur, hhmm(dur), (dur / 60).toFixed(2), cat, mois, jour,
+        r.session_type || '', r.status || '',
+        `"${(r.rejected_reason || '').replace(/"/g, '""')}"`,
+        pct(am.prod, am.total), pct(am.admin, am.total), pct(am.ctrl, am.total),
+        pct(np, am.total), hhmm(am.admin + am.ctrl)
+      ].join(',')
+    }).join('\n')
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
-    res.setHeader('Content-Disposition', `attachment; filename="rapport_timetrack_${new Date().toISOString().split('T')[0]}.csv"`)
-    return res.send('\uFEFF' + header + csvRows) // BOM utf-8 pour Excel
+    res.setHeader('Content-Disposition', `attachment; filename="rapport_admin_${new Date().toISOString().split('T')[0]}.csv"`)
+    return res.send('\uFEFF' + header + csvRows)
   }
   res.json(rows)
 })
@@ -816,17 +1010,14 @@ app.get('/api/admin/audit', async (req, res) => {
   const user = getUser(req)
   if (!user || user.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
   const { date_from, date_to, action: actionFilter, export: exportType } = req.query
-  let sql = `SELECT al.*, CONCAT(u.first_name, ' ', u.last_name) as user_name
-     FROM audit_logs al
-     LEFT JOIN users u ON al.user_id = u.id
-     WHERE 1=1`
+  let sql = `SELECT al.*, CONCAT(u.first_name,' ',u.last_name) as user_name
+     FROM audit_logs al LEFT JOIN users u ON al.user_id=u.id WHERE 1=1`
   const params = []
   if (date_from)    { sql += ' AND DATE(al.created_at) >= ?'; params.push(date_from) }
   if (date_to)      { sql += ' AND DATE(al.created_at) <= ?'; params.push(date_to) }
   if (actionFilter) { sql += ' AND al.action LIKE ?';         params.push(`%${actionFilter}%`) }
   sql += ' ORDER BY al.created_at DESC LIMIT 500'
   const rows = await query(sql, params)
-
   if (exportType === 'csv') {
     const header = 'ID,Utilisateur,Action,Détails,IP,Date\n'
     const csvRows = rows.map(r => [
@@ -836,7 +1027,7 @@ app.get('/api/admin/audit', async (req, res) => {
       r.created_at ? new Date(r.created_at).toLocaleString('fr-FR') : ''
     ].join(',')).join('\n')
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
-    res.setHeader('Content-Disposition', `attachment; filename="audit_timetrack_${new Date().toISOString().split('T')[0]}.csv"`)
+    res.setHeader('Content-Disposition', `attachment; filename="audit_${new Date().toISOString().split('T')[0]}.csv"`)
     return res.send('\uFEFF' + header + csvRows)
   }
   res.json(rows)
@@ -849,47 +1040,29 @@ app.get('/api/admin/audit', async (req, res) => {
 app.get('/api/agent/dashboard', async (req, res) => {
   const user = getUser(req)
   if (!user) return res.status(401).json({ error: 'Non autorisé' })
-
   const today = new Date().toISOString().split('T')[0]
-
-  const todayStats = await query(
-    `SELECT COALESCE(SUM(duration_minutes), 0) as today_minutes
-     FROM work_sessions WHERE user_id = ? AND DATE(start_time) = ? AND status IN ('Validé', 'Terminé')`,
-    [user.id, today]
-  )
-  const totalStats = await query(
-    `SELECT COALESCE(SUM(duration_minutes), 0) as total_minutes
-     FROM work_sessions WHERE user_id = ? AND status IN ('Validé', 'Terminé')`,
-    [user.id]
-  )
-  const sessionStats = await query(
-    `SELECT COUNT(*) as total, SUM(CASE WHEN status = 'Rejeté' THEN 1 ELSE 0 END) as rejected
-     FROM work_sessions WHERE user_id = ?`,
-    [user.id]
-  )
+  const todayStats = await query(`SELECT COALESCE(SUM(duration_minutes),0) as today_minutes FROM work_sessions WHERE user_id=? AND DATE(start_time)=? AND status IN ('Validé','Terminé')`, [user.id, today])
+  const totalStats = await query(`SELECT COALESCE(SUM(duration_minutes),0) as total_minutes FROM work_sessions WHERE user_id=? AND status IN ('Validé','Terminé')`, [user.id])
+  const sessionStats = await query(`SELECT COUNT(*) as total, SUM(CASE WHEN status='Rejeté' THEN 1 ELSE 0 END) as rejected FROM work_sessions WHERE user_id=?`, [user.id])
   const byObjective = await query(
-    `SELECT o.name, o.color, COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
+    `SELECT o.name, o.color, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
      FROM strategic_objectives o
-     LEFT JOIN work_sessions ws ON ws.objective_id = o.id AND ws.user_id = ? AND ws.status IN ('Validé', 'Terminé')
-     WHERE o.status = 'Actif'
-     GROUP BY o.id, o.name, o.color
-     HAVING total_minutes > 0
-     ORDER BY total_minutes DESC`,
+     LEFT JOIN work_sessions ws ON ws.objective_id=o.id AND ws.user_id=? AND ws.status IN ('Validé','Terminé')
+     WHERE o.status='Actif' GROUP BY o.id, o.name, o.color HAVING total_minutes>0 ORDER BY total_minutes DESC`,
     [user.id]
   )
-
-  const totalMin = byObjective.reduce((sum, o) => sum + o.total_minutes, 0)
+  const totalMin = byObjective.reduce((s, o) => s + Number(o.total_minutes), 0)
   res.json({
-    today_minutes: todayStats[0]?.today_minutes || 0,
-    today_hours: minutesToHours(todayStats[0]?.today_minutes || 0),
-    total_minutes: totalStats[0]?.total_minutes || 0,
-    total_hours: minutesToHours(totalStats[0]?.total_minutes || 0),
-    total_sessions: sessionStats[0]?.total || 0,
-    rejected_sessions: sessionStats[0]?.rejected || 0,
+    today_minutes: Number(todayStats[0]?.today_minutes || 0),
+    today_hours:   minutesToHours(Number(todayStats[0]?.today_minutes || 0)),
+    total_minutes: Number(totalStats[0]?.total_minutes || 0),
+    total_hours:   minutesToHours(Number(totalStats[0]?.total_minutes || 0)),
+    total_sessions:    Number(sessionStats[0]?.total    || 0),
+    rejected_sessions: Number(sessionStats[0]?.rejected || 0),
     byObjective: byObjective.map(o => ({
-      ...o,
-      percentage: totalMin > 0 ? Math.round((o.total_minutes / totalMin) * 100) : 0,
-      hours_display: minutesToHours(o.total_minutes)
+      ...o, total_minutes: Number(o.total_minutes),
+      percentage:   totalMin > 0 ? Math.round(Number(o.total_minutes) * 100 / totalMin) : 0,
+      hours_display: minutesToHours(Number(o.total_minutes))
     }))
   })
 })
@@ -901,16 +1074,12 @@ app.get('/api/agent/dashboard', async (req, res) => {
 app.get('/api/agent/tasks', async (req, res) => {
   const user = getUser(req)
   if (!user) return res.status(401).json({ error: 'Non autorisé' })
-  const rows = await query(
+  res.json(await query(
     `SELECT t.*, p.name as process_name, o.name as objective_name, o.color as objective_color
-     FROM tasks t
-     JOIN processes p ON t.process_id = p.id
-     JOIN strategic_objectives o ON t.objective_id = o.id
-     WHERE t.department_id = ? AND t.status = 'Actif'
-     ORDER BY o.name, t.name`,
+     FROM tasks t JOIN processes p ON t.process_id=p.id JOIN strategic_objectives o ON t.objective_id=o.id
+     WHERE t.department_id=? AND t.status='Actif' ORDER BY o.name, t.name`,
     [user.department_id]
-  )
-  res.json(rows)
+  ))
 })
 
 // ============================================
@@ -920,16 +1089,12 @@ app.get('/api/agent/tasks', async (req, res) => {
 app.get('/api/agent/sessions', async (req, res) => {
   const user = getUser(req)
   if (!user) return res.status(401).json({ error: 'Non autorisé' })
-  const rows = await query(
+  res.json(await query(
     `SELECT ws.*, t.name as task_name, o.name as objective_name, o.color as objective_color
-     FROM work_sessions ws
-     JOIN tasks t ON ws.task_id = t.id
-     JOIN strategic_objectives o ON ws.objective_id = o.id
-     WHERE ws.user_id = ?
-     ORDER BY ws.start_time DESC`,
+     FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN strategic_objectives o ON ws.objective_id=o.id
+     WHERE ws.user_id=? ORDER BY ws.start_time DESC`,
     [user.id]
-  )
-  res.json(rows)
+  ))
 })
 
 app.get('/api/agent/sessions/active', async (req, res) => {
@@ -937,11 +1102,8 @@ app.get('/api/agent/sessions/active', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Non autorisé' })
   const rows = await query(
     `SELECT ws.*, t.name as task_name, o.name as objective_name
-     FROM work_sessions ws
-     JOIN tasks t ON ws.task_id = t.id
-     JOIN strategic_objectives o ON ws.objective_id = o.id
-     WHERE ws.user_id = ? AND ws.status = 'En cours'
-     LIMIT 1`,
+     FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN strategic_objectives o ON ws.objective_id=o.id
+     WHERE ws.user_id=? AND ws.status='En cours' LIMIT 1`,
     [user.id]
   )
   res.json(rows[0] || null)
@@ -952,14 +1114,25 @@ app.post('/api/agent/sessions/start', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Non autorisé' })
   try {
     const { task_id } = req.body
-    const active = await query('SELECT id FROM work_sessions WHERE user_id = ? AND status = "En cours"', [user.id])
+    // Vérifier plafond 8h aujourd'hui
+    const todayTotal = await query(
+      `SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions WHERE user_id=? AND DATE(start_time)=CURDATE() AND status IN ('Validé','Terminé','En cours')`,
+      [user.id]
+    )
+    if (Number(todayTotal[0]?.m || 0) >= 480) return res.status(400).json({ error: 'Plafond journalier de 8h atteint' })
+
+    const active = await query('SELECT id FROM work_sessions WHERE user_id=? AND status="En cours"', [user.id])
     if (active.length > 0) return res.status(400).json({ error: 'Une session est déjà en cours' })
 
-    const task = await query('SELECT * FROM tasks WHERE id = ?', [task_id])
-    if (!task[0]) return res.status(404).json({ error: 'Tâche non trouvée' })
+    // Vérifier si samedi autorisé
+    const todayDow = new Date().getDay()
+    if (todayDow === 0) return res.status(400).json({ error: 'Pas de pointage le dimanche' })
+    if (todayDow === 6 && !user.works_saturday) return res.status(400).json({ error: 'Vous n\'êtes pas autorisé à travailler le samedi' })
 
+    const task = await query('SELECT * FROM tasks WHERE id=?', [task_id])
+    if (!task[0]) return res.status(404).json({ error: 'Tâche non trouvée' })
     const result = await run(
-      'INSERT INTO work_sessions (user_id, task_id, objective_id, department_id, start_time, session_type, status) VALUES (?, ?, ?, ?, NOW(), "Auto", "En cours")',
+      'INSERT INTO work_sessions (user_id, task_id, objective_id, department_id, start_time, session_type, status) VALUES (?,?,?,?,NOW(),"Auto","En cours")',
       [user.id, task_id, task[0].objective_id, user.department_id]
     )
     res.json({ id: result.insertId, message: 'Session démarrée' })
@@ -970,13 +1143,12 @@ app.post('/api/agent/sessions/stop', async (req, res) => {
   const user = getUser(req)
   if (!user) return res.status(401).json({ error: 'Non autorisé' })
   try {
-    const active = await query('SELECT * FROM work_sessions WHERE user_id = ? AND status = "En cours"', [user.id])
+    const { comment } = req.body || {}
+    const active = await query('SELECT * FROM work_sessions WHERE user_id=? AND status="En cours"', [user.id])
     if (!active[0]) return res.status(400).json({ error: 'Aucune session en cours' })
-    const durationMinutes = Math.round((Date.now() - new Date(active[0].start_time).getTime()) / 60000)
-    await run(
-      'UPDATE work_sessions SET end_time=NOW(), duration_minutes=?, status="Terminé", updated_at=NOW() WHERE id=?',
-      [durationMinutes, active[0].id]
-    )
+    const durationMinutes = Math.min(Math.round((Date.now() - new Date(active[0].start_time).getTime()) / 60000), 480)
+    await run('UPDATE work_sessions SET end_time=NOW(), duration_minutes=?, status="Terminé", comment=?, updated_at=NOW() WHERE id=?',
+      [durationMinutes, comment || null, active[0].id])
     res.json({ message: 'Session arrêtée', duration_minutes: durationMinutes })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -986,12 +1158,13 @@ app.post('/api/agent/sessions/manual', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Non autorisé' })
   try {
     const { task_id, start_time, end_time, comment } = req.body
-    const task = await query('SELECT * FROM tasks WHERE id = ?', [task_id])
+    const task = await query('SELECT * FROM tasks WHERE id=?', [task_id])
     if (!task[0]) return res.status(404).json({ error: 'Tâche non trouvée' })
-    const durationMinutes = Math.round((new Date(end_time) - new Date(start_time)) / 60000)
-    if (durationMinutes < 0) return res.status(400).json({ error: 'La date de fin doit être après la date de début' })
+    let durationMinutes = Math.round((new Date(end_time) - new Date(start_time)) / 60000)
+    if (durationMinutes <= 0) return res.status(400).json({ error: 'La date de fin doit être après la date de début' })
+    durationMinutes = Math.min(durationMinutes, 480)
     const result = await run(
-      'INSERT INTO work_sessions (user_id, task_id, objective_id, department_id, start_time, end_time, duration_minutes, session_type, status, comment) VALUES (?, ?, ?, ?, ?, ?, ?, "Manuelle", "Terminé", ?)',
+      'INSERT INTO work_sessions (user_id, task_id, objective_id, department_id, start_time, end_time, duration_minutes, session_type, status, comment) VALUES (?,?,?,?,?,?,?,"Manuelle","Terminé",?)',
       [user.id, task_id, task[0].objective_id, user.department_id, start_time, end_time, durationMinutes, comment || '']
     )
     res.json({ id: result.insertId, message: 'Session enregistrée' })
@@ -1006,36 +1179,33 @@ app.get('/api/agent/stats', async (req, res) => {
   const user = getUser(req)
   if (!user) return res.status(401).json({ error: 'Non autorisé' })
   const today = new Date().toISOString().split('T')[0]
-
-  const todayMin      = await query(`SELECT COALESCE(SUM(duration_minutes), 0) as m FROM work_sessions WHERE user_id=? AND DATE(start_time)=? AND status IN ('Validé','Terminé')`, [user.id, today])
-  const totalMin      = await query(`SELECT COALESCE(SUM(duration_minutes), 0) as m FROM work_sessions WHERE user_id=? AND status IN ('Validé','Terminé')`, [user.id])
-  const validatedMin  = await query(`SELECT COALESCE(SUM(duration_minutes), 0) as m FROM work_sessions WHERE user_id=? AND status='Validé'`, [user.id])
-  const totalSessions = await query(`SELECT COUNT(*) as c FROM work_sessions WHERE user_id=?`, [user.id])
-  const byObjective   = await query(
-    `SELECT o.name, o.color, COALESCE(SUM(ws.duration_minutes), 0) as total_minutes, COUNT(ws.id) as session_count
+  const todayMin     = await query(`SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions WHERE user_id=? AND DATE(start_time)=? AND status IN ('Validé','Terminé')`, [user.id, today])
+  const totalMin     = await query(`SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions WHERE user_id=? AND status IN ('Validé','Terminé')`, [user.id])
+  const validatedMin = await query(`SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions WHERE user_id=? AND status='Validé'`, [user.id])
+  const totalSess    = await query(`SELECT COUNT(*) as c FROM work_sessions WHERE user_id=?`, [user.id])
+  const byObjective  = await query(
+    `SELECT o.name, o.color, COALESCE(SUM(ws.duration_minutes),0) as total_minutes, COUNT(ws.id) as session_count
      FROM strategic_objectives o
-     LEFT JOIN work_sessions ws ON ws.objective_id = o.id AND ws.user_id = ? AND ws.status IN ('Validé','Terminé')
-     WHERE o.status = 'Actif'
-     GROUP BY o.id, o.name, o.color
-     ORDER BY total_minutes DESC`,
+     LEFT JOIN work_sessions ws ON ws.objective_id=o.id AND ws.user_id=? AND ws.status IN ('Validé','Terminé')
+     WHERE o.status='Actif' GROUP BY o.id, o.name, o.color ORDER BY total_minutes DESC`,
     [user.id]
   )
-  const totalM = byObjective.reduce((sum, o) => sum + o.total_minutes, 0)
+  const totalM = byObjective.reduce((s, o) => s + Number(o.total_minutes), 0)
   res.json({
-    today_hours: minutesToHours(todayMin[0]?.m || 0),
-    total_hours: minutesToHours(totalMin[0]?.m || 0),
-    validated_hours: minutesToHours(validatedMin[0]?.m || 0),
-    total_sessions: totalSessions[0]?.c || 0,
+    today_hours:     minutesToHours(Number(todayMin[0]?.m || 0)),
+    total_hours:     minutesToHours(Number(totalMin[0]?.m || 0)),
+    validated_hours: minutesToHours(Number(validatedMin[0]?.m || 0)),
+    total_sessions:  Number(totalSess[0]?.c || 0),
     byObjective: byObjective.map(o => ({
-      ...o,
-      percentage: totalM > 0 ? Math.round((o.total_minutes / totalM) * 100) : 0,
-      hours_display: minutesToHours(o.total_minutes)
+      ...o, total_minutes: Number(o.total_minutes),
+      percentage: totalM > 0 ? Math.round(Number(o.total_minutes) * 100 / totalM) : 0,
+      hours_display: minutesToHours(Number(o.total_minutes))
     }))
   })
 })
 
 // ============================================
-// CHEF - DASHBOARD
+// CHEF DE DÉPARTEMENT - DASHBOARD (complet avec 3-3-3 + cumul)
 // ============================================
 
 app.get('/api/chef/dashboard', async (req, res) => {
@@ -1044,105 +1214,239 @@ app.get('/api/chef/dashboard', async (req, res) => {
     return res.status(401).json({ error: 'Non autorisé' })
   }
   const deptId = user.department_id
+  const month  = req.query.month  || new Date().toISOString().slice(0, 7)
+  const month2 = req.query.month2 || null
+  const CIBLES = { 'Production': 70, 'Administration & Reporting': 20, 'Contrôle': 10 }
 
-  const activeAgents = await query(
-    `SELECT COUNT(DISTINCT user_id) as count FROM work_sessions WHERE department_id = ? AND DATE(start_time) = CURDATE()`,
-    [deptId]
-  )
-  const totalTeamHours = await query(
-    `SELECT COALESCE(SUM(duration_minutes), 0) as m FROM work_sessions 
-     WHERE department_id = ? AND DATE_FORMAT(start_time, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m') AND status IN ('Validé','Terminé')`,
-    [deptId]
-  )
-  const toValidate = await query(
-    `SELECT COUNT(*) as c FROM work_sessions WHERE department_id = ? AND status = 'Terminé'`,
-    [deptId]
-  )
+  const activeAgents = await query(`SELECT COUNT(DISTINCT user_id) as count FROM work_sessions WHERE department_id=? AND DATE(start_time)=CURDATE()`, [deptId])
+  const totalTeamHours = await query(`SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions WHERE department_id=? AND DATE_FORMAT(start_time,'%Y-%m')=? AND status IN ('Validé','Terminé')`, [deptId, month])
+  const toValidate = await query(`SELECT COUNT(*) as c FROM work_sessions WHERE department_id=? AND status='Terminé'`, [deptId])
+
   const hoursByAgent = await query(
-    `SELECT CONCAT(u.first_name, ' ', u.last_name) as agent_name,
-     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
-     FROM users u
-     LEFT JOIN work_sessions ws ON ws.user_id = u.id AND ws.status IN ('Validé','Terminé')
-     WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
-     GROUP BY u.id, u.first_name, u.last_name`,
-    [deptId]
-  )
-  const byObjective = await query(
-    `SELECT o.name, o.color, o.target_percentage,
-     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
-     FROM strategic_objectives o
-     LEFT JOIN work_sessions ws ON ws.objective_id = o.id AND ws.department_id = ? AND ws.status IN ('Validé','Terminé')
-     WHERE o.status = 'Actif'
-     GROUP BY o.id, o.name, o.color, o.target_percentage
-     HAVING total_minutes > 0`,
-    [deptId]
-  )
-  const agentDetail = await query(
-    `SELECT u.id, CONCAT(u.first_name, ' ', u.last_name) as agent_name,
-     COUNT(ws.id) as total_sessions,
-     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes,
-     COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END), 0) as validated_minutes,
-     COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END) * 100.0 / NULLIF(SUM(ws.duration_minutes), 0), 0) as pct_validated
-     FROM users u
-     LEFT JOIN work_sessions ws ON ws.user_id = u.id
-     WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
-     GROUP BY u.id, u.first_name, u.last_name`,
-    [deptId]
-  )
-  const agentProductivityToday = await query(
-    `SELECT u.id, CONCAT(u.first_name, ' ', u.last_name) as agent_name,
-     COALESCE(SUM(ws.duration_minutes), 0) as productive_minutes_today,
-     CASE WHEN 480 - COALESCE(SUM(ws.duration_minutes), 0) > 0 THEN 480 - COALESCE(SUM(ws.duration_minutes), 0) ELSE 0 END as non_productive_minutes_today
-     FROM users u
-     LEFT JOIN work_sessions ws ON ws.user_id = u.id 
-       AND ws.status = 'Validé' 
-       AND DATE(ws.start_time) = CURDATE()
-     WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
-     GROUP BY u.id, u.first_name, u.last_name`,
-    [deptId]
+    `SELECT CONCAT(u.first_name,' ',u.last_name) as agent_name, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+     FROM users u LEFT JOIN work_sessions ws ON ws.user_id=u.id AND ws.status IN ('Validé','Terminé') AND DATE_FORMAT(ws.start_time,'%Y-%m')=?
+     WHERE u.department_id=? AND u.role IN ('Agent','Chef de Service') AND u.status='Actif' GROUP BY u.id, u.first_name, u.last_name`,
+    [month, deptId]
   )
 
-  const objData = byObjective
-  const totalMin = objData.reduce((sum, o) => sum + o.total_minutes, 0)
-  const productivityMap = {}
-  for (const p of agentProductivityToday) productivityMap[p.id] = p
+  const agentDetail = await query(
+    `SELECT u.id, CONCAT(u.first_name,' ',u.last_name) as agent_name,
+     COUNT(ws.id) as total_sessions,
+     COALESCE(SUM(ws.duration_minutes),0) as total_minutes,
+     COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END),0) as validated_minutes,
+     COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END)*100.0/NULLIF(SUM(ws.duration_minutes),0),0) as pct_validated
+     FROM users u LEFT JOIN work_sessions ws ON ws.user_id=u.id AND DATE_FORMAT(ws.start_time,'%Y-%m')=?
+     WHERE u.department_id=? AND u.role IN ('Agent','Chef de Service') AND u.status='Actif'
+     GROUP BY u.id, u.first_name, u.last_name`,
+    [month, deptId]
+  )
+
+  const todayDow = new Date().getDay()
+  const isWeekend = todayDow === 0 || todayDow === 6
+  const capPerAgent = isWeekend ? 0 : 480
+
+  const agentProductivityToday = await query(
+    `SELECT u.id,
+     COALESCE(SUM(CASE WHEN ws.status='Validé'     THEN ws.duration_minutes ELSE 0 END),0) as validated_minutes_today,
+     COALESCE(SUM(CASE WHEN ws.status='En attente' THEN ws.duration_minutes ELSE 0 END),0) as pending_minutes_today,
+     COALESCE(SUM(CASE WHEN ws.status='En cours'   THEN ws.duration_minutes ELSE 0 END),0) as inprogress_minutes_today
+     FROM users u
+     LEFT JOIN work_sessions ws ON ws.user_id=u.id AND DATE(ws.start_time)=CURDATE() AND ws.status IN ('Validé','En attente','En cours')
+     WHERE u.department_id=? AND u.role IN ('Agent','Chef de Service') AND u.status='Actif' GROUP BY u.id`,
+    [deptId]
+  )
+  const prodMap = {}
+  agentProductivityToday.forEach(p => { prodMap[p.id] = p })
+
+  // 3-3-3 pour un mois donné
+  async function get333ForMonth (m) {
+    const raw = await query(
+      `SELECT CONCAT(u.first_name,' ',u.last_name) as agent_name, u.id as agent_id,
+       COALESCE(t.task_type,'Production') as type_333,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM work_sessions ws
+       LEFT JOIN tasks t ON ws.task_id=t.id LEFT JOIN users u ON ws.user_id=u.id
+       WHERE ws.department_id=? AND ws.status IN ('Validé','En attente','En cours')
+         AND DATE_FORMAT(ws.start_time,'%Y-%m')=?
+       GROUP BY u.id, u.first_name, u.last_name, COALESCE(t.task_type,'Production')`,
+      [deptId, m]
+    )
+    const agentMap = {}
+    raw.forEach(r => {
+      if (!agentMap[r.agent_id]) agentMap[r.agent_id] = { agent_name: r.agent_name, Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+      agentMap[r.agent_id][norm333(r.type_333)] += Number(r.total_minutes)
+    })
+    const agentRows = Object.values(agentMap).map(a => {
+      const total = a.Production + a['Administration & Reporting'] + a['Contrôle']
+      return { ...a, total_minutes: total, hours_display: minutesToHours(total) }
+    })
+    const globalMap = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+    raw.forEach(r => { globalMap[norm333(r.type_333)] += Number(r.total_minutes) })
+    const globalTotal = Object.values(globalMap).reduce((s, v) => s + v, 0)
+    const global333 = Object.entries(globalMap).map(([label, minutes]) => ({
+      label, minutes, hours_display: minutesToHours(minutes),
+      percentage: globalTotal > 0 ? Math.round(minutes * 100 / globalTotal) : 0,
+      cible: CIBLES[label] || 0,
+      ecart: (globalTotal > 0 ? Math.round(minutes * 100 / globalTotal) : 0) - (CIBLES[label] || 0)
+    }))
+    return { global333, agentRows }
+  }
+
+  const r333Main  = await get333ForMonth(month)
+  const r333M2    = month2 ? await get333ForMonth(month2) : null
+
+  // Cumul 6 mois par agent
+  const last6 = await query(
+    `SELECT DISTINCT DATE_FORMAT(start_time,'%Y-%m') as m FROM work_sessions WHERE status IN ('Validé','Terminé') AND department_id=? ORDER BY m DESC LIMIT 6`,
+    [deptId]
+  )
+  const cumulMonths = last6.map(r => r.m)
+  let cumulAgentComparison = []
+  if (cumulMonths.length > 0) {
+    const placeholders = cumulMonths.map(() => '?').join(',')
+    const cumulRaw = await query(
+      `SELECT ws.user_id as agent_id, CONCAT(u.first_name,' ',u.last_name) as agent_name,
+       u.works_saturday, DATE_FORMAT(ws.start_time,'%Y-%m') as month,
+       COALESCE(t.task_type,'Production') as type_333, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN users u ON ws.user_id=u.id
+       WHERE ws.department_id=? AND ws.status IN ('Validé','Terminé') AND DATE_FORMAT(ws.start_time,'%Y-%m') IN (${placeholders})
+       GROUP BY ws.user_id, DATE_FORMAT(ws.start_time,'%Y-%m'), t.task_type`,
+      [deptId, ...cumulMonths]
+    )
+    const aMap = {}
+    cumulRaw.forEach(r => {
+      if (!aMap[r.agent_id]) aMap[r.agent_id] = {
+        agent_id: r.agent_id, agent_name: r.agent_name, works_saturday: r.works_saturday || 0,
+        months_included: new Set(), Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0
+      }
+      aMap[r.agent_id][norm333(r.type_333)] += Number(r.total_minutes)
+      aMap[r.agent_id].months_included.add(r.month)
+    })
+    cumulAgentComparison = Object.values(aMap).map(a => {
+      const nbM = a.months_included.size || 1
+      const wd  = a.works_saturday ? 26 : 22
+      const cap = wd * 480 * nbM
+      const tot = a.Production + a['Administration & Reporting'] + a['Contrôle']
+      const pct = cap > 0 ? Math.round(tot * 100 / cap) : 0
+      return {
+        agent_id: a.agent_id, agent_name: a.agent_name, works_saturday: a.works_saturday,
+        capacity_minutes: cap, Production: a.Production,
+        'Administration & Reporting': a['Administration & Reporting'], 'Contrôle': a['Contrôle'],
+        total_minutes: tot, productive_pct: pct, non_productive_pct: Math.max(0, 100 - pct),
+        hours_display: minutesToHours(tot), months_count: nbM
+      }
+    }).sort((a, b) => b.total_minutes - a.total_minutes)
+  }
 
   const nbAgents = agentDetail.length
-  const totalProductiveTeam   = agentProductivityToday.reduce((s, a) => s + Math.min(a.productive_minutes_today, 480), 0)
-  const totalNonProductiveTeam = agentProductivityToday.reduce((s, a) => s + a.non_productive_minutes_today, 0)
+  const prodMap2 = {}
+  agentProductivityToday.forEach(p => { prodMap2[p.id] = p })
+  const totalValidatedTeam  = agentProductivityToday.reduce((s, a) => s + Math.min(a.validated_minutes_today, capPerAgent || 480), 0)
+  const totalPendingTeam    = agentProductivityToday.reduce((s, a) => s + Math.min(a.pending_minutes_today, capPerAgent || 480), 0)
+  const totalInprogressTeam = agentProductivityToday.reduce((s, a) => s + Math.min(a.inprogress_minutes_today, capPerAgent || 480), 0)
+  const totalPointedTeam    = Math.min(totalValidatedTeam + totalPendingTeam + totalInprogressTeam, nbAgents * (capPerAgent || 480))
+  const totalNonPointedTeam = capPerAgent > 0 ? Math.max(nbAgents * capPerAgent - totalPointedTeam, 0) : 0
 
   res.json({
-    active_agents: activeAgents[0]?.count || 0,
-    total_team_hours: minutesToHours(totalTeamHours[0]?.m || 0),
-    to_validate: toValidate[0]?.c || 0,
+    month, month2: month2 || null,
+    active_agents: Number(activeAgents[0]?.count || 0),
+    total_team_hours: minutesToHours(Number(totalTeamHours[0]?.m || 0)),
+    to_validate: Number(toValidate[0]?.c || 0),
+    is_weekend: isWeekend,
     hoursByAgent,
-    byObjective: objData.map(o => ({
-      ...o,
-      percentage: totalMin > 0 ? Math.round((o.total_minutes / totalMin) * 100) : 0,
-      hours_display: minutesToHours(o.total_minutes)
-    })),
+    byObjective: [],
+    ratio333: r333Main.global333,
+    ratio333Month2: r333M2 ? r333M2.global333 : null,
+    agentComparison: r333Main.agentRows,
+    agentComparisonMonth2: r333M2 ? r333M2.agentRows : null,
+    cumulAgentComparison, cumulMonths,
     agentDetail: agentDetail.map(a => {
-      const p = productivityMap[a.id] || { productive_minutes_today: 0, non_productive_minutes_today: 480 }
+      const p   = prodMap2[a.id] || { validated_minutes_today: 0, pending_minutes_today: 0, inprogress_minutes_today: 0 }
+      const cap = capPerAgent || 480
+      const total_pointed = Math.min(p.validated_minutes_today + p.pending_minutes_today + p.inprogress_minutes_today, cap)
+      const non_pointed   = capPerAgent > 0 ? Math.max(cap - total_pointed, 0) : 0
       return {
-        ...a,
-        total_hours: minutesToHours(a.total_minutes),
-        validated_hours: minutesToHours(a.validated_minutes),
-        productive_minutes_today: Math.min(p.productive_minutes_today, 480),
-        non_productive_minutes_today: p.non_productive_minutes_today,
-        productive_hours_today: minutesToHours(Math.min(p.productive_minutes_today, 480)),
-        non_productive_hours_today: minutesToHours(p.non_productive_minutes_today),
-        productive_pct_today: Math.round((Math.min(p.productive_minutes_today, 480) / 480) * 100),
-        non_productive_pct_today: Math.round((p.non_productive_minutes_today / 480) * 100)
+        ...a, total_minutes: Number(a.total_minutes),
+        total_hours: minutesToHours(Number(a.total_minutes)),
+        validated_hours: minutesToHours(Number(a.validated_minutes)),
+        validated_minutes_today: Math.min(p.validated_minutes_today, cap),
+        pending_minutes_today: Math.min(p.pending_minutes_today, cap),
+        inprogress_minutes_today: Math.min(p.inprogress_minutes_today, cap),
+        non_pointed_today: non_pointed,
+        productive_minutes_today: total_pointed, non_productive_minutes_today: non_pointed,
+        productive_pct_today: cap > 0 ? Math.round(total_pointed / cap * 100) : 0,
+        is_weekend: isWeekend
       }
     }),
     team_productivity: {
-      total_agents: nbAgents,
-      productive_hours_today: minutesToHours(totalProductiveTeam),
-      non_productive_hours_today: minutesToHours(totalNonProductiveTeam),
-      productive_pct: nbAgents > 0 ? Math.round((totalProductiveTeam / (nbAgents * 480)) * 100) : 0,
-      non_productive_pct: nbAgents > 0 ? Math.round((totalNonProductiveTeam / (nbAgents * 480)) * 100) : 0
+      total_agents: nbAgents, is_weekend: isWeekend,
+      validated_hours_today: minutesToHours(totalValidatedTeam),
+      productive_hours_today: minutesToHours(totalPointedTeam),
+      non_productive_hours_today: minutesToHours(totalNonPointedTeam),
+      productive_pct:     nbAgents > 0 && capPerAgent > 0 ? Math.round(totalPointedTeam    / (nbAgents * capPerAgent) * 100) : 0,
+      non_productive_pct: nbAgents > 0 && capPerAgent > 0 ? Math.round(totalNonPointedTeam / (nbAgents * capPerAgent) * 100) : 0
     }
   })
+})
+
+// ============================================
+// CHEF - LIVE (statut temps réel des agents)
+// ============================================
+
+app.get('/api/chef/live', async (req, res) => {
+  const user = getUser(req)
+  if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
+    return res.status(401).json({ error: 'Non autorisé' })
+  }
+  const deptId = user.department_id
+  const todayDow = new Date().getDay()
+  const isWeekend = todayDow === 0 || todayDow === 6
+
+  const liveData = await query(
+    `SELECT u.id, CONCAT(u.first_name,' ',u.last_name) as agent_name, u.works_saturday,
+     MAX(CASE WHEN ws.status='En cours' THEN 1 ELSE 0 END) as is_active_now,
+     MAX(CASE WHEN ws.status='En cours' THEN t.name ELSE NULL END) as current_task,
+     MAX(CASE WHEN ws.status='En cours' THEN t.task_type ELSE NULL END) as current_task_type,
+     MAX(CASE WHEN ws.status='En cours' THEN ws.start_time ELSE NULL END) as session_start,
+     COALESCE(SUM(CASE WHEN ws.status='Validé'     THEN ws.duration_minutes ELSE 0 END),0) as validated_min,
+     COALESCE(SUM(CASE WHEN ws.status='En attente' THEN ws.duration_minutes ELSE 0 END),0) as pending_min,
+     COALESCE(SUM(CASE WHEN ws.status='En cours'   THEN ws.duration_minutes ELSE 0 END),0) as inprogress_min,
+     COUNT(CASE WHEN ws.status IN ('Validé','En attente','Terminé') THEN 1 END) as sessions_done_today
+     FROM users u
+     LEFT JOIN work_sessions ws ON ws.user_id=u.id AND DATE(ws.start_time)=CURDATE() AND ws.status IN ('Validé','En attente','En cours','Terminé')
+     LEFT JOIN tasks t ON ws.task_id=t.id
+     WHERE u.department_id=? AND u.role IN ('Agent','Chef de Service') AND u.status='Actif'
+     GROUP BY u.id, u.first_name, u.last_name, u.works_saturday ORDER BY u.last_name`,
+    [deptId]
+  )
+
+  const agents = liveData.map(a => {
+    const totalPointed = Number(a.validated_min) + Number(a.pending_min) + Number(a.inprogress_min)
+    const cap = isWeekend ? 0 : 480
+    const nonPointed = cap > 0 ? Math.max(cap - totalPointed, 0) : 0
+    const pct = cap > 0 ? Math.round(totalPointed * 100 / cap) : 0
+    let liveStatus = 'not_started'
+    if (isWeekend) liveStatus = 'weekend'
+    else if (a.is_active_now) liveStatus = 'working'
+    else if (totalPointed > 0) liveStatus = 'paused'
+    return {
+      ...a,
+      live_status: liveStatus, total_pointed_min: totalPointed,
+      total_pointed_hours: minutesToHours(totalPointed),
+      non_pointed_min: nonPointed, non_pointed_hours: minutesToHours(nonPointed),
+      productive_pct: pct, capacity_min: cap
+    }
+  })
+
+  const summary = {
+    total: agents.length,
+    working_now: agents.filter(a => a.live_status === 'working').length,
+    paused:      agents.filter(a => a.live_status === 'paused').length,
+    not_started: agents.filter(a => a.live_status === 'not_started').length,
+    is_weekend: isWeekend
+  }
+
+  res.json({ agents, summary, is_weekend: isWeekend })
 })
 
 // ============================================
@@ -1157,15 +1461,14 @@ app.get('/api/chef/team', async (req, res) => {
   const today = new Date().toISOString().split('T')[0]
   const members = await query(
     `SELECT u.*,
-     COALESCE(SUM(CASE WHEN DATE(ws.start_time) = ? THEN 1 ELSE 0 END), 0) as today_sessions,
-     COALESCE(SUM(CASE WHEN DATE(ws.start_time) = ? THEN ws.duration_minutes ELSE 0 END), 0) as today_minutes
+     COALESCE(SUM(CASE WHEN DATE(ws.start_time)=? THEN 1 ELSE 0 END),0) as today_sessions,
+     COALESCE(SUM(CASE WHEN DATE(ws.start_time)=? THEN ws.duration_minutes ELSE 0 END),0) as today_minutes
      FROM users u
-     LEFT JOIN work_sessions ws ON ws.user_id = u.id AND ws.status IN ('Validé','Terminé')
-     WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
-     GROUP BY u.id`,
+     LEFT JOIN work_sessions ws ON ws.user_id=u.id AND ws.status IN ('Validé','Terminé')
+     WHERE u.department_id=? AND u.role IN ('Agent','Chef de Service') AND u.status='Actif' GROUP BY u.id`,
     [today, today, user.department_id]
   )
-  res.json(members.map(m => ({ ...m, today_hours: minutesToHours(m.today_minutes), password_hash: undefined })))
+  res.json(members.map(m => ({ ...m, today_hours: minutesToHours(Number(m.today_minutes || 0)), password_hash: undefined, password_encrypted: undefined })))
 })
 
 // ============================================
@@ -1177,18 +1480,14 @@ app.get('/api/chef/validation', async (req, res) => {
   if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
     return res.status(401).json({ error: 'Non autorisé' })
   }
-  const rows = await query(
-    `SELECT ws.*, CONCAT(u.first_name, ' ', u.last_name) as agent_name,
+  res.json(await query(
+    `SELECT ws.*, CONCAT(u.first_name,' ',u.last_name) as agent_name,
      t.name as task_name, o.name as objective_name, o.color as objective_color
-     FROM work_sessions ws
-     JOIN users u ON ws.user_id = u.id
-     JOIN tasks t ON ws.task_id = t.id
-     JOIN strategic_objectives o ON ws.objective_id = o.id
-     WHERE ws.department_id = ? AND ws.status = 'Terminé'
-     ORDER BY ws.start_time DESC`,
+     FROM work_sessions ws JOIN users u ON ws.user_id=u.id JOIN tasks t ON ws.task_id=t.id
+     JOIN strategic_objectives o ON ws.objective_id=o.id
+     WHERE ws.department_id=? AND ws.status='Terminé' ORDER BY ws.start_time DESC`,
     [user.department_id]
-  )
-  res.json(rows)
+  ))
 })
 
 app.post('/api/chef/validate/:id', async (req, res) => {
@@ -1196,9 +1495,8 @@ app.post('/api/chef/validate/:id', async (req, res) => {
   if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
     return res.status(401).json({ error: 'Non autorisé' })
   }
-  const id = req.params.id
-  await run('UPDATE work_sessions SET status="Validé", validated_by=?, validated_at=NOW(), updated_at=NOW() WHERE id=?', [user.id, id])
-  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)', [user.id, 'VALIDATION', `Session #${id} validée`])
+  await run('UPDATE work_sessions SET status="Validé", validated_by=?, validated_at=NOW(), updated_at=NOW() WHERE id=?', [user.id, req.params.id])
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?,?,?)', [user.id, 'VALIDATION', `Session #${req.params.id} validée`])
   res.json({ message: 'Session validée' })
 })
 
@@ -1207,13 +1505,10 @@ app.post('/api/chef/reject/:id', async (req, res) => {
   if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
     return res.status(401).json({ error: 'Non autorisé' })
   }
-  const id = req.params.id
   const reason = req.body?.reason || ''
-  if (!reason || reason.trim().length < 3) {
-    return res.status(400).json({ error: 'Un commentaire de rejet est obligatoire (minimum 3 caractères)' })
-  }
-  await run('UPDATE work_sessions SET status="Rejeté", rejected_reason=?, updated_at=NOW() WHERE id=?', [reason.trim(), id])
-  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)', [user.id, 'REJET', `Session #${id} rejetée – Motif: ${reason}`])
+  if (!reason || reason.trim().length < 3) return res.status(400).json({ error: 'Un motif de rejet est obligatoire (min 3 caractères)' })
+  await run('UPDATE work_sessions SET status="Rejeté", rejected_reason=?, updated_at=NOW() WHERE id=?', [reason.trim(), req.params.id])
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?,?,?)', [user.id, 'REJET', `Session #${req.params.id} rejetée – ${reason}`])
   res.json({ message: 'Session rejetée' })
 })
 
@@ -1223,12 +1518,12 @@ app.post('/api/chef/validate-all', async (req, res) => {
     return res.status(401).json({ error: 'Non autorisé' })
   }
   await run('UPDATE work_sessions SET status="Validé", validated_by=?, validated_at=NOW() WHERE department_id=? AND status="Terminé"', [user.id, user.department_id])
-  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)', [user.id, 'VALIDATION', 'Validation groupée de toutes les sessions du département'])
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?,?,?)', [user.id, 'VALIDATION', 'Validation groupée de toutes les sessions'])
   res.json({ message: 'Toutes les sessions validées' })
 })
 
 // ============================================
-// CHEF - RAPPORTS
+// CHEF - RAPPORTS & TREND
 // ============================================
 
 app.get('/api/chef/reports', async (req, res) => {
@@ -1237,32 +1532,51 @@ app.get('/api/chef/reports', async (req, res) => {
     return res.status(401).json({ error: 'Non autorisé' })
   }
   const { date_from, date_to, agent_id, status: statusFilter, export: exportType } = req.query
-  let sql = `SELECT ws.*, CONCAT(u.first_name, ' ', u.last_name) as agent_name,
-     t.name as task_name, p.name as process_name,
+  let sql = `SELECT ws.*, CONCAT(u.first_name,' ',u.last_name) as agent_name,
+     t.name as task_name, t.task_type, p.name as process_name,
      o.name as objective_name, o.color as objective_color
-     FROM work_sessions ws
-     JOIN users u ON ws.user_id = u.id
-     JOIN tasks t ON ws.task_id = t.id
-     JOIN processes p ON t.process_id = p.id
-     JOIN strategic_objectives o ON ws.objective_id = o.id
-     WHERE ws.department_id = ?`
+     FROM work_sessions ws JOIN users u ON ws.user_id=u.id JOIN tasks t ON ws.task_id=t.id
+     JOIN processes p ON t.process_id=p.id JOIN strategic_objectives o ON ws.objective_id=o.id
+     WHERE ws.department_id=?`
   const params = [user.department_id]
   if (date_from)    { sql += ' AND DATE(ws.start_time) >= ?'; params.push(date_from) }
   if (date_to)      { sql += ' AND DATE(ws.start_time) <= ?'; params.push(date_to) }
-  if (agent_id)     { sql += ' AND ws.user_id = ?';           params.push(agent_id) }
-  if (statusFilter) { sql += ' AND ws.status = ?';            params.push(statusFilter) }
+  if (agent_id)     { sql += ' AND ws.user_id=?';             params.push(agent_id) }
+  if (statusFilter) { sql += ' AND ws.status=?';              params.push(statusFilter) }
   sql += ' ORDER BY ws.start_time DESC'
   const rows = await query(sql, params)
 
   if (exportType === 'csv') {
-    const header = 'ID,Agent,Tâche,Processus,Objectif,Type,Statut,Début,Fin,Durée (min),Commentaire,Motif rejet\n'
-    const csvRows = rows.map(r => [
-      r.id, `"${r.agent_name}"`, `"${r.task_name}"`, `"${r.process_name}"`, `"${r.objective_name}"`,
-      r.session_type, r.status,
-      r.start_time ? new Date(r.start_time).toLocaleString('fr-FR') : '',
-      r.end_time   ? new Date(r.end_time).toLocaleString('fr-FR') : '',
-      r.duration_minutes, `"${r.comment || ''}"`, `"${r.rejected_reason || ''}"`
-    ].join(',')).join('\n')
+    const agentMonthMap = {}
+    for (const r of rows) {
+      if (r.status !== 'Validé') continue
+      const key = `${r.agent_name}|${(r.start_time ? new Date(r.start_time).toISOString() : '').slice(0, 7)}`
+      if (!agentMonthMap[key]) agentMonthMap[key] = { prod: 0, admin: 0, ctrl: 0, total: 0 }
+      const cat = norm333(r.task_type)
+      const dur = Number(r.duration_minutes || 0)
+      agentMonthMap[key].total += dur
+      if (cat === 'Production') agentMonthMap[key].prod += dur
+      else if (cat === 'Administration & Reporting') agentMonthMap[key].admin += dur
+      else agentMonthMap[key].ctrl += dur
+    }
+    const pct = (n, d) => d > 0 ? (n / d * 100).toFixed(1) + '%' : '0%'
+    const hhmm = min => { const h = Math.floor(min / 60), m = min % 60; return `${h}h ${String(m).padStart(2, '0')}m` }
+    const header = 'Agent,Tâche,Processus,Objectif,Date début,Date fin,Durée (min),Catégorie 3-3-3,Statut,Motif rejet,% Productif (mois),% Admin-Reporting (mois),% Contrôle (mois)\n'
+    const csvRows = rows.map(r => {
+      const dur = Number(r.duration_minutes || 0)
+      const cat = norm333(r.task_type)
+      const mois = r.start_time ? new Date(r.start_time).toISOString().slice(0, 7) : ''
+      const key  = `${r.agent_name}|${mois}`
+      const am   = agentMonthMap[key] || { prod: 0, admin: 0, ctrl: 0, total: 0 }
+      return [
+        `"${r.agent_name || ''}"`, `"${r.task_name || ''}"`, `"${r.process_name || ''}"`, `"${r.objective_name || ''}"`,
+        r.start_time ? new Date(r.start_time).toLocaleString('fr-FR') : '',
+        r.end_time   ? new Date(r.end_time).toLocaleString('fr-FR')   : '',
+        dur, cat, r.status || '',
+        `"${(r.rejected_reason || '').replace(/"/g, '""')}"`,
+        pct(am.prod, am.total), pct(am.admin, am.total), pct(am.ctrl, am.total)
+      ].join(',')
+    }).join('\n')
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
     res.setHeader('Content-Disposition', `attachment; filename="rapport_chef_${new Date().toISOString().split('T')[0]}.csv"`)
     return res.send('\uFEFF' + header + csvRows)
@@ -1270,36 +1584,418 @@ app.get('/api/chef/reports', async (req, res) => {
   res.json(rows)
 })
 
-// Productivité équipe par période (graphique chef)
 app.get('/api/chef/productivity-trend', async (req, res) => {
   const user = getUser(req)
   if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
     return res.status(401).json({ error: 'Non autorisé' })
   }
-  const { period = '30' } = req.query // nombre de jours
-  const days = Math.min(parseInt(period) || 30, 90)
+  const days = Math.min(parseInt(req.query.period || '30') || 30, 90)
   const rows = await query(
     `SELECT DATE(ws.start_time) as jour,
-     CONCAT(u.first_name, ' ', u.last_name) as agent_name,
-     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
-     FROM work_sessions ws
-     JOIN users u ON ws.user_id = u.id
-     WHERE ws.department_id = ? AND ws.status IN ('Validé','Terminé')
-     AND DATE(ws.start_time) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-     GROUP BY DATE(ws.start_time), ws.user_id, u.first_name, u.last_name
-     ORDER BY jour ASC, agent_name`,
+     CONCAT(u.first_name,' ',u.last_name) as agent_name,
+     COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+     FROM work_sessions ws JOIN users u ON ws.user_id=u.id
+     WHERE ws.department_id=? AND ws.status IN ('Validé','Terminé')
+       AND DATE(ws.start_time) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+     GROUP BY DATE(ws.start_time), ws.user_id, u.first_name, u.last_name ORDER BY jour ASC, agent_name`,
     [user.department_id, days]
   )
-  // Pivot : dates × agents
-  const dates = [...new Set(rows.map(r => r.jour instanceof Date ? r.jour.toISOString().split('T')[0] : String(r.jour)))]
+  const dates  = [...new Set(rows.map(r => r.jour instanceof Date ? r.jour.toISOString().split('T')[0] : String(r.jour)))]
   const agents = [...new Set(rows.map(r => r.agent_name))]
-  const pivot = {}
+  const pivot  = {}
   for (const r of rows) {
     const jour = r.jour instanceof Date ? r.jour.toISOString().split('T')[0] : String(r.jour)
     if (!pivot[r.agent_name]) pivot[r.agent_name] = {}
-    pivot[r.agent_name][jour] = r.total_minutes
+    pivot[r.agent_name][jour] = Number(r.total_minutes)
   }
   res.json({ dates, agents, pivot })
+})
+
+// ============================================
+// CHEF DE SERVICE — identique Agent mais rôle Chef de Service
+// ============================================
+
+app.get('/api/chef-service/dashboard', async (req, res) => {
+  const user = getUser(req)
+  if (!user || (user.role !== 'Chef de Service' && user.role !== 'Administrateur')) {
+    return res.status(401).json({ error: 'Non autorisé' })
+  }
+  try {
+    const todayMin    = await query(`SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions WHERE user_id=? AND DATE(start_time)=CURDATE()`, [user.id])
+    const totalMin    = await query(`SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions WHERE user_id=? AND status IN ('Validé','Terminé')`, [user.id])
+    const sessionStats = await query(`SELECT COUNT(*) as total, SUM(CASE WHEN status='Rejeté' THEN 1 ELSE 0 END) as rejected FROM work_sessions WHERE user_id=?`, [user.id])
+    const team = await query(
+      `SELECT u.id, CONCAT(u.first_name,' ',u.last_name) as name, u.role,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes,
+       COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END),0) as validated_minutes,
+       COUNT(ws.id) as total_sessions
+       FROM users u LEFT JOIN work_sessions ws ON ws.user_id=u.id
+       WHERE u.department_id=? AND u.role='Agent' AND u.status='Actif' GROUP BY u.id, u.first_name, u.last_name`,
+      [user.department_id]
+    )
+    const byObjective = await query(
+      `SELECT o.name, o.color, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM strategic_objectives o
+       LEFT JOIN work_sessions ws ON ws.objective_id=o.id AND ws.user_id=? WHERE o.status='Actif'
+       GROUP BY o.id, o.name, o.color HAVING total_minutes>0`,
+      [user.id]
+    )
+    res.json({
+      today_hours: minutesToHours(Number(todayMin[0]?.m || 0)),
+      total_hours: minutesToHours(Number(totalMin[0]?.m || 0)),
+      total_sessions:    Number(sessionStats[0]?.total    || 0),
+      rejected_sessions: Number(sessionStats[0]?.rejected || 0),
+      team, byObjective
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/chef-service/tasks', async (req, res) => {
+  const user = getUser(req)
+  if (!user || (user.role !== 'Chef de Service' && user.role !== 'Administrateur')) {
+    return res.status(401).json({ error: 'Non autorisé' })
+  }
+  res.json(await query(
+    `SELECT t.*, p.name as process_name, o.name as objective_name, o.color as objective_color
+     FROM tasks t JOIN processes p ON t.process_id=p.id JOIN strategic_objectives o ON t.objective_id=o.id
+     WHERE t.department_id=? AND t.status='Actif' ORDER BY t.name`,
+    [user.department_id]
+  ))
+})
+
+app.get('/api/chef-service/sessions', async (req, res) => {
+  const user = getUser(req)
+  if (!user || user.role !== 'Chef de Service') return res.status(401).json({ error: 'Non autorisé' })
+  res.json(await query(
+    `SELECT ws.*, t.name as task_name, o.name as objective_name, o.color as objective_color
+     FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN strategic_objectives o ON ws.objective_id=o.id
+     WHERE ws.user_id=? ORDER BY ws.start_time DESC LIMIT 50`,
+    [user.id]
+  ))
+})
+
+app.get('/api/chef-service/sessions/active', async (req, res) => {
+  const user = getUser(req)
+  if (!user || user.role !== 'Chef de Service') return res.status(401).json({ error: 'Non autorisé' })
+  const rows = await query(
+    `SELECT ws.*, t.name as task_name FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id
+     WHERE ws.user_id=? AND ws.status='En cours' ORDER BY ws.start_time DESC LIMIT 1`,
+    [user.id]
+  )
+  res.json(rows[0] || null)
+})
+
+app.post('/api/chef-service/sessions/start', async (req, res) => {
+  const user = getUser(req)
+  if (!user || user.role !== 'Chef de Service') return res.status(401).json({ error: 'Non autorisé' })
+  try {
+    const { task_id } = req.body
+    const existing = await query(`SELECT id FROM work_sessions WHERE user_id=? AND status='En cours'`, [user.id])
+    if (existing.length > 0) return res.status(400).json({ error: 'Une session est déjà en cours. Terminez-la d\'abord.' })
+    const task = await query('SELECT * FROM tasks WHERE id=?', [task_id])
+    if (!task[0]) return res.status(404).json({ error: 'Tâche introuvable' })
+    const result = await run(
+      `INSERT INTO work_sessions (user_id, task_id, objective_id, department_id, start_time, status, session_type) VALUES (?,?,?,?,NOW(),'En cours','Auto')`,
+      [user.id, task_id, task[0].objective_id, user.department_id]
+    )
+    res.json({ id: result.insertId, message: 'Session démarrée' })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/chef-service/sessions/stop', async (req, res) => {
+  const user = getUser(req)
+  if (!user || user.role !== 'Chef de Service') return res.status(401).json({ error: 'Non autorisé' })
+  try {
+    const { comment } = req.body || {}
+    const session = await query(`SELECT * FROM work_sessions WHERE user_id=? AND status='En cours' ORDER BY start_time DESC LIMIT 1`, [user.id])
+    if (!session[0]) return res.status(404).json({ error: 'Aucune session en cours' })
+    const durationMinutes = Math.min(Math.round((Date.now() - new Date(session[0].start_time).getTime()) / 60000), 480)
+    await run(`UPDATE work_sessions SET end_time=NOW(), duration_minutes=?, status='Terminé', comment=?, updated_at=NOW() WHERE id=?`,
+      [durationMinutes, comment || null, session[0].id])
+    res.json({ message: 'Session terminée', duration_minutes: durationMinutes })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ============================================
+// DIRECTEUR DE DÉPARTEMENT
+// ============================================
+
+app.get('/api/dir-dept/dashboard', async (req, res) => {
+  const user = getUser(req)
+  if (!user || (user.role !== 'Directeur de Département' && user.role !== 'Administrateur')) {
+    return res.status(401).json({ error: 'Non autorisé' })
+  }
+  const deptId = user.department_id
+  try {
+    const dept         = await query('SELECT name FROM departments WHERE id=?', [deptId])
+    const activeAgents = await query(`SELECT COUNT(DISTINCT user_id) as c FROM work_sessions WHERE department_id=? AND DATE(start_time)=CURDATE()`, [deptId])
+    const totalHours   = await query(
+      `SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions WHERE department_id=? AND DATE_FORMAT(start_time,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m') AND status IN ('Validé','Terminé')`,
+      [deptId]
+    )
+    const toValidate   = await query(`SELECT COUNT(*) as c FROM work_sessions WHERE department_id=? AND status='Terminé'`, [deptId])
+    const byObjective  = await query(
+      `SELECT o.name, o.color, o.target_percentage, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM strategic_objectives o
+       LEFT JOIN work_sessions ws ON ws.objective_id=o.id AND ws.department_id=? AND ws.status IN ('Validé','Terminé')
+       WHERE o.status='Actif' GROUP BY o.id, o.name, o.color, o.target_percentage HAVING total_minutes>0`,
+      [deptId]
+    )
+    const agentPerf = await query(
+      `SELECT CONCAT(u.first_name,' ',u.last_name) as name, u.role,
+       COUNT(ws.id) as sessions, COALESCE(SUM(ws.duration_minutes),0) as total_minutes,
+       COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END),0) as validated_minutes
+       FROM users u LEFT JOIN work_sessions ws ON ws.user_id=u.id AND ws.status IN ('Validé','Terminé')
+       WHERE u.department_id=? AND u.role IN ('Agent','Chef de Service') AND u.status='Actif'
+       GROUP BY u.id ORDER BY total_minutes DESC`,
+      [deptId]
+    )
+    const recentSessions = await query(
+      `SELECT ws.*, CONCAT(u.first_name,' ',u.last_name) as agent_name, t.name as task_name, o.name as objective_name
+       FROM work_sessions ws JOIN users u ON ws.user_id=u.id JOIN tasks t ON ws.task_id=t.id
+       JOIN strategic_objectives o ON ws.objective_id=o.id
+       WHERE ws.department_id=? ORDER BY ws.start_time DESC LIMIT 20`,
+      [deptId]
+    )
+    const grandTotal = byObjective.reduce((s, o) => s + Number(o.total_minutes), 0)
+    res.json({
+      department_name: dept[0]?.name || '',
+      active_agents: Number(activeAgents[0]?.c || 0),
+      total_hours: minutesToHours(Number(totalHours[0]?.m || 0)),
+      to_validate: Number(toValidate[0]?.c || 0),
+      byObjective: byObjective.map(o => ({
+        ...o, total_minutes: Number(o.total_minutes),
+        percentage: grandTotal > 0 ? Math.round(Number(o.total_minutes) * 100 / grandTotal) : 0,
+        hours_display: minutesToHours(Number(o.total_minutes))
+      })),
+      agentPerf, recentSessions
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ============================================
+// DIRECTEUR GÉNÉRAL — Dashboard complet (3-3-3 + comparaison + cumul 6 mois)
+// ============================================
+
+app.get('/api/dg/dashboard', async (req, res) => {
+  const user = getUser(req)
+  if (!user || (user.role !== 'Directeur Général' && user.role !== 'Administrateur')) {
+    return res.status(401).json({ error: 'Non autorisé' })
+  }
+  try {
+    const month  = req.query.month  || new Date().toISOString().slice(0, 7)
+    const month2 = req.query.month2 || null
+
+    const dgWdStd  = calcWorkingDays(month, false)
+    const dgWdSat  = calcWorkingDays(month, true)
+    const dgWdStd2 = month2 ? calcWorkingDays(month2, false) : null
+    const dgWdSat2 = month2 ? calcWorkingDays(month2, true)  : null
+
+    const STATUSES = `ws.status IN ('Validé','Terminé')`
+    const mf = m => `DATE_FORMAT(ws.start_time,'%Y-%m')='${m}'`
+
+    const totalUsers     = await query(`SELECT COUNT(*) as c FROM users WHERE status='Actif' AND role NOT IN ('Administrateur','Directeur Général')`)
+    const totalHoursMonth = await query(`SELECT COALESCE(SUM(duration_minutes),0) as m FROM work_sessions ws WHERE ${STATUSES} AND ${mf(month)}`)
+    const toValidate     = await query(`SELECT COUNT(*) as c FROM work_sessions WHERE status='Terminé'`)
+
+    const deptCap = await query(
+      `SELECT d.name as dept_name, COUNT(u.id) as agent_count,
+       SUM(CASE WHEN u.works_saturday=1 THEN 1 ELSE 0 END) as agents_with_saturday,
+       SUM(CASE WHEN u.works_saturday=0 THEN 1 ELSE 0 END) as agents_without_saturday
+       FROM departments d
+       LEFT JOIN users u ON u.department_id=d.id AND u.status='Actif' AND u.role IN ('Agent','Chef de Service')
+       WHERE d.status='Actif' GROUP BY d.id, d.name`
+    )
+
+    async function getDgRatio333 (m, wdStd, wdSat) {
+      const raw333 = await query(
+        `SELECT COALESCE(t.task_type,'Production') as type_333, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+         FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id WHERE ${STATUSES} AND ${mf(m)} GROUP BY t.task_type`
+      )
+      const raw333Dept = await query(
+        `SELECT d.name as dept_name, COALESCE(t.task_type,'Production') as type_333, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+         FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN departments d ON ws.department_id=d.id
+         WHERE ${STATUSES} AND ${mf(m)} GROUP BY d.id, t.task_type`
+      )
+      const raw333Agent = await query(
+        `SELECT ws.user_id as agent_id, CONCAT(u.first_name,' ',u.last_name) as agent_name,
+         d.name as dept_name, u.works_saturday,
+         COALESCE(t.task_type,'Production') as type_333, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+         FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN users u ON ws.user_id=u.id JOIN departments d ON ws.department_id=d.id
+         WHERE ${STATUSES} AND ${mf(m)} GROUP BY ws.user_id, t.task_type`
+      )
+
+      // Ratio global
+      const gMap = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+      raw333.forEach(r => { const k = norm333(r.type_333); gMap[k] = (gMap[k] || 0) + Number(r.total_minutes) })
+      const gTotal = Object.values(gMap).reduce((s, v) => s + v, 0)
+      const ratio333 = Object.entries(gMap).map(([label, minutes]) => ({
+        label, minutes, hours_display: minutesToHours(minutes),
+        percentage: gTotal > 0 ? Math.round(minutes * 100 / gTotal) : 0
+      }))
+
+      // Par département
+      const dMap = {}
+      raw333Dept.forEach(r => {
+        if (!dMap[r.dept_name]) {
+          const cap = deptCap.find(ci => ci.dept_name === r.dept_name)
+          const agSat   = Number(cap?.agents_with_saturday   || 0)
+          const agNoSat = Number(cap?.agents_without_saturday || 0)
+          dMap[r.dept_name] = {
+            dept_name: r.dept_name, agent_count: cap?.agent_count || 0,
+            agents_with_saturday: agSat, agents_without_saturday: agNoSat,
+            capacity_minutes: (agSat * wdSat + agNoSat * wdStd) * 480, working_days: wdStd,
+            Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0
+          }
+        }
+        dMap[r.dept_name][norm333(r.type_333)] += Number(r.total_minutes)
+      })
+      const deptComparison = Object.values(dMap).map(d => {
+        const tot = d.Production + d['Administration & Reporting'] + d['Contrôle']
+        const pct = d.capacity_minutes > 0 ? Math.round(tot * 100 / d.capacity_minutes) : 0
+        return { ...d, total_minutes: tot, productive_pct: pct, non_productive_pct: Math.max(0, 100 - pct),
+          hours_display: minutesToHours(tot), capacity_hours_display: minutesToHours(d.capacity_minutes) }
+      })
+
+      // Par agent
+      const aMap = {}
+      raw333Agent.forEach(r => {
+        if (!aMap[r.agent_id]) {
+          const wd = r.works_saturday ? wdSat : wdStd
+          aMap[r.agent_id] = {
+            agent_id: r.agent_id, agent_name: r.agent_name, dept_name: r.dept_name,
+            works_saturday: r.works_saturday || 0, capacity_minutes: wd * 480, working_days: wd,
+            Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0
+          }
+        }
+        aMap[r.agent_id][norm333(r.type_333)] += Number(r.total_minutes)
+      })
+      const agentComparison = Object.values(aMap).map(a => {
+        const tot = a.Production + a['Administration & Reporting'] + a['Contrôle']
+        const pct = a.capacity_minutes > 0 ? Math.round(tot * 100 / a.capacity_minutes) : 0
+        return { ...a, total_minutes: tot, productive_pct: pct, non_productive_pct: Math.max(0, 100 - pct),
+          hours_display: minutesToHours(tot), capacity_hours_display: minutesToHours(a.capacity_minutes) }
+      })
+
+      return { ratio333, deptComparison, agentComparison }
+    }
+
+    const dgM1 = await getDgRatio333(month, dgWdStd, dgWdSat)
+    const dgM2 = month2 && dgWdStd2 && dgWdSat2 ? await getDgRatio333(month2, dgWdStd2, dgWdSat2) : null
+
+    const monthlyTrend = await query(
+      `SELECT DATE_FORMAT(start_time,'%Y-%m') as month, COALESCE(SUM(duration_minutes),0) as total_minutes
+       FROM work_sessions WHERE status IN ('Validé','Terminé')
+       GROUP BY DATE_FORMAT(start_time,'%Y-%m') ORDER BY month DESC LIMIT 6`
+    )
+
+    const byDept = await query(
+      `SELECT d.name as dept_name, COUNT(DISTINCT u.id) as agent_count, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM departments d
+       LEFT JOIN users u ON u.department_id=d.id AND u.status='Actif'
+       LEFT JOIN work_sessions ws ON ws.department_id=d.id AND ${STATUSES} AND ${mf(month)}
+       WHERE d.status='Actif' GROUP BY d.id, d.name ORDER BY total_minutes DESC`
+    )
+    const grandTotal = byDept.reduce((s, d) => s + Number(d.total_minutes), 0)
+
+    // Cumul 6 mois
+    const last6 = await query(
+      `SELECT DISTINCT DATE_FORMAT(start_time,'%Y-%m') as m FROM work_sessions WHERE status IN ('Validé','Terminé') ORDER BY m DESC LIMIT 6`
+    )
+    const cumulMonths = last6.map(r => r.m)
+
+    let cumulDeptComparison = [], cumulAgentComparison = []
+    if (cumulMonths.length > 0) {
+      const ph = cumulMonths.map(() => '?').join(',')
+      const cumulRawDept = await query(
+        `SELECT d.name as dept_name, DATE_FORMAT(ws.start_time,'%Y-%m') as month,
+         COALESCE(t.task_type,'Production') as type_333, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+         FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN departments d ON ws.department_id=d.id
+         WHERE ws.status IN ('Validé','Terminé') AND DATE_FORMAT(ws.start_time,'%Y-%m') IN (${ph})
+         GROUP BY d.id, DATE_FORMAT(ws.start_time,'%Y-%m'), t.task_type`,
+        [...cumulMonths]
+      )
+      const cumulRawAgent = await query(
+        `SELECT ws.user_id as agent_id, CONCAT(u.first_name,' ',u.last_name) as agent_name,
+         d.name as dept_name, u.works_saturday, DATE_FORMAT(ws.start_time,'%Y-%m') as month,
+         COALESCE(t.task_type,'Production') as type_333, COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+         FROM work_sessions ws JOIN tasks t ON ws.task_id=t.id JOIN users u ON ws.user_id=u.id JOIN departments d ON ws.department_id=d.id
+         WHERE ws.status IN ('Validé','Terminé') AND DATE_FORMAT(ws.start_time,'%Y-%m') IN (${ph})
+         GROUP BY ws.user_id, DATE_FORMAT(ws.start_time,'%Y-%m'), t.task_type`,
+        [...cumulMonths]
+      )
+
+      const cdMap = {}
+      cumulRawDept.forEach(r => {
+        if (!cdMap[r.dept_name]) {
+          const cap = deptCap.find(ci => ci.dept_name === r.dept_name)
+          cdMap[r.dept_name] = {
+            dept_name: r.dept_name, agent_count: cap?.agent_count || 0,
+            agents_with_saturday: Number(cap?.agents_with_saturday || 0),
+            agents_without_saturday: Number(cap?.agents_without_saturday || 0),
+            months_included: new Set(), Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0
+          }
+        }
+        cdMap[r.dept_name][norm333(r.type_333)] += Number(r.total_minutes)
+        cdMap[r.dept_name].months_included.add(r.month)
+      })
+      cumulDeptComparison = Object.values(cdMap).map(d => {
+        const nbM = d.months_included.size || 1
+        const cap = (d.agents_with_saturday * 22 + d.agents_without_saturday * 22) * 480 * nbM
+        const tot = d.Production + d['Administration & Reporting'] + d['Contrôle']
+        const pct = cap > 0 ? Math.round(tot * 100 / cap) : 0
+        return { dept_name: d.dept_name, agent_count: d.agent_count,
+          agents_with_saturday: d.agents_with_saturday, agents_without_saturday: d.agents_without_saturday,
+          capacity_minutes: cap, Production: d.Production, 'Administration & Reporting': d['Administration & Reporting'],
+          'Contrôle': d['Contrôle'], total_minutes: tot, productive_pct: pct, non_productive_pct: Math.max(0, 100 - pct),
+          hours_display: minutesToHours(tot), capacity_hours_display: minutesToHours(cap), months_count: nbM
+        }
+      }).sort((a, b) => b.total_minutes - a.total_minutes)
+
+      const caMap = {}
+      cumulRawAgent.forEach(r => {
+        if (!caMap[r.agent_id]) caMap[r.agent_id] = {
+          agent_id: r.agent_id, agent_name: r.agent_name, dept_name: r.dept_name,
+          works_saturday: r.works_saturday || 0, months_included: new Set(),
+          Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0
+        }
+        caMap[r.agent_id][norm333(r.type_333)] += Number(r.total_minutes)
+        caMap[r.agent_id].months_included.add(r.month)
+      })
+      cumulAgentComparison = Object.values(caMap).map(a => {
+        const nbM = a.months_included.size || 1
+        const wd  = a.works_saturday ? 26 : 22
+        const cap = wd * 480 * nbM
+        const tot = a.Production + a['Administration & Reporting'] + a['Contrôle']
+        const pct = cap > 0 ? Math.round(tot * 100 / cap) : 0
+        return { agent_id: a.agent_id, agent_name: a.agent_name, dept_name: a.dept_name,
+          works_saturday: a.works_saturday, capacity_minutes: cap,
+          Production: a.Production, 'Administration & Reporting': a['Administration & Reporting'], 'Contrôle': a['Contrôle'],
+          total_minutes: tot, productive_pct: pct, non_productive_pct: Math.max(0, 100 - pct),
+          hours_display: minutesToHours(tot), capacity_hours_display: minutesToHours(cap), months_count: nbM
+        }
+      }).sort((a, b) => b.total_minutes - a.total_minutes)
+    }
+
+    res.json({
+      month, month2: month2 || null,
+      working_days: dgWdStd, working_days_month2: dgWdStd2,
+      total_users: Number(totalUsers[0]?.c || 0),
+      total_hours_month: minutesToHours(Number(totalHoursMonth[0]?.m || 0)),
+      to_validate: Number(toValidate[0]?.c || 0),
+      byDept: byDept.map(d => ({
+        ...d, total_minutes: Number(d.total_minutes),
+        percentage: grandTotal > 0 ? Math.round(Number(d.total_minutes) * 100 / grandTotal) : 0,
+        hours_display: minutesToHours(Number(d.total_minutes))
+      })),
+      monthlyTrend,
+      ratio333: dgM1.ratio333, ratio333Month2: dgM2?.ratio333 || null,
+      deptComparison: dgM1.deptComparison, deptComparisonMonth2: dgM2?.deptComparison || null,
+      agentComparison: dgM1.agentComparison, agentComparisonMonth2: dgM2?.agentComparison || null,
+      byDept333: dgM1.deptComparison, byAgent333: dgM1.agentComparison,
+      cumulMonths, cumulDeptComparison, cumulAgentComparison
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ============================================
@@ -1309,7 +2005,7 @@ app.get('/api/chef/productivity-trend', async (req, res) => {
 const staticDir = path.join(__dirname, 'public', 'static')
 app.use('/static', express.static(staticDir))
 
-// HTML templates - Login avec fond animé Canvas (particules en réseau)
+// Pages HTML — redirige vers le bon fichier JS selon le rôle
 function getLoginHTML () {
   const year = new Date().getFullYear()
   return `<!DOCTYPE html>
@@ -1338,11 +2034,8 @@ html,body{width:100%;height:100%;overflow:hidden;}
 .input-field.has-icon{padding-right:44px;}
 .eye-btn{position:absolute;right:13px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:rgba(255,255,255,0.5);font-size:15px;transition:color .2s;}
 .eye-btn:hover{color:rgba(255,255,255,0.9);}
-.btn-primary{width:100%;background:linear-gradient(135deg,#2563eb,#1e3a5f);border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:600;color:#fff;cursor:pointer;transition:all .25s;box-shadow:0 4px 20px rgba(30,58,95,0.5);position:relative;overflow:hidden;}
-.btn-primary::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.15),transparent);opacity:0;transition:opacity .25s;}
+.btn-primary{width:100%;background:linear-gradient(135deg,#2563eb,#1e3a5f);border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:600;color:#fff;cursor:pointer;transition:all .25s;box-shadow:0 4px 20px rgba(30,58,95,0.5);}
 .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(30,58,95,0.65);}
-.btn-primary:hover::before{opacity:1;}
-.btn-primary:active{transform:translateY(0);}
 .btn-primary:disabled{opacity:.65;cursor:not-allowed;transform:none;}
 .error-box{display:none;background:rgba(239,68,68,0.18);border:1px solid rgba(239,68,68,0.4);border-radius:10px;padding:10px 14px;color:#fca5a5;font-size:13px;margin-bottom:16px;}
 .error-box.show{display:flex;align-items:center;gap:8px;}
@@ -1380,7 +2073,6 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </div>
 </div>
 <script>
-
 function togglePwd(){const p=document.getElementById('password'),i=document.getElementById('eye-icon');if(p.type==='password'){p.type='text';i.className='fas fa-eye-slash';}else{p.type='password';i.className='fas fa-eye';}}
 function showError(msg){const b=document.getElementById('error-msg');document.getElementById('error-text').textContent=msg;b.classList.add('show');}
 function hideError(){document.getElementById('error-msg').classList.remove('show');}
@@ -1391,43 +2083,76 @@ document.getElementById('login-form').addEventListener('submit',async(e)=>{
     const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})});
     const d=await r.json();
     if(!r.ok){
-      if(d.blocked){showError(d.error);btn.innerHTML='<i class="fas fa-lock" style="margin-right:8px;"></i>Compte bloqué';btn.disabled=true;setTimeout(()=>{btn.innerHTML='<i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter';btn.disabled=false;},d.minutesLeft*60*1000);}
+      if(d.blocked){showError(d.error);btn.innerHTML='<i class="fas fa-lock" style="margin-right:8px;"></i>Compte bloqué';btn.disabled=true;
+        setTimeout(()=>{btn.innerHTML='<i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter';btn.disabled=false;},d.minutesLeft*60*1000);}
       else{showError(d.error||'Email ou mot de passe incorrect');btn.innerHTML='<i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter';btn.disabled=false;}
       return;
     }
     localStorage.setItem('token',d.token);localStorage.setItem('user',JSON.stringify(d.user));
     btn.innerHTML='<i class="fas fa-check" style="margin-right:8px;"></i>Bienvenue !';
     setTimeout(()=>{
-      if(d.user.role==='Administrateur')window.location='/admin/dashboard';
-      else if(d.user.role==='Chef de Département')window.location='/chef/dashboard';
+      const role=d.user.role;
+      if(role==='Administrateur') window.location='/admin/dashboard';
+      else if(role==='Directeur Général') window.location='/dg/dashboard';
+      else if(role==='Directeur de Département') window.location='/dir-dept/dashboard';
+      else if(role==='Chef de Département') window.location='/chef/dashboard';
+      else if(role==='Chef de Service') window.location='/chef-service/dashboard';
       else window.location='/agent/dashboard';
     },400);
   }catch(err){showError(err.message||'Erreur réseau');btn.innerHTML='<i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Se connecter';btn.disabled=false;}
 });
-(function(){const t=localStorage.getItem('token');if(t){const u=JSON.parse(localStorage.getItem('user')||'{}');if(u.role==='Administrateur')window.location='/admin/dashboard';else if(u.role==='Chef de Département')window.location='/chef/dashboard';else if(u.role==='Agent')window.location='/agent/dashboard';}})();
+(function(){
+  const t=localStorage.getItem('token');
+  if(t){
+    const u=JSON.parse(localStorage.getItem('user')||'{}');
+    const role=u.role||'';
+    if(role==='Administrateur') window.location='/admin/dashboard';
+    else if(role==='Directeur Général') window.location='/dg/dashboard';
+    else if(role==='Directeur de Département') window.location='/dir-dept/dashboard';
+    else if(role==='Chef de Département') window.location='/chef/dashboard';
+    else if(role==='Chef de Service') window.location='/chef-service/dashboard';
+    else if(role==='Agent') window.location='/agent/dashboard';
+  }
+})();
 </script>
 </body></html>`
 }
 
-app.get('/login', (req, res) => res.send(getLoginHTML()))
-app.get('/admin*', (req, res) => res.send(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TimeTrack Admin - BGFIBank</title><script src="/static/libs/tailwind.min.js"></script><link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet"><script src="/static/libs/chart.min.js"></script><link rel="stylesheet" href="/static/admin.css"></head><body><div id="app"></div><script src="/static/admin.js"></script></body></html>`))
-app.get('/agent*', (req, res) => res.send(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TimeTrack Agent - BGFIBank</title><script src="/static/libs/tailwind.min.js"></script><link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet"><script src="/static/libs/chart.min.js"></script><link rel="stylesheet" href="/static/agent.css"></head><body><div id="app"></div><script src="/static/agent.js"></script></body></html>`))
-app.get('/chef*', (req, res) => res.send(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TimeTrack Chef - BGFIBank</title><script src="/static/libs/tailwind.min.js"></script><link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet"><script src="/static/libs/chart.min.js"></script><link rel="stylesheet" href="/static/chef.css"></head><body><div id="app"></div><script src="/static/chef.js"></script></body></html>`))
-app.get('/', (req, res) => res.redirect('/login'))
+const spa = (jsFile, title) => `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>${title} - BGFIBank</title>
+<link rel="icon" type="image/png" href="/static/bgfibank-logo.png">
+<script src="/static/libs/tailwind.min.js"></script>
+<link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
+<script src="/static/libs/chart.min.js"></script>
+<link rel="stylesheet" href="/static/${jsFile.replace('.js', '.css')}">
+</head><body><div id="app"></div><script src="/static/${jsFile}"></script></body></html>`
+
+app.get('/login',              (req, res) => res.send(getLoginHTML()))
+app.get('/admin*',             (req, res) => res.send(spa('admin.js',       'TimeTrack Admin')))
+app.get('/agent*',             (req, res) => res.send(spa('agent.js',       'TimeTrack Agent')))
+app.get('/chef*',              (req, res) => res.send(spa('chef.js',        'TimeTrack Chef')))
+app.get('/chef-service*',      (req, res) => res.send(spa('chef-service.js', 'TimeTrack Chef de Service')))
+app.get('/dir-dept*',          (req, res) => res.send(spa('dir-dept.js',     'TimeTrack Directeur de Département')))
+app.get('/dg*',                (req, res) => res.send(spa('dg.js',          'TimeTrack Directeur Général')))
+app.get('/',                   (req, res) => res.redirect('/login'))
 
 // ============================================
-// DÉMARRAGE
+// DÉMARRAGE SERVEUR
 // ============================================
 
 initDB().then(() => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 TimeTrack BGFIBank (MySQL) démarré sur http://0.0.0.0:${PORT}`)
     console.log(`   Base de données: ${DB_CONFIG.database} @ ${DB_CONFIG.host}:${DB_CONFIG.port}`)
-    console.log(`   Accès local:   http://localhost:${PORT}/login`)
+    console.log(`   Accès local:     http://localhost:${PORT}/login`)
+    console.log(`   Accès réseau:    http://<IP_SERVEUR>:${PORT}/login`)
+    console.log(`   JWT expire:      ${JWT_EXPIRY / 3600}h`)
+    console.log(`   Hash mot passe:  PBKDF2-SHA256 (600 000 itérations)\n`)
   })
 }).catch(err => {
   console.error('❌ Impossible de se connecter à MySQL:', err.message)
-  console.error('   Vérifiez que MySQL est démarré et que les paramètres de connexion sont corrects.')
-  console.error('   Paramètres actuels:', JSON.stringify({ host: DB_CONFIG.host, port: DB_CONFIG.port, user: DB_CONFIG.user, database: DB_CONFIG.database }))
+  console.error('   Vérifiez MySQL et les paramètres dans .env')
+  console.error('   Host:', DB_CONFIG.host, '| Port:', DB_CONFIG.port, '| DB:', DB_CONFIG.database)
   process.exit(1)
 })
