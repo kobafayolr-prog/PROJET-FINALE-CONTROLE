@@ -1506,7 +1506,7 @@ function showTaskModal(id = null) {
       <div class="form-group"><label class="form-label">Nom de la tâche</label><input class="form-control" id="t_name" value="${t?.name||''}" required></div>
       <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="t_desc" rows="2">${t?.description||''}</textarea></div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Département</label>
+        <div class="form-group"><label class="form-label">Activités</label>
           <select class="form-control" id="t_dept" onchange="filterProcessesByDept(this.value)">
             ${allDepts.map(d => `<option value="${d.id}" ${t?.department_id===d.id?'selected':''}>${d.name}</option>`).join('')}
           </select>
