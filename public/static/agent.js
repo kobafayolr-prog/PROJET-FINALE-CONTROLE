@@ -268,43 +268,7 @@ async function renderDashboard() {
     </div>` : `<div style="text-align:center;padding:40px;color:#9ca3af"><i class="fas fa-chart-pie" style="font-size:40px;margin-bottom:12px;display:block"></i>Aucune session enregistrée</div>`}
   </div>
 
-  <!-- Méthode 3-3-3 — Mon Ratio d'Efficience -->
-  <div class="chart-card">
-    <div class="chart-title"><i class="fas fa-chart-pie" style="color:#1e3a5f"></i> Ma Méthode 3-3-3 — Mon Ratio d'Efficience</div>
-    ${(stats.ratio333||[]).every(r=>r.minutes===0) ? `
-    <div style="text-align:center;padding:30px;color:#9ca3af">
-      <i class="fas fa-info-circle" style="font-size:32px;margin-bottom:10px;display:block"></i>
-      Aucune session validée pour calculer le ratio
-    </div>` : `
-    <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
-      <div style="flex:0 0 160px"><canvas id="chart333Agent" height="160"></canvas></div>
-      <div style="flex:1;min-width:160px">
-        ${(stats.ratio333||[]).map(r => {
-          const color = r.type==='Production'?'#1e3a5f':r.type==='Administration & Reporting'?'#f59e0b':'#10b981';
-          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <span style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0"></span>
-            <div style="flex:1">
-              <div style="font-weight:700;font-size:12px;color:#374151">${r.type}</div>
-              <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
-                <div style="flex:1;background:#e5e7eb;border-radius:4px;height:6px">
-                  <div style="width:${r.percentage}%;background:${color};height:6px;border-radius:4px"></div>
-                </div>
-                <span style="font-weight:700;color:${color};font-size:12px;width:32px">${r.percentage}%</span>
-                <span style="color:#6b7280;font-size:11px">${r.hours_display}</span>
-              </div>
-            </div>
-          </div>`;
-        }).join('')}
-        <div style="margin-top:10px;padding:8px 12px;background:#eff6ff;border-radius:8px;border-left:3px solid #1e3a5f">
-          <div style="font-size:11px;color:#6b7280">Mon Ratio d'Efficience</div>
-          <div style="font-size:18px;font-weight:800;color:#1e3a5f">
-            ${(stats.ratio333||[]).find(r=>r.type==='Production')?.percentage||0}%
-            <span style="font-size:11px;font-weight:400;color:#6b7280">en Production</span>
-          </div>
-        </div>
-      </div>
-    </div>`}
-  </div>`;
+  `;
 
   // Charts
   destroyCharts();
@@ -331,16 +295,7 @@ async function renderDashboard() {
       }
     });
   }
-  if (stats.ratio333 && stats.ratio333.some(r=>r.minutes>0) && document.getElementById('chart333Agent')) {
-    agentCharts.chart333 = new Chart(document.getElementById('chart333Agent'), {
-      type: 'doughnut',
-      data: {
-        labels: stats.ratio333.map(r => r.type),
-        datasets: [{ data: stats.ratio333.map(r => r.minutes), backgroundColor: ['#1e3a5f','#f59e0b','#10b981'], borderWidth: 2 }]
-      },
-      options: { plugins: { legend: { display: false } }, cutout: '60%' }
-    });
-  }
+
 }
 
 // ============================================
