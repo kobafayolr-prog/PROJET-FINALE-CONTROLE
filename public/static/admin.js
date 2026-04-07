@@ -481,7 +481,11 @@ async function loadDashboardStats() {
   <!-- ══ RANGÉE 3 : Comparaison par Département ══ -->
   <div class="card" style="margin-bottom:20px">
     <div class="card-body">
-      <div class="chart-title"><i class="fas fa-chart-bar" style="color:#1e3a5f"></i> Comparaison par Département — Répartition 3-3-3${stats.month2 ? ` <span style="font-size:12px;font-weight:400;color:#6b7280">(${stats.month} vs ${stats.month2})</span>` : ''}</div>
+      <div class="chart-title"><i class="fas fa-chart-bar" style="color:#1e3a5f"></i> Comparaison par Département — Productif vs Non-productif${stats.month2 ? ` <span style="font-size:12px;font-weight:400;color:#6b7280">(${stats.month} vs ${stats.month2})</span>` : ''}</div>
+      <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151"><span style="width:14px;height:14px;border-radius:3px;background:#1e3a5f;display:inline-block"></span> Heures productives (tout ce qui est pointé)</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151"><span style="width:14px;height:14px;border-radius:3px;background:#ef444480;display:inline-block"></span> Heures non-productives (absence / non pointé)</span>
+      </div>
       <canvas id="chartDeptBar" height="${stats.month2 ? 260 : 200}"></canvas>
       <!-- Tableau récap heures non-productives par département -->
       <div style="margin-top:16px;overflow-x:auto">
@@ -528,7 +532,11 @@ async function loadDashboardStats() {
   <!-- ══ RANGÉE 4 : Comparaison par Agent ══ -->
   <div class="card" style="margin-bottom:20px">
     <div class="card-body">
-      <div class="chart-title"><i class="fas fa-users" style="color:#1e3a5f"></i> Comparaison par Agent — Temps de Reporting vs Production${stats.month2 ? ` <span style="font-size:12px;font-weight:400;color:#6b7280">(${stats.month} vs ${stats.month2})</span>` : ''}</div>
+      <div class="chart-title"><i class="fas fa-users" style="color:#1e3a5f"></i> Comparaison par Agent — Productif vs Non-productif${stats.month2 ? ` <span style="font-size:12px;font-weight:400;color:#6b7280">(${stats.month} vs ${stats.month2})</span>` : ''}</div>
+      <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151"><span style="width:14px;height:14px;border-radius:3px;background:#1e3a5f;display:inline-block"></span> Heures productives (tout ce qui est pointé)</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151"><span style="width:14px;height:14px;border-radius:3px;background:#ef444480;display:inline-block"></span> Heures non-productives (base 8h/jour)</span>
+      </div>
       <canvas id="chartAgentBar" height="${Math.max(180, (stats.agentComparison||[]).length * (stats.month2?40:28))}"></canvas>
     </div>
   </div>
@@ -654,43 +662,108 @@ async function loadDashboardStats() {
     });
   }
 
-  // Barres empilées par Département
+  // ── Barres groupées par Département : Productif vs Non-productif côte à côte
   if (stats.deptComparison && stats.deptComparison.length && document.getElementById('chartDeptBar')) {
-    const depts = stats.deptComparison;
+    const depts   = stats.deptComparison;
     const deptsM2 = stats.deptComparisonMonth2 || [];
-    const labels = depts.map(d => d.dept_name.replace('Direction ','Dir. ').replace('Département','Dept'));
-    const mkDs = (src, suffix) => [
-      { label: 'Production'+suffix, data: src.map(d=>+(d.Production/60).toFixed(2)), backgroundColor: '#1e3a5f', stack: 'stack'+suffix },
-      { label: 'Admin & Reporting'+suffix, data: src.map(d=>+((d['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor: '#f59e0b', stack: 'stack'+suffix },
-      { label: 'Contrôle'+suffix, data: src.map(d=>+((d['Contrôle']||0)/60).toFixed(2)), backgroundColor: '#10b981', stack: 'stack'+suffix },
-      { label: 'Non productif'+suffix, data: src.map(d=>+(Math.max(0,d.agent_count*8-(d.total_minutes/60)).toFixed(2))), backgroundColor: '#ef4444', stack: 'stack'+suffix }
+    const labels  = depts.map(d => d.dept_name.replace('Direction ','Dir. ').replace('Département','Dept'));
+
+    // Pour chaque dept : productif = total_minutes pointées, non-productif = capacité - total
+    const mkDeptDs = (src, moisLabel) => [
+      {
+        label: 'Productif' + moisLabel,
+        data: src.map(d => +(d.total_minutes / 60).toFixed(2)),
+        backgroundColor: '#1e3a5f',
+        borderRadius: 4,
+        borderSkipped: false
+      },
+      {
+        label: 'Non productif' + moisLabel,
+        data: src.map(d => +(Math.max(0, d.agent_count * 8 - d.total_minutes / 60).toFixed(2))),
+        backgroundColor: '#ef444480',
+        borderRadius: 4,
+        borderSkipped: false
+      }
     ];
-    const datasets = mkDs(depts, stats.month2?' ('+stats.month+')':'');
-    if (deptsM2.length) datasets.push(...mkDs(deptsM2, ' ('+stats.month2+')'));
+
+    const dsSuffix = stats.month2 ? ' (' + stats.month + ')' : '';
+    const datasets = mkDeptDs(depts, dsSuffix);
+    if (deptsM2.length) datasets.push(...mkDeptDs(deptsM2, ' (' + stats.month2 + ')'));
+
     adminCharts.deptBar = new Chart(document.getElementById('chartDeptBar'), {
       type: 'bar',
       data: { labels, datasets },
-      options: { indexAxis: 'y', plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } } }, scales: { x: { stacked: true, ticks: { callback: v=>v+'h' } }, y: { stacked: true, ticks: { font: { size: 11 } } } }, responsive: true }
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 12 }, boxWidth: 14, padding: 16 } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const h = Math.floor(ctx.raw), m = Math.round((ctx.raw - h) * 60);
+                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grouped: true, ticks: { callback: v => v + 'h' }, grid: { color: '#f3f4f6' } },
+          y: { ticks: { font: { size: 11 } } }
+        }
+      }
     });
   }
 
-  // Barres empilées par Agent
+  // ── Barres groupées par Agent : Productif vs Non-productif côte à côte
   if (stats.agentComparison && stats.agentComparison.length && document.getElementById('chartAgentBar')) {
-    const agents = stats.agentComparison;
+    const agents   = stats.agentComparison;
     const agentsM2 = stats.agentComparisonMonth2 || [];
     const agLabels = agents.map(a => a.agent_name);
-    const mkAgDs = (src, suffix) => [
-      { label: 'Production'+suffix, data: src.map(a=>+(a.Production/60).toFixed(2)), backgroundColor: '#1e3a5f', stack: 'stk'+suffix },
-      { label: 'Admin & Reporting'+suffix, data: src.map(a=>+((a['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor: '#f59e0b', stack: 'stk'+suffix },
-      { label: 'Contrôle'+suffix, data: src.map(a=>+((a['Contrôle']||0)/60).toFixed(2)), backgroundColor: '#10b981', stack: 'stk'+suffix },
-      { label: 'Non productif'+suffix, data: src.map(a=>+(Math.max(0,8-(a.total_minutes/60)).toFixed(2))), backgroundColor: '#ef4444', stack: 'stk'+suffix }
+
+    const mkAgentDs = (src, moisLabel) => [
+      {
+        label: 'Productif' + moisLabel,
+        data: src.map(a => +(a.total_minutes / 60).toFixed(2)),
+        backgroundColor: '#1e3a5f',
+        borderRadius: 4,
+        borderSkipped: false
+      },
+      {
+        label: 'Non productif' + moisLabel,
+        data: src.map(a => +(Math.max(0, 8 - a.total_minutes / 60).toFixed(2))),
+        backgroundColor: '#ef444480',
+        borderRadius: 4,
+        borderSkipped: false
+      }
     ];
-    const agDatasets = mkAgDs(agents, stats.month2?' ('+stats.month+')':'');
-    if (agentsM2.length) agDatasets.push(...mkAgDs(agentsM2, ' ('+stats.month2+')'));
+
+    const agSuffix = stats.month2 ? ' (' + stats.month + ')' : '';
+    const agDatasets = mkAgentDs(agents, agSuffix);
+    if (agentsM2.length) agDatasets.push(...mkAgentDs(agentsM2, ' (' + stats.month2 + ')'));
+
     adminCharts.agentBar = new Chart(document.getElementById('chartAgentBar'), {
       type: 'bar',
       data: { labels: agLabels, datasets: agDatasets },
-      options: { indexAxis: 'y', plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } } }, scales: { x: { stacked: true, ticks: { callback: v=>v+'h' } }, y: { stacked: true, ticks: { font: { size: 11 } } } }, responsive: true }
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 12 }, boxWidth: 14, padding: 16 } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const h = Math.floor(ctx.raw), m = Math.round((ctx.raw - h) * 60);
+                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grouped: true, ticks: { callback: v => v + 'h' }, grid: { color: '#f3f4f6' } },
+          y: { ticks: { font: { size: 11 } } }
+        }
+      }
     });
   }
 }
@@ -1069,58 +1142,78 @@ let allObjsData = [];
 async function renderObjectives() {
   renderLayout('Catégories 3-3-3', '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i></div>');
 
-  // Les 3 catégories sont fixes — on récupère les stats du mois courant
+  // Récupérer les catégories depuis l'API (avec leurs cibles réelles en DB) + stats du mois
   const month = new Date().toISOString().slice(0,7);
-  const TOKEN_VAL = token;
-  const stats = await api(`/api/admin/stats?month=${month}`);
+  const [objsFromDB, stats] = await Promise.all([
+    api('/api/admin/objectives'),
+    api(`/api/admin/stats?month=${month}`)
+  ]);
   const ratio = stats.ratio333 || [];
 
-  const OBJ_333 = [
-    { id: 10, name: 'Production',                 color: '#1e3a5f', icon: 'fa-briefcase',   target: 70, desc: 'Activités directement productives : traitement des opérations, service client, production bancaire.' },
-    { id: 11, name: 'Administration & Reporting', color: '#f59e0b', icon: 'fa-file-alt',    target: 20, desc: 'Activités administratives, reporting, réunions, formation et tâches de support.' },
-    { id: 12, name: 'Contrôle',                   color: '#10b981', icon: 'fa-check-circle', target: 10, desc: 'Activités de contrôle, audit, conformité, supervision et vérification.' }
-  ];
+  // Métadonnées fixes (icône, description)
+  const META = {
+    'Production':                 { icon: 'fa-briefcase',    desc: 'Activités directement productives : traitement des opérations, service client, production bancaire.' },
+    'Administration & Reporting': { icon: 'fa-file-alt',     desc: 'Activités administratives, reporting, réunions, formation et tâches de support.' },
+    'Contrôle':                   { icon: 'fa-check-circle', desc: 'Activités de contrôle, audit, conformité, supervision et vérification.' }
+  };
 
-  const cards = OBJ_333.map(o => {
-    const r = ratio.find(x => x.label === o.name) || { percentage: 0, hours_display: '0h 00m', minutes: 0 };
-    const ecart = r.percentage - o.target;
+  // Ordre fixe
+  const ORDER = ['Production', 'Administration & Reporting', 'Contrôle'];
+  const objs = ORDER.map(name => objsFromDB.find(o => o.name === name)).filter(Boolean);
+
+  const cards = objs.map(o => {
+    const meta   = META[o.name] || { icon: 'fa-circle', desc: '' };
+    const r      = ratio.find(x => x.label === o.name) || { percentage: 0, hours_display: '0h 00m', minutes: 0 };
+    const ecart  = r.percentage - o.target_percentage;
     const ecartColor = ecart >= 0 ? '#16a34a' : (ecart > -15 ? '#f59e0b' : '#ef4444');
     return `
-    <div style="border-radius:14px;border:2px solid ${o.color}20;background:#fff;padding:24px;position:relative;box-shadow:0 2px 8px ${o.color}15">
+    <div style="border-radius:14px;border:2px solid ${o.color}30;background:#fff;padding:24px;position:relative;box-shadow:0 2px 10px ${o.color}15">
+      <!-- En-tête : icône + nom + bouton modifier -->
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
         <div style="width:48px;height:48px;border-radius:12px;background:${o.color}15;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <i class="fas ${o.icon}" style="color:${o.color};font-size:20px"></i>
+          <i class="fas ${meta.icon}" style="color:${o.color};font-size:20px"></i>
         </div>
-        <div>
+        <div style="flex:1">
           <div style="font-size:16px;font-weight:800;color:${o.color}">${o.name}</div>
-          <div style="font-size:11px;color:#9ca3af">Catégorie 3-3-3 · ID ${o.id}</div>
+          <div style="font-size:11px;color:#9ca3af">Catégorie 3-3-3 · Cible : <b style="color:${o.color}">${o.target_percentage}%</b></div>
         </div>
-        <span class="badge badge-active" style="margin-left:auto">Actif</span>
+        <button onclick="showEditTargetModal(${o.id},'${o.name.replace(/'/g,"\\'")}',${ o.target_percentage},'${o.color}')"
+          style="background:${o.color}10;border:1.5px solid ${o.color}40;color:${o.color};border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">
+          <i class="fas fa-sliders-h"></i> Modifier la cible
+        </button>
       </div>
-      <p style="font-size:12px;color:#6b7280;margin-bottom:16px;line-height:1.5">${o.desc}</p>
-      <div style="display:flex;gap:16px;margin-bottom:14px">
+      <p style="font-size:12px;color:#6b7280;margin-bottom:16px;line-height:1.5">${meta.desc}</p>
+      <!-- KPIs -->
+      <div style="display:flex;gap:12px;margin-bottom:14px">
         <div style="text-align:center;flex:1;padding:10px;background:${o.color}08;border-radius:8px">
-          <div style="font-size:20px;font-weight:800;color:${o.color}">${r.hours_display}</div>
-          <div style="font-size:10px;color:#9ca3af">Ce mois (${month})</div>
+          <div style="font-size:18px;font-weight:800;color:${o.color}">${r.hours_display}</div>
+          <div style="font-size:10px;color:#9ca3af">Réalisé ce mois</div>
         </div>
         <div style="text-align:center;flex:1;padding:10px;background:#f9fafb;border-radius:8px">
-          <div style="font-size:20px;font-weight:800;color:${o.color}">${r.percentage}%</div>
-          <div style="font-size:10px;color:#9ca3af">Réalisé</div>
+          <div style="font-size:18px;font-weight:800;color:${o.color}">${r.percentage}%</div>
+          <div style="font-size:10px;color:#9ca3af">% Réalisé</div>
         </div>
-        <div style="text-align:center;flex:1;padding:10px;background:#f9fafb;border-radius:8px">
-          <div style="font-size:20px;font-weight:800;color:#1e3a5f">${o.target}%</div>
-          <div style="font-size:10px;color:#9ca3af">Cible</div>
+        <div style="text-align:center;flex:1;padding:10px;background:#eff6ff;border-radius:8px">
+          <div style="font-size:18px;font-weight:800;color:#1e3a5f">${o.target_percentage}%</div>
+          <div style="font-size:10px;color:#9ca3af">% Cible</div>
         </div>
         <div style="text-align:center;flex:1;padding:10px;background:${ecartColor}10;border-radius:8px">
-          <div style="font-size:20px;font-weight:800;color:${ecartColor}">${ecart>=0?'+':''}${ecart}%</div>
+          <div style="font-size:18px;font-weight:800;color:${ecartColor}">${ecart>=0?'+':''}${ecart}%</div>
           <div style="font-size:10px;color:#9ca3af">Écart</div>
         </div>
       </div>
-      <div style="background:#f3f4f6;border-radius:6px;height:8px;overflow:hidden">
-        <div style="height:100%;width:${Math.min(r.percentage,100)}%;background:${o.color};border-radius:6px;transition:width .4s"></div>
+      <!-- Barre de progression avec marqueur cible -->
+      <div style="position:relative;margin-bottom:4px">
+        <div style="background:#f3f4f6;border-radius:6px;height:10px;overflow:hidden">
+          <div style="height:100%;width:${Math.min(r.percentage,100)}%;background:${o.color};border-radius:6px;transition:width .5s"></div>
+        </div>
+        <!-- Marqueur cible -->
+        <div style="position:absolute;top:-3px;left:${o.target_percentage}%;transform:translateX(-50%);width:2px;height:16px;background:#374151;border-radius:2px" title="Cible : ${o.target_percentage}%"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:#9ca3af">
-        <span>0%</span><span>Cible : ${o.target}%</span><span>100%</span>
+      <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:10px;color:#9ca3af">
+        <span>0%</span>
+        <span style="color:#374151;font-weight:600">▲ Cible : ${o.target_percentage}%</span>
+        <span>100%</span>
       </div>
     </div>`;
   }).join('');
@@ -1128,18 +1221,88 @@ async function renderObjectives() {
   document.getElementById('content').innerHTML = `
   <div class="page-header">
     <div class="page-title"><i class="fas fa-chart-pie"></i><h2>Méthode 3-3-3 — Catégories & Objectifs</h2></div>
-    <span style="background:#eff6ff;color:#1e3a5f;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600">
-      <i class="fas fa-lock" style="margin-right:4px"></i>Catégories fixes · Non modifiables
+    <span style="background:#f0fdf4;color:#16a34a;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600">
+      <i class="fas fa-edit" style="margin-right:4px"></i>Cibles modifiables
     </span>
   </div>
-  <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#92400e">
+  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#1e40af">
     <i class="fas fa-info-circle" style="margin-right:6px"></i>
-    Ces 3 catégories constituent les objectifs stratégiques de BGFIBank CA selon la <b>méthode 3-3-3</b>.
-    Chaque tâche est rattachée à l'une de ces catégories. Les pourcentages sont calculés automatiquement sur les sessions du mois.
+    Ces 3 catégories constituent les objectifs de BGFIBank CA selon la <b>méthode 3-3-3</b>.
+    Les <b>noms et IDs sont fixes</b> mais les <b>cibles (%) sont ajustables</b> à tout moment via le bouton « Modifier la cible ».
   </div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px">
     ${cards}
   </div>`;
+}
+
+// Modal pour modifier uniquement la cible d'une catégorie 3-3-3
+function showEditTargetModal(id, name, currentTarget, color) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header" style="border-left:4px solid ${color}">
+      <span class="modal-title" style="color:${color}"><i class="fas fa-sliders-h" style="margin-right:8px"></i>Modifier la cible — ${name}</span>
+      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+    </div>
+    <div style="padding:20px">
+      <div style="background:#f9fafb;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#6b7280">
+        <i class="fas fa-info-circle" style="color:${color};margin-right:6px"></i>
+        Définissez le pourcentage cible pour la catégorie <b style="color:${color}">${name}</b>.
+        La somme des 3 cibles doit idéalement être égale à <b>100%</b>.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cible en % <span style="color:#9ca3af;font-weight:400">(valeur actuelle : ${currentTarget}%)</span></label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <input class="form-control" type="number" id="edit_target_val" min="1" max="99" value="${currentTarget}"
+            style="font-size:22px;font-weight:800;color:${color};text-align:center;max-width:100px" oninput="updateTargetPreview(this.value,'${color}')">
+          <span style="font-size:22px;font-weight:800;color:${color}">%</span>
+          <div style="flex:1">
+            <input type="range" id="edit_target_range" min="1" max="99" value="${currentTarget}"
+              style="width:100%;accent-color:${color}"
+              oninput="document.getElementById('edit_target_val').value=this.value;updateTargetPreview(this.value,'${color}')">
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:#9ca3af"><span>1%</span><span>99%</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- Prévisualisation barre -->
+      <div style="margin:12px 0 8px;font-size:12px;color:#6b7280">Aperçu :</div>
+      <div style="background:#f3f4f6;border-radius:6px;height:12px;overflow:hidden">
+        <div id="target_preview_bar" style="height:100%;width:${currentTarget}%;background:${color};border-radius:6px;transition:width .2s"></div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px">
+        <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Annuler</button>
+        <button class="btn btn-primary" style="background:${color};border-color:${color}" onclick="saveTarget(${id},'${name.replace(/'/g,"\\'")}')"><i class="fas fa-save" style="margin-right:6px"></i>Enregistrer</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  // Sync slider ↔ input
+  document.getElementById('edit_target_val').addEventListener('input', function() {
+    document.getElementById('edit_target_range').value = this.value;
+  });
+}
+
+function updateTargetPreview(val, color) {
+  const bar = document.getElementById('target_preview_bar');
+  if (bar) { bar.style.width = Math.min(Math.max(val,0),100) + '%'; bar.style.background = color; }
+}
+
+async function saveTarget(id, name) {
+  const val = parseInt(document.getElementById('edit_target_val').value);
+  if (isNaN(val) || val < 1 || val > 99) { toast('Valeur invalide (1-99%)', 'error'); return; }
+  // Récupérer les données complètes de l'objectif avant de le modifier
+  const objs = await api('/api/admin/objectives');
+  const o = objs.find(x => x.id === id);
+  if (!o) { toast('Catégorie introuvable', 'error'); return; }
+  const r = await api('/api/admin/objectives/' + id, {
+    method: 'PUT',
+    body: JSON.stringify({ name: o.name, description: o.description, color: o.color, target_percentage: val, status: o.status })
+  });
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast(`Cible ${name} mise à jour : ${val}%`);
+  document.querySelector('.modal-overlay')?.remove();
+  renderObjectives();
 }
 
 async function deleteObjective(id, name) {
