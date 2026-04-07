@@ -682,6 +682,28 @@ app.get('/api/admin/stats', async (c) => {
   // Helper pour construire les requêtes avec filtre mois
   const monthFilter = (m: string) => `strftime('%Y-%m', ws.start_time) = '${m}'`
 
+  // ── Calcul des jours ouvrés réels d'un mois (lundi à vendredi)
+  // Pour le mois en cours : on compte jusqu'à aujourd'hui seulement (cumul partiel)
+  // Pour les mois passés  : on compte tous les jours ouvrés du mois complet
+  const calcWorkingDays = (m: string): number => {
+    const [y, mo] = m.split('-').map(Number)
+    const today = new Date()
+    const isCurrentMonth = today.getFullYear() === y && (today.getMonth() + 1) === mo
+    // Dernier jour à considérer : aujourd'hui si mois en cours, sinon fin du mois
+    const lastDay = isCurrentMonth
+      ? today.getDate()
+      : new Date(y, mo, 0).getDate() // dernier jour du mois
+    let count = 0
+    for (let d = 1; d <= lastDay; d++) {
+      const dow = new Date(y, mo - 1, d).getDay() // 0=dim, 6=sam
+      if (dow !== 0 && dow !== 6) count++
+    }
+    return count || 1 // minimum 1 pour éviter division par zéro
+  }
+
+  const workingDaysMonth  = calcWorkingDays(month)
+  const workingDaysMonth2 = month2 ? calcWorkingDays(month2) : null
+
   // ── Requête ratio 3-3-3 par mois avec décomposition par département et agent ──
   async function getRatio333ForMonth(m: string) {
     // Ratio global 3-3-3 pour ce mois
@@ -870,8 +892,9 @@ app.get('/api/admin/stats', async (c) => {
   const r333Main = await getRatio333ForMonth(month)
   const ratio333Result = build333Result(r333Main.ratio333 as any[])
 
-  // Construire comparaison par département avec capacité
-  const buildDeptComparison = (raw: any[], capacities: any[]) => {
+  // Construire comparaison par département avec capacité mensuelle réelle
+  // capacity = agent_count × jours_ouvrés_du_mois × 480 min (8h)
+  const buildDeptComparison = (raw: any[], capacities: any[], workingDays: number) => {
     const depts: Record<string, any> = {}
     ;(raw as any[]).forEach((r: any) => {
       if (!depts[r.dept_name]) {
@@ -886,13 +909,25 @@ app.get('/api/admin/stats', async (c) => {
     })
     return Object.values(depts).map((d: any) => {
       const total = d.Production + d['Administration & Reporting'] + d['Contrôle']
-      const capacity = d.agent_count * 480 // 8h par agent par jour de référence
-      return { ...d, total_minutes: total, capacity_minutes: capacity, hours_display: minutesToHours(total) }
+      // Capacité mensuelle = agents × jours ouvrés × 8h
+      const capacity = d.agent_count * workingDays * 480
+      const pct = capacity > 0 ? Math.round(total * 100 / capacity) : 0
+      return {
+        ...d,
+        total_minutes: total,
+        capacity_minutes: capacity,
+        working_days: workingDays,
+        productive_pct: pct,
+        non_productive_pct: Math.max(0, 100 - pct),
+        hours_display: minutesToHours(total),
+        capacity_hours_display: minutesToHours(capacity)
+      }
     })
   }
 
-  // Construire comparaison par agent
-  const buildAgentComparison = (raw: any[]) => {
+  // Construire comparaison par agent avec capacité mensuelle réelle
+  // capacity = jours_ouvrés_du_mois × 480 min (8h)
+  const buildAgentComparison = (raw: any[], workingDays: number) => {
     const agents: Record<string, any> = {}
     ;(raw as any[]).forEach((r: any) => {
       if (!agents[r.agent_id]) {
@@ -902,27 +937,41 @@ app.get('/api/admin/stats', async (c) => {
     })
     return Object.values(agents).map((a: any) => {
       const total = a.Production + a['Administration & Reporting'] + a['Contrôle']
-      return { ...a, total_minutes: total, capacity_minutes: 480, hours_display: minutesToHours(total) }
+      // Capacité mensuelle = jours ouvrés × 8h
+      const capacity = workingDays * 480
+      const pct = capacity > 0 ? Math.round(total * 100 / capacity) : 0
+      return {
+        ...a,
+        total_minutes: total,
+        capacity_minutes: capacity,
+        working_days: workingDays,
+        productive_pct: pct,
+        non_productive_pct: Math.max(0, 100 - pct),
+        hours_display: minutesToHours(total),
+        capacity_hours_display: minutesToHours(capacity)
+      }
     })
   }
 
-  const deptComparison = buildDeptComparison(r333Main.ratio333ByDept as any[], r333Main.deptCapacity as any[])
-  const agentComparison = buildAgentComparison(r333Main.ratio333ByAgent as any[])
+  const deptComparison = buildDeptComparison(r333Main.ratio333ByDept as any[], r333Main.deptCapacity as any[], workingDaysMonth)
+  const agentComparison = buildAgentComparison(r333Main.ratio333ByAgent as any[], workingDaysMonth)
 
   // Mois 2 pour comparaison (optionnel)
   let ratio333Month2 = null
   let deptComparisonMonth2 = null
   let agentComparisonMonth2 = null
-  if (month2) {
+  if (month2 && workingDaysMonth2) {
     const r333M2 = await getRatio333ForMonth(month2)
     ratio333Month2 = build333Result(r333M2.ratio333 as any[])
-    deptComparisonMonth2 = buildDeptComparison(r333M2.ratio333ByDept as any[], r333M2.deptCapacity as any[])
-    agentComparisonMonth2 = buildAgentComparison(r333M2.ratio333ByAgent as any[])
+    deptComparisonMonth2 = buildDeptComparison(r333M2.ratio333ByDept as any[], r333M2.deptCapacity as any[], workingDaysMonth2)
+    agentComparisonMonth2 = buildAgentComparison(r333M2.ratio333ByAgent as any[], workingDaysMonth2)
   }
 
   return c.json({
     month,
     month2: month2 || null,
+    working_days: workingDaysMonth,
+    working_days_month2: workingDaysMonth2,
     hoursByObjective: objectivesWithPct,
     hoursByDept: hoursByDept.results,
     monthlyTrend: monthlyTrend.results,

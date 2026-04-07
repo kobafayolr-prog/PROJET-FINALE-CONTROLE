@@ -725,8 +725,7 @@ async function loadDashboardStats() {
   }
 
   // ── Barre empilée par Agent : UNE SEULE barre bicolore par agent
-  // Dataset 1 (bleu) = heures productives | Dataset 2 (rouge) = non-productives
-  // Même stack ID → les deux se superposent sur la même barre
+  // Capacité = jours_ouvrables_du_mois × 8h (donné par l'API via capacity_minutes)
   if (stats.agentComparison && stats.agentComparison.length && document.getElementById('chartAgentBar')) {
     const agents   = stats.agentComparison;
     const agentsM2 = stats.agentComparisonMonth2 || [];
@@ -737,18 +736,18 @@ async function loadDashboardStats() {
         label: 'Heures productives' + moisLabel,
         data: src.map(a => +(a.total_minutes / 60).toFixed(2)),
         backgroundColor: '#1e3a5f',
-        stack: stackId
+        stack: stackId,
+        _cap: src.map(a => a.capacity_minutes / 60)  // capacité mensuelle en heures
       },
       {
         label: 'Heures non-productives' + moisLabel,
-        data: src.map(a => +(Math.max(0, 8 - a.total_minutes / 60).toFixed(2))),
+        data: src.map(a => +(Math.max(0, a.capacity_minutes / 60 - a.total_minutes / 60).toFixed(2))),
         backgroundColor: '#ef4444cc',
-        stack: stackId
+        stack: stackId,
+        _cap: src.map(a => a.capacity_minutes / 60)
       }
     ];
 
-    // Sans mois2 → stack unique → 1 barre bicolore par agent
-    // Avec mois2 → 2 stacks distincts → 2 barres bicolores côte à côte par agent
     const agDatasets = mkAgentDs(agents, stats.month2 ? ' ('+stats.month+')' : '', 'M1');
     if (agentsM2.length) agDatasets.push(...mkAgentDs(agentsM2, ' ('+stats.month2+')', 'M2'));
 
@@ -764,9 +763,11 @@ async function loadDashboardStats() {
             callbacks: {
               label: ctx => {
                 const val = ctx.raw;
-                const pct = Math.round(val / 8 * 100);
+                const capH = ctx.dataset._cap ? ctx.dataset._cap[ctx.dataIndex] : 8;
+                const pct = capH > 0 ? Math.round(val / capH * 100) : 0;
                 const h = Math.floor(val), m = Math.round((val - h) * 60);
-                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m  (${pct}% des 8h cap.)`;
+                const capHf = Math.floor(capH), capMf = Math.round((capH - capHf) * 60);
+                return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m  — ${pct}% de la cap. mensuelle (${capHf}h${capMf>0?String(capMf).padStart(2,'0')+'m':''})`;
               }
             }
           }
