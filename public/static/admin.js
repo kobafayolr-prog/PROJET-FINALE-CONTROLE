@@ -662,30 +662,33 @@ async function loadDashboardStats() {
     });
   }
 
-  // ── Barres groupées par Département : 2 barres côte à côte (Productif | Non-productif)
+  // ── Barre empilée par Département : UNE SEULE barre bicolore par département
+  // Dataset 1 (bleu) = heures productives | Dataset 2 (rouge) = non-productives
+  // Même stack ID → les deux se superposent sur la même barre
   if (stats.deptComparison && stats.deptComparison.length && document.getElementById('chartDeptBar')) {
     const depts   = stats.deptComparison;
     const deptsM2 = stats.deptComparisonMonth2 || [];
     const labels  = depts.map(d => d.dept_name.replace('Direction ','Dir. ').replace('Département','Dept'));
 
-    // Barres groupées : pas de stack, 2 barres côte à côte par département
-    const mkDeptDs = (src, moisLabel) => [
+    const mkDeptDs = (src, moisLabel, stackId) => [
       {
         label: 'Heures productives' + moisLabel,
         data: src.map(d => +(d.total_minutes / 60).toFixed(2)),
         backgroundColor: '#1e3a5f',
-        borderRadius: 4
+        stack: stackId
       },
       {
         label: 'Heures non-productives' + moisLabel,
         data: src.map(d => +(Math.max(0, d.agent_count * 8 - d.total_minutes / 60).toFixed(2))),
         backgroundColor: '#ef4444cc',
-        borderRadius: 4
+        stack: stackId
       }
     ];
 
-    const datasets = mkDeptDs(depts, stats.month2 ? ' ('+stats.month+')' : '');
-    if (deptsM2.length) datasets.push(...mkDeptDs(deptsM2, ' ('+stats.month2+')'));
+    // Sans mois2 → stack unique → 1 barre bicolore par département
+    // Avec mois2 → 2 stacks distincts → 2 barres bicolores côte à côte par département
+    const datasets = mkDeptDs(depts, stats.month2 ? ' ('+stats.month+')' : '', 'M1');
+    if (deptsM2.length) datasets.push(...mkDeptDs(deptsM2, ' ('+stats.month2+')', 'M2'));
 
     adminCharts.deptBar = new Chart(document.getElementById('chartDeptBar'), {
       type: 'bar',
@@ -705,36 +708,40 @@ async function loadDashboardStats() {
           }
         },
         scales: {
-          x: { stacked: false, ticks: { callback: v => v + 'h' }, grid: { color: '#f3f4f6' } },
-          y: { stacked: false, ticks: { font: { size: 11 } } }
+          x: { stacked: true, ticks: { callback: v => v + 'h' }, grid: { color: '#f3f4f6' } },
+          y: { stacked: true, ticks: { font: { size: 11 } } }
         }
       }
     });
   }
 
-  // ── Barres groupées par Agent : 2 barres côte à côte (Productif | Non-productif)
+  // ── Barre empilée par Agent : UNE SEULE barre bicolore par agent
+  // Dataset 1 (bleu) = heures productives | Dataset 2 (rouge) = non-productives
+  // Même stack ID → les deux se superposent sur la même barre
   if (stats.agentComparison && stats.agentComparison.length && document.getElementById('chartAgentBar')) {
     const agents   = stats.agentComparison;
     const agentsM2 = stats.agentComparisonMonth2 || [];
     const agLabels = agents.map(a => a.agent_name);
 
-    const mkAgentDs = (src, moisLabel) => [
+    const mkAgentDs = (src, moisLabel, stackId) => [
       {
         label: 'Heures productives' + moisLabel,
         data: src.map(a => +(a.total_minutes / 60).toFixed(2)),
         backgroundColor: '#1e3a5f',
-        borderRadius: 4
+        stack: stackId
       },
       {
         label: 'Heures non-productives' + moisLabel,
         data: src.map(a => +(Math.max(0, 8 - a.total_minutes / 60).toFixed(2))),
         backgroundColor: '#ef4444cc',
-        borderRadius: 4
+        stack: stackId
       }
     ];
 
-    const agDatasets = mkAgentDs(agents, stats.month2 ? ' ('+stats.month+')' : '');
-    if (agentsM2.length) agDatasets.push(...mkAgentDs(agentsM2, ' ('+stats.month2+')'));
+    // Sans mois2 → stack unique → 1 barre bicolore par agent
+    // Avec mois2 → 2 stacks distincts → 2 barres bicolores côte à côte par agent
+    const agDatasets = mkAgentDs(agents, stats.month2 ? ' ('+stats.month+')' : '', 'M1');
+    if (agentsM2.length) agDatasets.push(...mkAgentDs(agentsM2, ' ('+stats.month2+')', 'M2'));
 
     adminCharts.agentBar = new Chart(document.getElementById('chartAgentBar'), {
       type: 'bar',
@@ -754,8 +761,8 @@ async function loadDashboardStats() {
           }
         },
         scales: {
-          x: { stacked: false, ticks: { callback: v => v + 'h' }, grid: { color: '#f3f4f6' } },
-          y: { stacked: false, ticks: { font: { size: 11 } } }
+          x: { stacked: true, ticks: { callback: v => v + 'h' }, grid: { color: '#f3f4f6' } },
+          y: { stacked: true, ticks: { font: { size: 11 } } }
         }
       }
     });
