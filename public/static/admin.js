@@ -662,33 +662,30 @@ async function loadDashboardStats() {
     });
   }
 
-  // ── Barres groupées par Département : Productif vs Non-productif côte à côte
+  // ── Barres groupées par Département : 2 barres côte à côte (Productif | Non-productif)
   if (stats.deptComparison && stats.deptComparison.length && document.getElementById('chartDeptBar')) {
     const depts   = stats.deptComparison;
     const deptsM2 = stats.deptComparisonMonth2 || [];
     const labels  = depts.map(d => d.dept_name.replace('Direction ','Dir. ').replace('Département','Dept'));
 
-    // Pour chaque dept : productif = total_minutes pointées, non-productif = capacité - total
+    // Barres groupées : pas de stack, 2 barres côte à côte par département
     const mkDeptDs = (src, moisLabel) => [
       {
-        label: 'Productif' + moisLabel,
+        label: 'Heures productives' + moisLabel,
         data: src.map(d => +(d.total_minutes / 60).toFixed(2)),
         backgroundColor: '#1e3a5f',
-        borderRadius: 4,
-        borderSkipped: false
+        borderRadius: 4
       },
       {
-        label: 'Non productif' + moisLabel,
+        label: 'Heures non-productives' + moisLabel,
         data: src.map(d => +(Math.max(0, d.agent_count * 8 - d.total_minutes / 60).toFixed(2))),
-        backgroundColor: '#ef444480',
-        borderRadius: 4,
-        borderSkipped: false
+        backgroundColor: '#ef4444cc',
+        borderRadius: 4
       }
     ];
 
-    const dsSuffix = stats.month2 ? ' (' + stats.month + ')' : '';
-    const datasets = mkDeptDs(depts, dsSuffix);
-    if (deptsM2.length) datasets.push(...mkDeptDs(deptsM2, ' (' + stats.month2 + ')'));
+    const datasets = mkDeptDs(depts, stats.month2 ? ' ('+stats.month+')' : '');
+    if (deptsM2.length) datasets.push(...mkDeptDs(deptsM2, ' ('+stats.month2+')'));
 
     adminCharts.deptBar = new Chart(document.getElementById('chartDeptBar'), {
       type: 'bar',
@@ -708,14 +705,14 @@ async function loadDashboardStats() {
           }
         },
         scales: {
-          x: { grouped: true, ticks: { callback: v => v + 'h' }, grid: { color: '#f3f4f6' } },
-          y: { ticks: { font: { size: 11 } } }
+          x: { stacked: false, ticks: { callback: v => v + 'h' }, grid: { color: '#f3f4f6' } },
+          y: { stacked: false, ticks: { font: { size: 11 } } }
         }
       }
     });
   }
 
-  // ── Barres groupées par Agent : Productif vs Non-productif côte à côte
+  // ── Barres groupées par Agent : 2 barres côte à côte (Productif | Non-productif)
   if (stats.agentComparison && stats.agentComparison.length && document.getElementById('chartAgentBar')) {
     const agents   = stats.agentComparison;
     const agentsM2 = stats.agentComparisonMonth2 || [];
@@ -723,24 +720,21 @@ async function loadDashboardStats() {
 
     const mkAgentDs = (src, moisLabel) => [
       {
-        label: 'Productif' + moisLabel,
+        label: 'Heures productives' + moisLabel,
         data: src.map(a => +(a.total_minutes / 60).toFixed(2)),
         backgroundColor: '#1e3a5f',
-        borderRadius: 4,
-        borderSkipped: false
+        borderRadius: 4
       },
       {
-        label: 'Non productif' + moisLabel,
+        label: 'Heures non-productives' + moisLabel,
         data: src.map(a => +(Math.max(0, 8 - a.total_minutes / 60).toFixed(2))),
-        backgroundColor: '#ef444480',
-        borderRadius: 4,
-        borderSkipped: false
+        backgroundColor: '#ef4444cc',
+        borderRadius: 4
       }
     ];
 
-    const agSuffix = stats.month2 ? ' (' + stats.month + ')' : '';
-    const agDatasets = mkAgentDs(agents, agSuffix);
-    if (agentsM2.length) agDatasets.push(...mkAgentDs(agentsM2, ' (' + stats.month2 + ')'));
+    const agDatasets = mkAgentDs(agents, stats.month2 ? ' ('+stats.month+')' : '');
+    if (agentsM2.length) agDatasets.push(...mkAgentDs(agentsM2, ' ('+stats.month2+')'));
 
     adminCharts.agentBar = new Chart(document.getElementById('chartAgentBar'), {
       type: 'bar',
@@ -760,8 +754,8 @@ async function loadDashboardStats() {
           }
         },
         scales: {
-          x: { grouped: true, ticks: { callback: v => v + 'h' }, grid: { color: '#f3f4f6' } },
-          y: { ticks: { font: { size: 11 } } }
+          x: { stacked: false, ticks: { callback: v => v + 'h' }, grid: { color: '#f3f4f6' } },
+          y: { stacked: false, ticks: { font: { size: 11 } } }
         }
       }
     });
