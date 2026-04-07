@@ -657,38 +657,97 @@ app.get('/api/admin/stats', async (c) => {
   const user = await getUser(c)
   if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
-  // ── Correction 1 : sessions Validé + En attente + En cours comptent toutes
-  // ── Correction 3 : on exclut les weekends (strftime('%w') : 0=dim, 6=sam)
+  // Paramètres de filtre mensuel
+  const month = (c.req.query('month') || new Date().toISOString().slice(0,7)) as string
+  const month2 = c.req.query('month2') as string | undefined
 
-  // Heures par objectif stratégique (toutes sessions actives)
+  const STATUSES = `status IN ('Validé', 'En attente', 'En cours')`
+
+  // Helper pour construire les requêtes avec filtre mois
+  const monthFilter = (m: string) => `strftime('%Y-%m', start_time) = '${m}'`
+
+  // ── Requête ratio 3-3-3 par mois avec décomposition par département et agent ──
+  async function getRatio333ForMonth(m: string) {
+    // Ratio global 3-3-3 pour ce mois
+    const ratio333 = await c.env.DB.prepare(
+      `SELECT COALESCE(t.task_type,'Production') as type_333,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM work_sessions ws LEFT JOIN tasks t ON ws.task_id=t.id
+       WHERE ${STATUSES} AND ${monthFilter(m)}
+       GROUP BY COALESCE(t.task_type,'Production')`
+    ).all()
+
+    // Ratio 3-3-3 par département
+    const ratio333ByDept = await c.env.DB.prepare(
+      `SELECT d.name as dept_name, d.id as dept_id,
+       COUNT(DISTINCT u.id) as agent_count,
+       COALESCE(t.task_type,'Production') as type_333,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM work_sessions ws
+       LEFT JOIN tasks t ON ws.task_id=t.id
+       LEFT JOIN departments d ON ws.department_id=d.id
+       LEFT JOIN users u ON ws.user_id=u.id
+       WHERE ${STATUSES} AND ${monthFilter(m)}
+       GROUP BY d.id, d.name, COALESCE(t.task_type,'Production')
+       ORDER BY d.name`
+    ).all()
+
+    // Ratio 3-3-3 par agent
+    const ratio333ByAgent = await c.env.DB.prepare(
+      `SELECT u.first_name||' '||u.last_name as agent_name, u.id as agent_id,
+       d.name as dept_name,
+       COALESCE(t.task_type,'Production') as type_333,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM work_sessions ws
+       LEFT JOIN tasks t ON ws.task_id=t.id
+       LEFT JOIN users u ON ws.user_id=u.id
+       LEFT JOIN departments d ON u.department_id=d.id
+       WHERE ${STATUSES} AND ${monthFilter(m)}
+       GROUP BY u.id, u.first_name, u.last_name, d.name, COALESCE(t.task_type,'Production')
+       ORDER BY d.name, u.last_name`
+    ).all()
+
+    // Capacité théorique par département (nb agents actifs × jours ouvrés du mois × 8h)
+    const deptCapacity = await c.env.DB.prepare(
+      `SELECT d.id as dept_id, d.name as dept_name, COUNT(u.id) as agent_count
+       FROM departments d
+       LEFT JOIN users u ON u.department_id=d.id AND u.status='Actif' AND u.role IN ('Agent','Chef de Service')
+       WHERE d.status='Actif'
+       GROUP BY d.id, d.name`
+    ).all()
+
+    return { ratio333: ratio333.results, ratio333ByDept: ratio333ByDept.results, ratio333ByAgent: ratio333ByAgent.results, deptCapacity: deptCapacity.results }
+  }
+
+  // Heures par objectif stratégique
   const hoursByObjective = await c.env.DB.prepare(
     `SELECT o.name, o.color, o.target_percentage,
      COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
      FROM strategic_objectives o
      LEFT JOIN work_sessions ws ON ws.objective_id = o.id
-       AND ws.status IN ('Validé', 'En attente', 'En cours')
+       AND ${STATUSES} AND ${monthFilter(month)}
      WHERE o.status = 'Actif'
      GROUP BY o.id, o.name, o.color, o.target_percentage
      ORDER BY total_minutes DESC`
   ).all()
 
-  // Heures par département (toutes sessions actives)
+  // Heures par département
   const hoursByDept = await c.env.DB.prepare(
     `SELECT d.name, COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
      FROM departments d
      LEFT JOIN work_sessions ws ON ws.department_id = d.id
-       AND ws.status IN ('Validé', 'En attente', 'En cours')
+       AND ${STATUSES} AND ${monthFilter(month)}
      GROUP BY d.id, d.name
      HAVING total_minutes > 0
      ORDER BY total_minutes DESC`
   ).all()
 
-  // Tendance mensuelle (6 derniers mois — toutes sessions actives)
+  // Tendance mensuelle (6 derniers mois)
   const monthlyTrend = await c.env.DB.prepare(
     `SELECT strftime('%Y-%m', start_time) as month,
      COALESCE(SUM(duration_minutes), 0) as total_minutes
      FROM work_sessions
-     WHERE status IN ('Validé', 'En attente', 'En cours')
+     WHERE ${STATUSES}
      GROUP BY strftime('%Y-%m', start_time)
      ORDER BY month DESC LIMIT 6`
   ).all()
@@ -771,61 +830,103 @@ app.get('/api/admin/stats', async (c) => {
     hours_display: minutesToHours(o.total_minutes)
   }))
 
-  // ── Méthode 3-3-3 : répartition Production / Administration & Reporting / Contrôle ──
-  const ratio333 = await c.env.DB.prepare(
-    `SELECT
-       COALESCE(t.task_type, 'Production') as type_333,
-       COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
-     FROM work_sessions ws
-     LEFT JOIN tasks t ON ws.task_id = t.id
-     WHERE ws.status IN ('Validé', 'En attente', 'En cours')
-     GROUP BY COALESCE(t.task_type, 'Production')`
-  ).all()
-
-  const ratio333Data = ratio333.results as any[]
-  const total333 = ratio333Data.reduce((s: number, r: any) => s + r.total_minutes, 0)
-
-  // Normaliser les anciens types vers les nouveaux
+  // Normaliser les types 3-3-3
   const normalize333 = (type: string) => {
     if (!type || type === 'Productive' || type === 'Production') return 'Production'
     if (type === 'Non productive' || type === 'Administration & Reporting') return 'Administration & Reporting'
     if (type === 'Contrôle') return 'Contrôle'
-    return type
+    return 'Production'
   }
 
-  // Agréger en 3 catégories
-  const ratio333Map: Record<string, number> = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
-  ratio333Data.forEach((r: any) => {
-    const key = normalize333(r.type_333)
-    ratio333Map[key] = (ratio333Map[key] || 0) + r.total_minutes
-  })
+  // Helper : agréger les données brutes en structure 3-3-3
+  const build333Result = (raw: any[], totalField = 'total_minutes') => {
+    const map: Record<string, number> = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+    raw.forEach((r: any) => { const k = normalize333(r.type_333); map[k] = (map[k] || 0) + r[totalField] })
+    const total = Object.values(map).reduce((s, v) => s + v, 0)
+    return Object.entries(map).map(([label, minutes]) => ({
+      label, minutes,
+      hours_display: minutesToHours(minutes),
+      percentage: total > 0 ? Math.round(minutes * 100 / total) : 0
+    }))
+  }
 
-  const ratio333Result = Object.entries(ratio333Map).map(([type, minutes]) => ({
-    type,
-    minutes,
-    hours_display: minutesToHours(minutes),
-    percentage: total333 > 0 ? Math.round((minutes / total333) * 100) : 0
-  }))
+  // Données 3-3-3 pour mois principal
+  const r333Main = await getRatio333ForMonth(month)
+  const ratio333Result = build333Result(r333Main.ratio333 as any[])
+
+  // Construire comparaison par département avec capacité
+  const buildDeptComparison = (raw: any[], capacities: any[]) => {
+    const depts: Record<string, any> = {}
+    ;(raw as any[]).forEach((r: any) => {
+      if (!depts[r.dept_name]) {
+        const cap = (capacities as any[]).find((c: any) => c.dept_name === r.dept_name)
+        depts[r.dept_name] = {
+          dept_name: r.dept_name,
+          agent_count: cap?.agent_count || 0,
+          Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0
+        }
+      }
+      depts[r.dept_name][normalize333(r.type_333)] += r.total_minutes
+    })
+    return Object.values(depts).map((d: any) => {
+      const total = d.Production + d['Administration & Reporting'] + d['Contrôle']
+      const capacity = d.agent_count * 480 // 8h par agent par jour de référence
+      return { ...d, total_minutes: total, capacity_minutes: capacity, hours_display: minutesToHours(total) }
+    })
+  }
+
+  // Construire comparaison par agent
+  const buildAgentComparison = (raw: any[]) => {
+    const agents: Record<string, any> = {}
+    ;(raw as any[]).forEach((r: any) => {
+      if (!agents[r.agent_id]) {
+        agents[r.agent_id] = { agent_name: r.agent_name, dept_name: r.dept_name, Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+      }
+      agents[r.agent_id][normalize333(r.type_333)] += r.total_minutes
+    })
+    return Object.values(agents).map((a: any) => {
+      const total = a.Production + a['Administration & Reporting'] + a['Contrôle']
+      return { ...a, total_minutes: total, capacity_minutes: 480, hours_display: minutesToHours(total) }
+    })
+  }
+
+  const deptComparison = buildDeptComparison(r333Main.ratio333ByDept as any[], r333Main.deptCapacity as any[])
+  const agentComparison = buildAgentComparison(r333Main.ratio333ByAgent as any[])
+
+  // Mois 2 pour comparaison (optionnel)
+  let ratio333Month2 = null
+  let deptComparisonMonth2 = null
+  let agentComparisonMonth2 = null
+  if (month2) {
+    const r333M2 = await getRatio333ForMonth(month2)
+    ratio333Month2 = build333Result(r333M2.ratio333 as any[])
+    deptComparisonMonth2 = buildDeptComparison(r333M2.ratio333ByDept as any[], r333M2.deptCapacity as any[])
+    agentComparisonMonth2 = buildAgentComparison(r333M2.ratio333ByAgent as any[])
+  }
 
   return c.json({
+    month,
+    month2: month2 || null,
     hoursByObjective: objectivesWithPct,
     hoursByDept: hoursByDept.results,
     monthlyTrend: monthlyTrend.results,
     ratio333: ratio333Result,
+    ratio333Month2,
+    deptComparison,
+    deptComparisonMonth2,
+    agentComparison,
+    agentComparisonMonth2,
     is_weekend: isWeekend,
     productivity: {
       total_agents:                  totalAgents?.count || 0,
       total_capacity_today:          totalCapacityToday,
       is_weekend:                    isWeekend,
-      // Catégorie 1 : sessions validées par le chef
       validated_minutes_today:       totalValidatedToday,
       validated_hours_today:         minutesToHours(totalValidatedToday),
       validated_pct:                 totalCapacityToday > 0 ? Math.round((totalValidatedToday / totalCapacityToday) * 100) : 0,
-      // Catégorie 2 : sessions pointées mais en attente de validation
       pending_minutes_today:         totalPendingToday,
       pending_hours_today:           minutesToHours(totalPendingToday),
       pending_pct:                   totalCapacityToday > 0 ? Math.round((totalPendingToday / totalCapacityToday) * 100) : 0,
-      // Catégorie 3 : total pointé (validé + en attente)
       productive_minutes_today:      totalPointedToday,
       non_productive_minutes_today:  totalNonPointedToday,
       productive_hours_today:        minutesToHours(totalPointedToday),
@@ -1190,46 +1291,45 @@ app.get('/api/chef/dashboard', async (c) => {
   }
 
   const deptId = user.department_id
+  const month = (c.req.query('month') || new Date().toISOString().slice(0,7)) as string
+  const month2 = c.req.query('month2') as string | undefined
+  const CIBLES = { 'Production': 70, 'Administration & Reporting': 20, 'Contrôle': 10 }
 
-  // Agents actifs dans le département
+  const normalize333 = (t: string) => {
+    if (!t || t === 'Productive' || t === 'Production') return 'Production'
+    if (t === 'Non productive' || t === 'Administration & Reporting') return 'Administration & Reporting'
+    return 'Contrôle'
+  }
+
+  // Agents actifs dans le département aujourd'hui
   const activeAgents = await c.env.DB.prepare(
     `SELECT COUNT(DISTINCT user_id) as count FROM work_sessions 
      WHERE department_id = ? AND date(start_time) = date('now')`
   ).bind(deptId).first() as any
 
-  // Total heures équipe ce mois
+  // Total heures équipe pour le mois sélectionné
   const totalTeamHours = await c.env.DB.prepare(
     `SELECT COALESCE(SUM(duration_minutes), 0) as m FROM work_sessions 
-     WHERE department_id = ? AND strftime('%Y-%m', start_time) = strftime('%Y-%m', 'now') AND status IN ('Validé','Terminé')`
-  ).bind(deptId).first() as any
+     WHERE department_id = ? AND strftime('%Y-%m', start_time) = ? AND status IN ('Validé','Terminé')`
+  ).bind(deptId, month).first() as any
 
   // Sessions à valider
   const toValidate = await c.env.DB.prepare(
     `SELECT COUNT(*) as c FROM work_sessions WHERE department_id = ? AND status = 'Terminé'`
   ).bind(deptId).first() as any
 
-  // Heures par agent
+  // Heures par agent pour le mois sélectionné
   const hoursByAgent = await c.env.DB.prepare(
     `SELECT u.first_name || ' ' || u.last_name as agent_name,
      COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
      FROM users u
      LEFT JOIN work_sessions ws ON ws.user_id = u.id AND ws.status IN ('Validé','Terminé')
-     WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
+       AND strftime('%Y-%m', ws.start_time) = ?
+     WHERE u.department_id = ? AND u.role IN ('Agent','Chef de Service') AND u.status = 'Actif'
      GROUP BY u.id, u.first_name, u.last_name`
-  ).bind(deptId).all()
+  ).bind(month, deptId).all()
 
-  // Répartition par objectif (département)
-  const byObjective = await c.env.DB.prepare(
-    `SELECT o.name, o.color, o.target_percentage,
-     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
-     FROM strategic_objectives o
-     LEFT JOIN work_sessions ws ON ws.objective_id = o.id AND ws.department_id = ? AND ws.status IN ('Validé','Terminé')
-     WHERE o.status = 'Actif'
-     GROUP BY o.id, o.name, o.color, o.target_percentage
-     HAVING total_minutes > 0`
-  ).bind(deptId).all()
-
-  // Détail par agent avec heures productives/non productives aujourd'hui
+  // Détail par agent
   const agentDetail = await c.env.DB.prepare(
     `SELECT u.id, u.first_name || ' ' || u.last_name as agent_name,
      COUNT(ws.id) as total_sessions,
@@ -1237,20 +1337,19 @@ app.get('/api/chef/dashboard', async (c) => {
      COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END), 0) as validated_minutes,
      COALESCE(SUM(CASE WHEN ws.status='Validé' THEN ws.duration_minutes ELSE 0 END) * 100.0 / NULLIF(SUM(ws.duration_minutes), 0), 0) as pct_validated
      FROM users u
-     LEFT JOIN work_sessions ws ON ws.user_id = u.id
-     WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
+     LEFT JOIN work_sessions ws ON ws.user_id = u.id AND strftime('%Y-%m', ws.start_time) = ?
+     WHERE u.department_id = ? AND u.role IN ('Agent','Chef de Service') AND u.status = 'Actif'
      GROUP BY u.id, u.first_name, u.last_name`
-  ).bind(deptId).all()
+  ).bind(month, deptId).all()
 
-  // ── Correction 3 : weekend = capacité 0
+  // Weekend check
   const todayDowChef = new Date().getDay()
   const isWeekendChef = todayDowChef === 0 || todayDowChef === 6
   const capPerAgentChef = isWeekendChef ? 0 : 480
 
-  // ── Corrections 1+2 : 3 catégories par agent aujourd'hui (chef)
+  // Productivité aujourd'hui par agent
   const agentProductivityToday = await c.env.DB.prepare(
-    `SELECT
-       u.id,
+    `SELECT u.id,
        u.first_name || ' ' || u.last_name as agent_name,
        COALESCE(SUM(CASE WHEN ws.status = 'Validé'     THEN ws.duration_minutes ELSE 0 END), 0) as validated_minutes_today,
        COALESCE(SUM(CASE WHEN ws.status = 'En attente' THEN ws.duration_minutes ELSE 0 END), 0) as pending_minutes_today,
@@ -1259,106 +1358,103 @@ app.get('/api/chef/dashboard', async (c) => {
      LEFT JOIN work_sessions ws ON ws.user_id = u.id
        AND date(ws.start_time) = date('now')
        AND ws.status IN ('Validé', 'En attente', 'En cours')
-     WHERE u.department_id = ? AND u.role = 'Agent' AND u.status = 'Actif'
+     WHERE u.department_id = ? AND u.role IN ('Agent','Chef de Service') AND u.status = 'Actif'
      GROUP BY u.id, u.first_name, u.last_name`
   ).bind(deptId).all()
 
-  const objData = byObjective.results as any[]
-  const totalMin = objData.reduce((sum: number, o: any) => sum + o.total_minutes, 0)
+  // 3-3-3 par mois pour le département
+  async function get333ForMonth(m: string) {
+    const raw = await c.env.DB.prepare(
+      `SELECT u.first_name||' '||u.last_name as agent_name, u.id as agent_id,
+       COALESCE(t.task_type,'Production') as type_333,
+       COALESCE(SUM(ws.duration_minutes),0) as total_minutes
+       FROM work_sessions ws
+       LEFT JOIN tasks t ON ws.task_id=t.id
+       LEFT JOIN users u ON ws.user_id=u.id
+       WHERE ws.department_id=? AND ws.status IN ('Validé','En attente','En cours')
+         AND strftime('%Y-%m',ws.start_time)=?
+       GROUP BY u.id, u.first_name, u.last_name, COALESCE(t.task_type,'Production')`
+    ).bind(deptId, m).all()
 
-  // ── Méthode 3-3-3 pour le département ──
-  const ratio333Chef = await c.env.DB.prepare(
-    `SELECT COALESCE(t.task_type, 'Production') as type_333,
-     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
-     FROM work_sessions ws
-     LEFT JOIN tasks t ON ws.task_id = t.id
-     WHERE ws.department_id = ? AND ws.status IN ('Validé', 'En attente', 'En cours')
-     GROUP BY COALESCE(t.task_type, 'Production')`
-  ).bind(deptId).all()
+    // Agréger par agent
+    const agentMap: Record<string, any> = {}
+    ;(raw.results as any[]).forEach((r: any) => {
+      if (!agentMap[r.agent_id]) agentMap[r.agent_id] = { agent_name: r.agent_name, Production: 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+      agentMap[r.agent_id][normalize333(r.type_333)] += r.total_minutes
+    })
+    const agentRows = Object.values(agentMap).map((a: any) => {
+      const total = a.Production + a['Administration & Reporting'] + a['Contrôle']
+      return { ...a, total_minutes: total, capacity_minutes: 480, hours_display: minutesToHours(total) }
+    })
 
-  const ratio333ChefData = ratio333Chef.results as any[]
-  const total333Chef = ratio333ChefData.reduce((s: number, r: any) => s + r.total_minutes, 0)
-  const normalize333Chef = (t: string) => {
-    if (!t || t === 'Productive' || t === 'Production') return 'Production'
-    if (t === 'Non productive' || t === 'Administration & Reporting') return 'Administration & Reporting'
-    return 'Contrôle'
+    // Global dept
+    const globalMap: Record<string, number> = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
+    ;(raw.results as any[]).forEach((r: any) => { const k = normalize333(r.type_333); globalMap[k] += r.total_minutes })
+    const globalTotal = Object.values(globalMap).reduce((s, v) => s + v, 0)
+    const global333 = Object.entries(globalMap).map(([label, minutes]) => ({
+      label, minutes, hours_display: minutesToHours(minutes),
+      percentage: globalTotal > 0 ? Math.round(minutes * 100 / globalTotal) : 0,
+      cible: (CIBLES as any)[label] || 0,
+      ecart: (globalTotal > 0 ? Math.round(minutes * 100 / globalTotal) : 0) - ((CIBLES as any)[label] || 0)
+    }))
+    return { global333, agentRows }
   }
-  const map333Chef: Record<string, number> = { 'Production': 0, 'Administration & Reporting': 0, 'Contrôle': 0 }
-  ratio333ChefData.forEach((r: any) => { const k = normalize333Chef(r.type_333); map333Chef[k] = (map333Chef[k]||0) + r.total_minutes })
-  const ratio333ChefResult = Object.entries(map333Chef).map(([type, minutes]) => ({
-    type, minutes,
-    hours_display: minutesToHours(minutes),
-    percentage: total333Chef > 0 ? Math.round((minutes / total333Chef) * 100) : 0
-  }))
+
+  const r333Main = await get333ForMonth(month)
+  let r333Month2 = null
+  if (month2) r333Month2 = await get333ForMonth(month2)
+
+  const objData: any[] = []
+  const totalMin = 0
 
   // Fusionner agentDetail avec productivité du jour
   const productivityMap: any = {}
-  for (const p of (agentProductivityToday.results as any[])) {
-    productivityMap[p.id] = p
-  }
-
+  for (const p of (agentProductivityToday.results as any[])) { productivityMap[p.id] = p }
   const nbAgents = (agentDetail.results as any[]).length
-
-  // Totaux équipe avec les 3 catégories
-  const totalValidatedTeam   = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + Math.min(a.validated_minutes_today,   capPerAgentChef || 480), 0)
-  const totalPendingTeam     = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + Math.min(a.pending_minutes_today,     capPerAgentChef || 480), 0)
-  const totalInprogressTeam  = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + Math.min(a.inprogress_minutes_today,  capPerAgentChef || 480), 0)
-  const totalPointedTeam     = Math.min(totalValidatedTeam + totalPendingTeam + totalInprogressTeam, nbAgents * (capPerAgentChef || 480))
-  const totalNonPointedTeam  = capPerAgentChef > 0 ? Math.max(nbAgents * capPerAgentChef - totalPointedTeam, 0) : 0
+  const totalValidatedTeam  = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + Math.min(a.validated_minutes_today, capPerAgentChef || 480), 0)
+  const totalPendingTeam    = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + Math.min(a.pending_minutes_today, capPerAgentChef || 480), 0)
+  const totalInprogressTeam = (agentProductivityToday.results as any[]).reduce((s: number, a: any) => s + Math.min(a.inprogress_minutes_today, capPerAgentChef || 480), 0)
+  const totalPointedTeam    = Math.min(totalValidatedTeam + totalPendingTeam + totalInprogressTeam, nbAgents * (capPerAgentChef || 480))
+  const totalNonPointedTeam = capPerAgentChef > 0 ? Math.max(nbAgents * capPerAgentChef - totalPointedTeam, 0) : 0
 
   return c.json({
+    month, month2: month2 || null,
     active_agents: activeAgents?.count || 0,
     total_team_hours: minutesToHours(totalTeamHours?.m || 0),
     to_validate: toValidate?.c || 0,
     is_weekend: isWeekendChef,
     hoursByAgent: hoursByAgent.results,
-    byObjective: objData.map((o: any) => ({
-      ...o,
-      percentage: totalMin > 0 ? Math.round((o.total_minutes / totalMin) * 100) : 0,
-      hours_display: minutesToHours(o.total_minutes)
-    })),
+    byObjective: objData,
+    ratio333: r333Main.global333,
+    ratio333Month2: r333Month2 ? r333Month2.global333 : null,
+    agentComparison: r333Main.agentRows,
+    agentComparisonMonth2: r333Month2 ? r333Month2.agentRows : null,
     agentDetail: (agentDetail.results as any[]).map((a: any) => {
       const p = productivityMap[a.id] || { validated_minutes_today: 0, pending_minutes_today: 0, inprogress_minutes_today: 0 }
       const cap = capPerAgentChef || 480
       const total_pointed = Math.min(p.validated_minutes_today + p.pending_minutes_today + p.inprogress_minutes_today, cap)
-      const non_pointed   = capPerAgentChef > 0 ? Math.max(cap - total_pointed, 0) : 0
+      const non_pointed = capPerAgentChef > 0 ? Math.max(cap - total_pointed, 0) : 0
       return {
         ...a,
-        total_hours:               minutesToHours(a.total_minutes),
-        validated_hours:           minutesToHours(a.validated_minutes),
-        // Aujourd'hui — 3 catégories
-        validated_minutes_today:   Math.min(p.validated_minutes_today, cap),
-        pending_minutes_today:     Math.min(p.pending_minutes_today,   cap),
-        inprogress_minutes_today:  Math.min(p.inprogress_minutes_today,cap),
-        non_pointed_today:         non_pointed,
-        validated_hours_today:     minutesToHours(Math.min(p.validated_minutes_today, cap)),
-        pending_hours_today:       minutesToHours(Math.min(p.pending_minutes_today,   cap)),
-        inprogress_hours_today:    minutesToHours(Math.min(p.inprogress_minutes_today,cap)),
-        non_pointed_hours_today:   minutesToHours(non_pointed),
-        // Rétrocompatibilité
-        productive_minutes_today:     total_pointed,
+        total_hours: minutesToHours(a.total_minutes),
+        validated_hours: minutesToHours(a.validated_minutes),
+        validated_minutes_today: Math.min(p.validated_minutes_today, cap),
+        pending_minutes_today: Math.min(p.pending_minutes_today, cap),
+        inprogress_minutes_today: Math.min(p.inprogress_minutes_today, cap),
+        non_pointed_today: non_pointed,
+        productive_minutes_today: total_pointed,
         non_productive_minutes_today: non_pointed,
-        productive_hours_today:       minutesToHours(total_pointed),
-        non_productive_hours_today:   minutesToHours(non_pointed),
-        productive_pct_today:         cap > 0 ? Math.round((total_pointed / cap) * 100) : 0,
-        non_productive_pct_today:     cap > 0 ? Math.round((non_pointed   / cap) * 100) : 0,
-        validated_pct_today:          cap > 0 ? Math.round((Math.min(p.validated_minutes_today, cap) / cap) * 100) : 0,
-        pending_pct_today:            cap > 0 ? Math.round((Math.min(p.pending_minutes_today,   cap) / cap) * 100) : 0,
-        is_weekend:                   isWeekendChef
+        productive_pct_today: cap > 0 ? Math.round((total_pointed / cap) * 100) : 0,
+        is_weekend: isWeekendChef
       }
     }),
-    ratio333: ratio333ChefResult,
     team_productivity: {
-      total_agents:              nbAgents,
-      is_weekend:                isWeekendChef,
-      validated_hours_today:     minutesToHours(totalValidatedTeam),
-      pending_hours_today:       minutesToHours(totalPendingTeam),
-      productive_hours_today:    minutesToHours(totalPointedTeam),
-      non_productive_hours_today:minutesToHours(totalNonPointedTeam),
-      productive_pct:            nbAgents > 0 && capPerAgentChef > 0 ? Math.round((totalPointedTeam   / (nbAgents * capPerAgentChef)) * 100) : 0,
-      non_productive_pct:        nbAgents > 0 && capPerAgentChef > 0 ? Math.round((totalNonPointedTeam/ (nbAgents * capPerAgentChef)) * 100) : 0,
-      validated_pct:             nbAgents > 0 && capPerAgentChef > 0 ? Math.round((totalValidatedTeam  / (nbAgents * capPerAgentChef)) * 100) : 0,
-      pending_pct:               nbAgents > 0 && capPerAgentChef > 0 ? Math.round((totalPendingTeam    / (nbAgents * capPerAgentChef)) * 100) : 0
+      total_agents: nbAgents, is_weekend: isWeekendChef,
+      validated_hours_today: minutesToHours(totalValidatedTeam),
+      productive_hours_today: minutesToHours(totalPointedTeam),
+      non_productive_hours_today: minutesToHours(totalNonPointedTeam),
+      productive_pct: nbAgents > 0 && capPerAgentChef > 0 ? Math.round((totalPointedTeam / (nbAgents * capPerAgentChef)) * 100) : 0,
+      non_productive_pct: nbAgents > 0 && capPerAgentChef > 0 ? Math.round((totalNonPointedTeam / (nbAgents * capPerAgentChef)) * 100) : 0
     }
   })
 })
@@ -1883,13 +1979,44 @@ html,body{width:100%;height:100%;overflow:hidden;}
 /* ── Diaporama classique (fondu enchaîné) ── */
 .bg-slide{
   position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;
-  overflow:hidden;opacity:0;transition:opacity 1.6s ease-in-out;
+  overflow:hidden;opacity:0;transition:opacity 1.4s ease-in-out;
 }
 .bg-slide.active{opacity:1;}
 .bg-slide-inner{
   position:absolute;inset:0;
   background-size:cover;background-position:center;background-repeat:no-repeat;
+  /* Pas d'animation Ken Burns - image fixe */
 }
+
+/* ── Points de navigation du diaporama ── */
+#slide-dots{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
+  z-index:10;display:flex;gap:8px;align-items:center;pointer-events:auto;
+}
+.slide-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:rgba(255,255,255,0.35);
+  border:1px solid rgba(255,255,255,0.5);
+  cursor:pointer;transition:all .3s ease;
+  flex-shrink:0;
+}
+.slide-dot.active{
+  background:#d4af37;border-color:#d4af37;
+  width:24px;border-radius:4px;
+}
+.slide-dot:hover:not(.active){background:rgba(255,255,255,0.65);}
+
+/* ── Badge rôle sur le panneau gauche ── */
+#role-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  background:rgba(212,175,55,0.15);
+  border:1px solid rgba(212,175,55,0.4);
+  border-radius:20px;padding:5px 14px;
+  font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;
+  color:rgba(212,175,55,0.9);margin-bottom:14px;
+  transition:opacity .4s ease;
+}
+#role-badge i{font-size:10px;}
 
 /* overlay dégradé directionnel pour laisser respirer le panneau gauche */
 .bg-overlay{
@@ -1925,11 +2052,12 @@ html,body{width:100%;height:100%;overflow:hidden;}
   background:linear-gradient(90deg,rgba(212,175,55,0.9),transparent);
 }
 .left-panel h1{
-  font-size:clamp(28px,3vw,46px);font-weight:800;line-height:1.18;
-  margin-bottom:16px;
+  font-size:clamp(26px,2.8vw,44px);font-weight:800;line-height:1.22;
+  margin-bottom:18px;
   background:linear-gradient(135deg,#ffffff 0%,rgba(212,175,55,0.85) 100%);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-  transition:opacity .4s ease, transform .4s ease;
+  transition:opacity .45s ease, transform .45s ease;
+  min-height:120px; /* évite le saut de layout lors de la transition */
 }
 .left-panel p{
   font-size:15px;line-height:1.75;color:rgba(255,255,255,0.72);
@@ -2064,36 +2192,130 @@ html,body{width:100%;height:100%;overflow:hidden;}
 </head>
 <body>
 
-<!-- Diaporama classique ordonné — 15 slides avec messages synchronisés -->
+<!-- Diaporama ordonné selon la hiérarchie de l'application -->
 <div id="slideshow"></div>
 <div class="bg-overlay"></div>
+<!-- Points de navigation -->
+<div id="slide-dots"></div>
+
 <script>
 (function(){
-  /* ── 15 slides dans l'ordre logique de l'application ── */
+  /* ══════════════════════════════════════════════════════════════════
+     15 SLIDES — ordonnés selon la hiérarchie de l'application :
+     Agent (1-3) → Chef de Service (4-5) → Chef de Département (6-7)
+     → Directeur de Département (8-9) → Directeur Général (10-12)
+     → Administrateur (13-14) → BGFIBank CA (15)
+  ══════════════════════════════════════════════════════════════════ */
   const SLIDES = [
-    { img: '/static/login-bg-01.jpg', phrase: 'Suivez votre temps.<br>Optimisez votre<br>productivité.' },
-    { img: '/static/login-bg-02.jpg', phrase: 'Chaque minute compte.<br>Mesurez ce qui<br>vous fait avancer.' },
-    { img: '/static/login-bg-03.jpg', phrase: 'Votre temps,<br>votre performance,<br>votre valeur.' },
-    { img: '/static/login-bg-04.jpg', phrase: 'Travaillez mieux.<br>Tracez chaque heure.<br>Progressez chaque jour.' },
-    { img: '/static/login-bg-05.jpg', phrase: 'Posez vos actions.<br>Mesurez votre impact.<br>Avancez avec clarté.' },
-    { img: '/static/login-bg-06.jpg', phrase: 'Chaque tâche accomplie<br>rapproche la banque<br>de ses objectifs.' },
-    { img: '/static/login-bg-07.jpg', phrase: 'La transparence<br>est la base de<br>toute confiance.' },
-    { img: '/static/login-bg-08.jpg', phrase: 'Informé en temps réel.<br>Réactif à chaque instant.<br>Toujours connecté.' },
-    { img: '/static/login-bg-09.jpg', phrase: 'Diriger, c&#39;est aussi<br>suivre, écouter<br>et valoriser.' },
-    { img: '/static/login-bg-10.jpg', phrase: 'Les chiffres parlent.<br>Les résultats guident.<br>La performance décide.' },
-    { img: '/static/login-bg-11.jpg', phrase: 'Vos données,<br>votre histoire,<br>votre excellence.' },
-    { img: '/static/login-bg-12.jpg', phrase: 'Bien gérer les hommes,<br>c&#39;est bien gérer<br>la banque.' },
-    { img: '/static/login-bg-13.jpg', phrase: 'Chaque action laisse<br>une trace.<br>Agissez avec intégrité.' },
-    { img: '/static/login-bg-14.jpg', phrase: 'La sécurité n&#39;est pas<br>une option.<br>C&#39;est une exigence.' },
-    { img: '/static/login-bg-15.jpg', phrase: 'BGFIBank CA.<br>L&#39;excellence au service<br>de votre avenir.' }
+    /* ── Agent ── */
+    {
+      img: '/static/login-bg-01.jpg',
+      role: 'Agent',
+      icon: 'fa-user-clock',
+      phrase: 'Suivez votre temps.<br>Posez vos actions.<br>Progressez chaque jour.'
+    },
+    {
+      img: '/static/login-bg-02.jpg',
+      role: 'Agent',
+      icon: 'fa-user-clock',
+      phrase: 'Chaque minute pointée<br>est une preuve<br>de votre engagement.'
+    },
+    {
+      img: '/static/login-bg-03.jpg',
+      role: 'Agent',
+      icon: 'fa-user-clock',
+      phrase: 'Votre temps,<br>votre performance,<br>votre valeur.'
+    },
+    /* ── Chef de Service ── */
+    {
+      img: '/static/login-bg-04.jpg',
+      role: 'Chef de Service',
+      icon: 'fa-users',
+      phrase: 'Encadrez votre équipe.<br>Suivez la production.<br>Atteignez les objectifs.'
+    },
+    {
+      img: '/static/login-bg-05.jpg',
+      role: 'Chef de Service',
+      icon: 'fa-users',
+      phrase: 'Chaque tâche accomplie<br>rapproche la banque<br>de ses objectifs.'
+    },
+    /* ── Chef de Département ── */
+    {
+      img: '/static/login-bg-06.jpg',
+      role: 'Chef de Département',
+      icon: 'fa-user-tie',
+      phrase: 'Validez, analysez,<br>décidez.<br>Pilotez la performance.'
+    },
+    {
+      img: '/static/login-bg-07.jpg',
+      role: 'Chef de Département',
+      icon: 'fa-user-tie',
+      phrase: 'La transparence<br>est la base de<br>toute confiance.'
+    },
+    /* ── Directeur de Département ── */
+    {
+      img: '/static/login-bg-08.jpg',
+      role: 'Directeur de Département',
+      icon: 'fa-chart-bar',
+      phrase: 'Vision globale<br>de votre département.<br>Données en temps réel.'
+    },
+    {
+      img: '/static/login-bg-09.jpg',
+      role: 'Directeur de Département',
+      icon: 'fa-chart-bar',
+      phrase: 'Diriger, c&#39;est aussi<br>suivre, écouter<br>et valoriser.'
+    },
+    /* ── Directeur Général ── */
+    {
+      img: '/static/login-bg-10.jpg',
+      role: 'Directeur Général',
+      icon: 'fa-building-columns',
+      phrase: 'Vue stratégique<br>de toute la banque.<br>Décisions éclairées.'
+    },
+    {
+      img: '/static/login-bg-11.jpg',
+      role: 'Directeur Général',
+      icon: 'fa-building-columns',
+      phrase: 'Les chiffres parlent.<br>Les résultats guident.<br>La performance décide.'
+    },
+    {
+      img: '/static/login-bg-12.jpg',
+      role: 'Directeur Général',
+      icon: 'fa-building-columns',
+      phrase: 'Bien gérer les hommes,<br>c&#39;est bien gérer<br>la banque.'
+    },
+    /* ── Administrateur ── */
+    {
+      img: '/static/login-bg-13.jpg',
+      role: 'Administrateur',
+      icon: 'fa-shield-halved',
+      phrase: 'Maîtrisez le système.<br>Sécurisez les accès.<br>Contrôlez tout.'
+    },
+    {
+      img: '/static/login-bg-14.jpg',
+      role: 'Administrateur',
+      icon: 'fa-shield-halved',
+      phrase: 'La sécurité n&#39;est pas<br>une option.<br>C&#39;est une exigence.'
+    },
+    /* ── BGFIBank CA ── */
+    {
+      img: '/static/login-bg-15.jpg',
+      role: 'BGFIBank CA',
+      icon: 'fa-star',
+      phrase: 'BGFIBank CA.<br>L&#39;excellence au service<br>de votre avenir.'
+    }
   ];
 
-  const INTERVAL = 6000; // 6 s par slide
+  const INTERVAL = 6000; // 6 secondes par slide
+  let currentIdx = 0;
+  let autoTimer = null;
 
+  /* ── Créer les éléments DOM du diaporama ── */
   const container = document.getElementById('slideshow');
+  const dotsContainer = document.getElementById('slide-dots');
 
-  /* Créer 2 slides (alternance A/B) */
-  const slides = [0,1].map(()=>{
+  /* Alternance A/B pour le fondu enchaîné */
+  const slideEls = [0,1].map(()=>{
     const d = document.createElement('div');
     d.className = 'bg-slide';
     const inner = document.createElement('div');
@@ -2102,50 +2324,93 @@ html,body{width:100%;height:100%;overflow:hidden;}
     container.appendChild(d);
     return d;
   });
-  let current = 0;
-  let idx = 0;
+  let activeBuf = 0; // index dans slideEls (0 ou 1)
 
-  /* Précharger toutes les images */
-  SLIDES.forEach(s=>{ const i=new Image(); i.src=s.img; });
+  /* ── Créer les 15 points de navigation ── */
+  const dots = SLIDES.map((_, i)=>{
+    const dot = document.createElement('button');
+    dot.className = 'slide-dot';
+    dot.setAttribute('aria-label', 'Slide '+(i+1));
+    dot.addEventListener('click', ()=>{ goTo(i); resetTimer(); });
+    dotsContainer.appendChild(dot);
+    return dot;
+  });
 
-  function updateMessage(slideData){
-    const el = document.getElementById('left-headline');
-    if(!el) return;
-    el.style.opacity='0';
-    el.style.transform='translateY(10px)';
+  /* ── Précharger toutes les images ── */
+  SLIDES.forEach(s=>{ const img=new Image(); img.src=s.img; });
+
+  /* ── Mettre à jour le panneau gauche ── */
+  function updatePanel(data){
+    const headline = document.getElementById('left-headline');
+    const roleLabel = document.getElementById('role-label');
+    const roleBadge = document.getElementById('role-badge');
+    const badgeIcon = roleBadge ? roleBadge.querySelector('i') : null;
+
+    if(headline){
+      headline.style.opacity='0';
+      headline.style.transform='translateY(12px)';
+    }
+    if(roleBadge){ roleBadge.style.opacity='0'; }
+
     setTimeout(function(){
-      el.innerHTML = slideData.phrase;
-      el.style.opacity='1';
-      el.style.transform='translateY(0)';
-    }, 500);
+      if(headline){
+        headline.innerHTML = data.phrase;
+        headline.style.opacity='1';
+        headline.style.transform='translateY(0)';
+      }
+      if(roleLabel){ roleLabel.textContent = data.role; }
+      if(badgeIcon){ badgeIcon.className = 'fas '+data.icon; }
+      if(roleBadge){ roleBadge.style.opacity='1'; }
+    }, 450);
   }
 
-  function showNext(){
-    const next     = 1 - current;
-    const nextData = SLIDES[idx];
+  /* ── Mettre à jour les points ── */
+  function updateDots(idx){
+    dots.forEach((d,i)=>{
+      d.classList.toggle('active', i===idx);
+    });
+  }
 
-    const inner = slides[next].querySelector('.bg-slide-inner');
-    inner.style.backgroundImage = 'url("'+nextData.img+'")';
+  /* ── Afficher le slide à l'index idx ── */
+  function goTo(idx){
+    const next = 1 - activeBuf;
+    const data = SLIDES[idx];
+    const inner = slideEls[next].querySelector('.bg-slide-inner');
+    inner.style.backgroundImage = 'url("'+data.img+'")';
 
     requestAnimationFrame(()=>{
       requestAnimationFrame(()=>{
-        slides[next].classList.add('active');
-        slides[current].classList.remove('active');
-        current = next;
-        updateMessage(nextData);
-        idx = (idx + 1) % SLIDES.length;
+        slideEls[next].classList.add('active');
+        slideEls[activeBuf].classList.remove('active');
+        activeBuf = next;
+        currentIdx = idx;
+        updatePanel(data);
+        updateDots(idx);
       });
     });
   }
 
-  /* Première image immédiatement */
-  const firstInner = slides[current].querySelector('.bg-slide-inner');
-  firstInner.style.backgroundImage = 'url("'+SLIDES[idx].img+'")';
-  slides[current].classList.add('active');
-  updateMessage(SLIDES[idx]);
-  idx = 1;
+  /* ── Auto-avancement ── */
+  function nextSlide(){
+    goTo((currentIdx + 1) % SLIDES.length);
+  }
 
-  setInterval(showNext, INTERVAL);
+  function resetTimer(){
+    if(autoTimer) clearInterval(autoTimer);
+    autoTimer = setInterval(nextSlide, INTERVAL);
+  }
+
+  /* ── Initialisation — afficher la première slide immédiatement ── */
+  (function init(){
+    const first = SLIDES[0];
+    const inner = slideEls[0].querySelector('.bg-slide-inner');
+    inner.style.backgroundImage = 'url("'+first.img+'")';
+    slideEls[0].classList.add('active');
+    updatePanel(first);
+    updateDots(0);
+    resetTimer();
+  })();
+
 })();
 </script>
 
@@ -2155,7 +2420,9 @@ html,body{width:100%;height:100%;overflow:hidden;}
 <!-- Panneau gauche (visible uniquement sur grand écran) -->
 <div class="left-panel">
   <div class="tagline">BGFIBank CA</div>
+  <div id="role-badge"><i class="fas fa-user"></i><span id="role-label">TimeTrack</span></div>
   <h1 id="left-headline"></h1>
+  <div class="divider-gold"></div>
 </div>
 
 <!-- Carte login -->
