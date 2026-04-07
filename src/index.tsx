@@ -654,6 +654,7 @@ app.get('/api/admin/sessions', async (c) => {
 // ============================================
 
 app.get('/api/admin/stats', async (c) => {
+  try {
   const user = await getUser(c)
   if (!user || user.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
@@ -661,10 +662,10 @@ app.get('/api/admin/stats', async (c) => {
   const month = (c.req.query('month') || new Date().toISOString().slice(0,7)) as string
   const month2 = c.req.query('month2') as string | undefined
 
-  const STATUSES = `status IN ('Validé', 'En attente', 'En cours')`
+  const STATUSES = `ws.status IN ('Validé', 'En attente', 'En cours')`
 
   // Helper pour construire les requêtes avec filtre mois
-  const monthFilter = (m: string) => `strftime('%Y-%m', start_time) = '${m}'`
+  const monthFilter = (m: string) => `strftime('%Y-%m', ws.start_time) = '${m}'`
 
   // ── Requête ratio 3-3-3 par mois avec décomposition par département et agent ──
   async function getRatio333ForMonth(m: string) {
@@ -744,11 +745,11 @@ app.get('/api/admin/stats', async (c) => {
 
   // Tendance mensuelle (6 derniers mois)
   const monthlyTrend = await c.env.DB.prepare(
-    `SELECT strftime('%Y-%m', start_time) as month,
-     COALESCE(SUM(duration_minutes), 0) as total_minutes
-     FROM work_sessions
+    `SELECT strftime('%Y-%m', ws.start_time) as month,
+     COALESCE(SUM(ws.duration_minutes), 0) as total_minutes
+     FROM work_sessions ws
      WHERE ${STATUSES}
-     GROUP BY strftime('%Y-%m', start_time)
+     GROUP BY strftime('%Y-%m', ws.start_time)
      ORDER BY month DESC LIMIT 6`
   ).all()
 
@@ -859,7 +860,7 @@ app.get('/api/admin/stats', async (c) => {
     const depts: Record<string, any> = {}
     ;(raw as any[]).forEach((r: any) => {
       if (!depts[r.dept_name]) {
-        const cap = (capacities as any[]).find((c: any) => c.dept_name === r.dept_name)
+        const cap = (capacities as any[]).find((cap_item: any) => cap_item.dept_name === r.dept_name)
         depts[r.dept_name] = {
           dept_name: r.dept_name,
           agent_count: cap?.agent_count || 0,
@@ -936,6 +937,10 @@ app.get('/api/admin/stats', async (c) => {
       agents_detail: agentsTodayMapped
     }
   })
+  } catch(err: any) {
+    console.error('[admin/stats ERROR]', err?.message || err)
+    return c.json({ error: 'Erreur serveur', detail: err?.message || String(err) }, 500)
+  }
 })
 
 // ============================================
@@ -1901,7 +1906,7 @@ app.get('/api/dg/dashboard', async (c) => {
       const dMap: Record<string,any> = {}
       const caps = deptCap.results as any[]
       ;(raw333Dept.results as any[]).forEach((r: any) => {
-        if (!dMap[r.dept_name]) { const cap=caps.find((c:any)=>c.dept_name===r.dept_name); dMap[r.dept_name]={ dept_name:r.dept_name, agent_count:cap?.agent_count||0, 'Production':0,'Administration & Reporting':0,'Contrôle':0 } }
+        if (!dMap[r.dept_name]) { const cap=caps.find((ci:any)=>ci.dept_name===r.dept_name); dMap[r.dept_name]={ dept_name:r.dept_name, agent_count:cap?.agent_count||0, 'Production':0,'Administration & Reporting':0,'Contrôle':0 } }
         dMap[r.dept_name][norm(r.type_333)] += r.total_minutes
       })
       const deptComparison = Object.values(dMap).map((d:any) => { const tot=d.Production+d['Administration & Reporting']+d['Contrôle']; return { ...d, total_minutes:tot, capacity_minutes:d.agent_count*480, hours_display:minutesToHours(tot) } })
