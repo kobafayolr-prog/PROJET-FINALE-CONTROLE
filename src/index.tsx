@@ -1062,15 +1062,71 @@ app.get('/api/admin/reports', async (c) => {
   if (params.length) stmt = stmt.bind(...params)
   const reports = await stmt.all()
 
-  // Export CSV
+  // Export CSV enrichi avec colonnes calculées (productivité, 3-3-3, temps de reporting)
   if (exportFmt === 'csv') {
     const rows = reports.results as any[]
-    const header = 'Agent,Département,Tâche,Processus,Objectif,Date début,Date fin,Durée (min),Type,Statut,Motif rejet\n'
-    const csv = header + rows.map((r: any) =>
-      [r.agent_name, r.department_name, r.task_name, r.process_name, r.objective_name,
-       r.start_time, r.end_time, r.duration_minutes, r.session_type, r.status,
-       (r.rejected_reason || '').replace(/,/g, ';')].join(',')
-    ).join('\n')
+
+    // Normalisation catégorie 3-3-3
+    const normalize333 = (t: string) => {
+      if (!t) return 'Production'
+      if (t === 'Production' || t === 'Productive') return 'Production'
+      if (t === 'Administration & Reporting' || t === 'Non productive') return 'Administration & Reporting'
+      if (t === 'Contrôle') return 'Contrôle'
+      return 'Production'
+    }
+
+    // Agréger par agent pour calculer les % par mois
+    // Map : "agent_name|YYYY-MM" → { prod, admin, ctrl, total }
+    const agentMonthMap: Record<string, { prod: number, admin: number, ctrl: number, total: number }> = {}
+    for (const r of rows as any[]) {
+      if (r.status !== 'Validé') continue
+      const key = `${r.agent_name}|${(r.start_time || '').slice(0, 7)}`
+      if (!agentMonthMap[key]) agentMonthMap[key] = { prod: 0, admin: 0, ctrl: 0, total: 0 }
+      const cat = normalize333(r.session_type)
+      const dur = r.duration_minutes || 0
+      agentMonthMap[key].total += dur
+      if (cat === 'Production') agentMonthMap[key].prod += dur
+      else if (cat === 'Administration & Reporting') agentMonthMap[key].admin += dur
+      else if (cat === 'Contrôle') agentMonthMap[key].ctrl += dur
+    }
+
+    const pct = (num: number, den: number) => den > 0 ? (num / den * 100).toFixed(1) + '%' : '0%'
+    const hhmm = (min: number) => { const h = Math.floor(min / 60), m = min % 60; return `${h}h ${String(m).padStart(2,'0')}m` }
+
+    const BOM = '\uFEFF'
+    const header = 'Agent,Département,Tâche,Processus,Objectif,Date début,Date fin,Durée (min),Heures (hh:mm),Heures (décimal),Catégorie 3-3-3,Mois,Journée,Type,Statut,Motif rejet,% Productif (mois),% Admin-Reporting (mois),% Contrôle (mois),% Non productif (mois),Temps reporting (mois hh:mm)\n'
+    const csv = BOM + header + (rows as any[]).map((r: any) => {
+      const dur = r.duration_minutes || 0
+      const cat = normalize333(r.session_type)
+      const mois = (r.start_time || '').slice(0, 7)
+      const journee = (r.start_time || '').slice(0, 10)
+      const key = `${r.agent_name}|${mois}`
+      const am = agentMonthMap[key] || { prod: 0, admin: 0, ctrl: 0, total: 0 }
+      const np = Math.max(0, am.total - am.prod - am.admin - am.ctrl)
+      return [
+        `"${r.agent_name || ''}"`,
+        `"${r.department_name || ''}"`,
+        `"${r.task_name || ''}"`,
+        `"${r.process_name || ''}"`,
+        `"${r.objective_name || ''}"`,
+        r.start_time || '',
+        r.end_time || '',
+        dur,
+        hhmm(dur),
+        (dur / 60).toFixed(2),
+        cat,
+        mois,
+        journee,
+        r.session_type || '',
+        r.status || '',
+        `"${(r.rejected_reason || '').replace(/"/g, '""')}"`,
+        pct(am.prod, am.total),
+        pct(am.admin, am.total),
+        pct(am.ctrl, am.total),
+        pct(np, am.total),
+        hhmm(am.admin + am.ctrl)
+      ].join(',')
+    }).join('\n')
     return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="rapports_admin.csv"' } })
   }
 

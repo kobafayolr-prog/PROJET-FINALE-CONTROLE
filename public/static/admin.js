@@ -365,7 +365,9 @@ async function loadDashboardStats() {
   }
 
   function deptCapHtml(dept) {
-    const capMin = dept.agent_count * 480;
+    // Utilise capacity_minutes mensuelle réelle (jours ouvrés × agents × 8h)
+    // Fallback : si absent, on ne peut pas calculer la capacité mensuelle depuis ici
+    const capMin = dept.capacity_minutes || (dept.agent_count * 480); // fallback jour unique si pas de données mensuelle
     const npMin  = Math.max(0, capMin - dept.total_minutes);
     const npPct  = capMin > 0 ? Math.round((npMin / capMin) * 100) : 0;
     const pMin   = dept.Production || 0;
@@ -373,18 +375,20 @@ async function loadDashboardStats() {
     const cMin   = dept['Contrôle'] || 0;
     const repPct = dept.total_minutes > 0 ? Math.round(((aMin + cMin) / dept.total_minutes) * 100) : 0;
     return `<div style="font-size:11px;color:#6b7280;margin-top:4px">
-      ${dept.agent_count} agent(s) · Cap. ${minutesToHours(capMin)} · Non-prod: <b style="color:#ef4444">${minutesToHours(npMin)}</b> (${npPct}%)
+      ${dept.agent_count} agent(s) · Cap. mensuelle ${minutesToHours(capMin)} · Non-prod: <b style="color:#ef4444">${minutesToHours(npMin)}</b> (${npPct}%)
       · Reporting+Ctrl: <b style="color:#f59e0b">${repPct}%</b>
     </div>`;
   }
 
   function agentCapHtml(ag) {
-    const npMin  = Math.max(0, 480 - ag.total_minutes);
-    const npPct  = Math.round((npMin / 480) * 100);
+    // Capacité mensuelle de l'agent (tient compte samedi si works_saturday)
+    const capMin = ag.capacity_minutes || 480; // fallback 1 jour si pas de données mensuelle
+    const npMin  = Math.max(0, capMin - ag.total_minutes);
+    const npPct  = capMin > 0 ? Math.round((npMin / capMin) * 100) : 0;
     const aMin   = ag['Administration & Reporting'] || 0;
     const cMin   = ag['Contrôle'] || 0;
     const repPct = ag.total_minutes > 0 ? Math.round(((aMin + cMin) / ag.total_minutes) * 100) : 0;
-    return `<small style="color:#9ca3af"> · Non-prod: <b style="color:#ef4444">${minutesToHours(npMin)}</b> (${npPct}%) · Reporting: <b style="color:#f59e0b">${repPct}%</b></small>`;
+    return `<small style="color:#9ca3af"> · Cap. mens. ${minutesToHours(capMin)} · Non-prod: <b style="color:#ef4444">${minutesToHours(npMin)}</b> (${npPct}%) · Reporting: <b style="color:#f59e0b">${repPct}%</b></small>`;
   }
 
   document.getElementById('content').innerHTML = `
@@ -878,33 +882,72 @@ function getStatusBadge(status) {
 function exportCSV(data, name) {
   if (!data || !data.length) { toast('Aucune donnée à exporter', 'error'); return; }
 
-  // Enrichissement pour les sessions : ajout colonnes calculées
+  // Normalisation catégorie 3-3-3
+  const normalize333 = t => {
+    if (!t) return 'Production';
+    if (t === 'Production' || t === 'Productive') return 'Production';
+    if (t === 'Administration & Reporting' || t === 'Non productive') return 'Administration & Reporting';
+    if (t === 'Contrôle') return 'Contrôle';
+    return 'Production';
+  };
+  const hhmm = min => { const h = Math.floor(min/60), m = min%60; return `${h}h ${String(m).padStart(2,'0')}m`; };
+  const pct = (n, d) => d > 0 ? (n/d*100).toFixed(1)+'%' : '0%';
+
+  // Enrichissement pour les sessions : ajout colonnes calculées + % productivité par agent/mois
   let enriched = data;
   if (name === 'sessions' || name === 'rapports') {
+    // 1ère passe : agréger par agent+mois (sessions validées)
+    const agentMonthMap = {};
+    data.forEach(r => {
+      if (r.status !== 'Validé') return;
+      const agName = r.agent_name || r.user_name || '';
+      const key = `${agName}|${(r.start_time||'').slice(0,7)}`;
+      if (!agentMonthMap[key]) agentMonthMap[key] = { prod:0, admin:0, ctrl:0, total:0 };
+      const cat = normalize333(r.session_type || r.task_type);
+      const dur = r.duration_minutes || 0;
+      agentMonthMap[key].total += dur;
+      if (cat === 'Production') agentMonthMap[key].prod += dur;
+      else if (cat === 'Administration & Reporting') agentMonthMap[key].admin += dur;
+      else if (cat === 'Contrôle') agentMonthMap[key].ctrl += dur;
+    });
+
+    // 2ème passe : enrichir chaque ligne
     enriched = data.map(r => {
       const dur = r.duration_minutes || 0;
-      const h = Math.floor(dur / 60), m = dur % 60;
-      const extra = {
+      const cat = normalize333(r.session_type || r.task_type);
+      const mois = (r.start_time || '').slice(0, 7);
+      const journee = (r.start_time || '').slice(0, 10);
+      const agName = r.agent_name || r.user_name || '';
+      const key = `${agName}|${mois}`;
+      const am = agentMonthMap[key] || { prod:0, admin:0, ctrl:0, total:0 };
+      const np = Math.max(0, am.total - am.prod - am.admin - am.ctrl);
+      return {
+        ...r,
         heures_decimales: (dur / 60).toFixed(2),
-        heures_affichage: `${h}h ${String(m).padStart(2,'0')}m`,
-        categorie_333: r.task_type === 'Production' || r.task_type === 'Productive' ? 'Production'
-                     : r.task_type === 'Administration & Reporting' || r.task_type === 'Non productive' ? 'Administration & Reporting'
-                     : r.task_type === 'Contrôle' ? 'Contrôle' : 'Production',
-        mois: r.start_time ? r.start_time.slice(0, 7) : '',
-        journee: r.start_time ? r.start_time.slice(0, 10) : ''
+        heures_affichage: hhmm(dur),
+        categorie_333: cat,
+        mois,
+        journee,
+        pct_productif_mois: pct(am.prod, am.total),
+        pct_admin_reporting_mois: pct(am.admin, am.total),
+        pct_controle_mois: pct(am.ctrl, am.total),
+        pct_non_productif_mois: pct(np, am.total),
+        temps_reporting_mois: hhmm(am.admin + am.ctrl)
       };
-      return { ...r, ...extra };
     });
   }
 
   // Colonnes lisibles (remplacer les noms techniques)
   const labelMap = {
-    agent_name: 'Agent', dept_name: 'Département', task_name: 'Tâche',
-    process_name: 'Processus', objective_name: 'Objectif',
+    agent_name: 'Agent', dept_name: 'Département', department_name: 'Département',
+    task_name: 'Tâche', process_name: 'Processus', objective_name: 'Objectif',
     duration_minutes: 'Durée (min)', start_time: 'Début', end_time: 'Fin',
     status: 'Statut', session_type: 'Type', comment: 'Commentaire',
-    heures_decimales: 'Heures (décimal)', heures_affichage: 'Heures (affichage)',
-    categorie_333: 'Catégorie 3-3-3', mois: 'Mois', journee: 'Journée'
+    heures_decimales: 'Heures (décimal)', heures_affichage: 'Heures (hh:mm)',
+    categorie_333: 'Catégorie 3-3-3', mois: 'Mois', journee: 'Journée',
+    pct_productif_mois: '% Productif (mois)', pct_admin_reporting_mois: '% Admin-Reporting (mois)',
+    pct_controle_mois: '% Contrôle (mois)', pct_non_productif_mois: '% Non productif (mois)',
+    temps_reporting_mois: 'Temps Reporting (mois)'
   };
 
   const headers = Object.keys(enriched[0]).map(k => labelMap[k] || k);
