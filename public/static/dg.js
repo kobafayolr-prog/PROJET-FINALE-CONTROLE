@@ -657,7 +657,10 @@ async function renderObjectifs() {
     <div class="obj-header" style="border-left-color:${o.color||'#1e3a5f'}">
       <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${o.color||'#1e3a5f'};flex-shrink:0"></span>
       <span style="font-size:15px;font-weight:700;color:#1e3a5f">${o.name}</span>
-      <span style="margin-left:auto;font-size:18px;font-weight:800;color:${o.color||'#1e3a5f'}">${o.hours_display}</span>
+      <div style="margin-left:auto;text-align:right">
+        <span style="font-size:20px;font-weight:800;color:${o.color||'#1e3a5f'}">${o.percentage}%</span>
+        <span style="font-size:12px;color:#6b7280;margin-left:6px">${o.hours_display}</span>
+      </div>
     </div>
   </div>`).join('') : '<p class="empty-state">Aucun objectif actif.</p>'}
   `);
@@ -670,7 +673,21 @@ async function renderObjectifs() {
           labels: data.byObjective.map(o => o.name),
           datasets: [{ label: 'Heures', data: data.byObjective.map(o => Math.round(o.total_minutes/60*10)/10), backgroundColor: data.byObjective.map(o => o.color||'#1e3a5f') }]
         },
-        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const o = data.byObjective[ctx.dataIndex];
+                  return ` ${o.name} : ${o.percentage}% (${o.hours_display})`;
+                }
+              }
+            }
+          },
+          scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } }
+        }
       });
     }
   }

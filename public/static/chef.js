@@ -335,9 +335,15 @@ async function loadChefDashboard() {
         <div style="width:200px;height:200px"><canvas id="chartObj"></canvas></div>
         <div style="flex:1">
           ${data.byObjective.map(o => `
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-            <span style="width:12px;height:12px;border-radius:2px;background:${o.color};display:inline-block"></span>
-            <span style="font-size:12px;color:#555">${o.name}</span>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="width:12px;height:12px;border-radius:2px;background:${o.color};display:inline-block"></span>
+              <span style="font-size:12px;color:#555">${o.name}</span>
+            </div>
+            <div style="text-align:right">
+              <span style="font-size:14px;font-weight:800;color:${o.color}">${o.percentage}%</span>
+              <span style="font-size:11px;color:#6b7280;margin-left:4px">${o.hours_display}</span>
+            </div>
           </div>`).join('')}
         </div>
       </div>` : `<div style="text-align:center;padding:40px;color:#9ca3af">Aucune donnée</div>`}
@@ -613,7 +619,22 @@ async function loadChefDashboard() {
         labels: data.hoursByAgent.map(a => a.agent_name.split(' ')[1] || a.agent_name),
         datasets: [{ data: data.hoursByAgent.map(a => (a.total_minutes / 60).toFixed(2)), backgroundColor: '#1e3a5f' }]
       },
-      options: { plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => v + 'h' } } } }
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const a = data.hoursByAgent[ctx.dataIndex];
+                const totalTeam = data.hoursByAgent.reduce((s, x) => s + (x.total_minutes||0), 0);
+                const pct = totalTeam > 0 ? Math.round((a.total_minutes||0)*100/totalTeam) : 0;
+                return ` ${a.agent_name} : ${(a.total_minutes/60).toFixed(1)}h (${pct}% équipe)`;
+              }
+            }
+          }
+        },
+        scales: { y: { ticks: { callback: v => v + 'h' } } }
+      }
     });
   }
 
@@ -624,7 +645,20 @@ async function loadChefDashboard() {
         labels: data.byObjective.map(o => o.name),
         datasets: [{ data: data.byObjective.map(o => o.total_minutes), backgroundColor: data.byObjective.map(o => o.color), borderWidth: 2 }]
       },
-      options: { plugins: { legend: { display: false } }, cutout: '55%' }
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const o = data.byObjective[ctx.dataIndex];
+                return ` ${o.name} : ${o.percentage}% (${o.hours_display})`;
+              }
+            }
+          }
+        },
+        cutout: '55%'
+      }
     });
   }
 
