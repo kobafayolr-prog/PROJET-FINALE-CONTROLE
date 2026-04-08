@@ -272,6 +272,35 @@ function resetAttempts (ip) { loginAttempts.delete(ip) }
 
 const resetCodes = new Map()
 
+// Rate-limiting sur tentatives de reset (anti brute-force)
+const resetAttempts = new Map()
+const MAX_RESET_ATTEMPTS = 3
+const RESET_BLOCK_DURATION = 15 * 60 * 1000 // 15 min
+
+function checkResetRateLimit(email) {
+  const now = Date.now()
+  const attempts = resetAttempts.get(email)
+  if (!attempts) return { blocked: false, remaining: MAX_RESET_ATTEMPTS }
+  if (attempts.blockedUntil > now) {
+    return { blocked: true, remaining: 0, minutesLeft: Math.ceil((attempts.blockedUntil - now) / 60000) }
+  }
+  if (attempts.blockedUntil > 0 && attempts.blockedUntil <= now) {
+    resetAttempts.delete(email)
+    return { blocked: false, remaining: MAX_RESET_ATTEMPTS }
+  }
+  return { blocked: false, remaining: MAX_RESET_ATTEMPTS - attempts.count }
+}
+
+function recordResetAttempt(email) {
+  const now = Date.now()
+  const attempts = resetAttempts.get(email) || { count: 0, blockedUntil: 0 }
+  attempts.count++
+  if (attempts.count >= MAX_RESET_ATTEMPTS) attempts.blockedUntil = now + RESET_BLOCK_DURATION
+  resetAttempts.set(email, attempts)
+}
+
+function clearResetAttempts(email) { resetAttempts.delete(email) }
+
 function generateResetCode () {
   return Math.random().toString(36).substring(2, 8).toUpperCase()
 }
@@ -448,11 +477,34 @@ app.post('/api/auth/reset-confirm', async (req, res) => {
   try {
     const { email, code, new_password } = req.body
     if (!email || !code || !new_password) return res.status(400).json({ error: 'email, code et new_password requis' })
+    
+    // SÉCURITÉ: Rate-limiting anti brute-force du code
+    const rateCheck = checkResetRateLimit(email)
+    if (rateCheck.blocked) {
+      return res.status(429).json({ 
+        error: `Trop de tentatives échouées. Réessayez dans ${rateCheck.minutesLeft} minute(s).` 
+      })
+    }
+    
     if (new_password.length < 8) return res.status(400).json({ error: 'Mot de passe trop court (minimum 8 caractères)' })
     const entry = resetCodes.get(email)
     if (!entry) return res.status(400).json({ error: 'Aucun code en attente pour cet email' })
-    if (Date.now() > entry.expiresAt) { resetCodes.delete(email); return res.status(400).json({ error: 'Code expiré' }) }
-    if (entry.code !== code.toUpperCase()) return res.status(400).json({ error: 'Code incorrect' })
+    if (Date.now() > entry.expiresAt) { 
+      resetCodes.delete(email)
+      clearResetAttempts(email)
+      return res.status(400).json({ error: 'Code expiré' }) 
+    }
+    if (entry.code !== code.toUpperCase()) {
+      recordResetAttempt(email)
+      const remaining = MAX_RESET_ATTEMPTS - (resetAttempts.get(email)?.count || 0)
+      return res.status(400).json({ 
+        error: 'Code incorrect', 
+        remaining_attempts: remaining 
+      })
+    }
+    // Code valide → réinitialiser compteur tentatives
+    clearResetAttempts(email)
+    
     const newHash = hashPassword(new_password)
     const newEnc  = encryptPassword(new_password)
     await run('UPDATE users SET password_hash=?, password_encrypted=?, updated_at=NOW() WHERE id=?', [newHash, newEnc, entry.userId])
@@ -1254,7 +1306,21 @@ app.post('/api/agent/sessions/manual', async (req, res) => {
     const { task_id, start_time, end_time, comment } = req.body
     const task = await query('SELECT * FROM tasks WHERE id=?', [task_id])
     if (!task[0]) return res.status(404).json({ error: 'Tâche non trouvée' })
-    let durationMinutes = Math.round((new Date(end_time) - new Date(start_time)) / 60000)
+    
+    // SÉCURITÉ: Validation dates (anti-fraude)
+    const now = Date.now()
+    const startMs = new Date(start_time).getTime()
+    const endMs = new Date(end_time).getTime()
+    const ninetyDaysAgo = now - (90 * 24 * 60 * 60 * 1000)
+    
+    if (startMs > now || endMs > now) {
+      return res.status(400).json({ error: 'Les dates ne peuvent pas être dans le futur' })
+    }
+    if (startMs < ninetyDaysAgo) {
+      return res.status(400).json({ error: 'Les sessions de plus de 90 jours ne peuvent pas être créées' })
+    }
+    
+    let durationMinutes = Math.round((endMs - startMs) / 60000)
     if (durationMinutes <= 0) return res.status(400).json({ error: 'La date de fin doit être après la date de début' })
     durationMinutes = Math.min(durationMinutes, 480)
     const result = await run(
