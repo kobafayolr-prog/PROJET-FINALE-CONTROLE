@@ -1052,10 +1052,9 @@ app.delete('/api/admin/objectives/:id', async (req, res) => {
 
 app.get('/api/admin/processes', async (req, res) => {
   res.json(await query(
-    `SELECT p.*, d.name as department_name, o.name as objective_name, o.color as objective_color
+    `SELECT p.*, d.name as department_name
      FROM processes p
      JOIN departments d ON p.department_id = d.id
-     JOIN strategic_objectives o ON p.objective_id = o.id
      ORDER BY p.name`
   ))
 })
@@ -1063,18 +1062,18 @@ app.get('/api/admin/processes', async (req, res) => {
 app.post('/api/admin/processes', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
-  const { name, description, department_id, objective_id, status } = req.body
-  const result = await run('INSERT INTO processes (name, description, department_id, objective_id, status) VALUES (?, ?, ?, ?, ?)',
-    [name, description || '', department_id, objective_id, status || 'Actif'])
+  const { name, description, department_id, process_type, status } = req.body
+  const result = await run('INSERT INTO processes (name, description, department_id, process_type, status) VALUES (?, ?, ?, ?, ?)',
+    [name, description || '', department_id, process_type || 'Production', status || 'Actif'])
   res.json({ id: result.insertId, message: 'Processus créé' })
 })
 
 app.put('/api/admin/processes/:id', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
-  const { name, description, department_id, objective_id, status } = req.body
-  await run('UPDATE processes SET name=?, description=?, department_id=?, objective_id=?, status=?, updated_at=NOW() WHERE id=?',
-    [name, description || '', department_id, objective_id, status, req.params.id])
+  const { name, description, department_id, process_type, status } = req.body
+  await run('UPDATE processes SET name=?, description=?, department_id=?, process_type=?, status=?, updated_at=NOW() WHERE id=?',
+    [name, description || '', department_id, process_type, status, req.params.id])
   await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
     [currentUser.id, 'UPDATE_PROCESS', `Processus ID ${req.params.id} mis à jour`])
   res.json({ message: 'Processus mis à jour' })

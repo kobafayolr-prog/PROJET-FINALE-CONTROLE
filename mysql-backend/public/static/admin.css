@@ -51,11 +51,17 @@ body { font-family: 'Segoe UI', sans-serif; background: #f4f6f9; color: #333; }
 }
 .sidebar-footer .name { color: white; font-size: 12px; font-weight: 600; }
 .sidebar-footer .role { color: rgba(255,255,255,0.5); font-size: 10px; }
+.sidebar-search { position: relative; margin-top: 8px; }
 .sidebar-search input {
-  width: 100%; background: rgba(255,255,255,0.1); border: none;
-  border-radius: 6px; padding: 6px 10px; color: white; font-size: 12px; margin-top: 8px;
+  width: 100%; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px; padding: 7px 10px 7px 10px; color: white; font-size: 12px;
+  outline: none; transition: background 0.2s, border-color 0.2s;
 }
-.sidebar-search input::placeholder { color: rgba(255,255,255,0.4); }
+.sidebar-search input:focus {
+  background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.4);
+}
+.sidebar-search input::placeholder { color: rgba(255,255,255,0.45); }
+.search-empty-row td { font-style: italic; }
 
 /* MAIN CONTENT */
 .main-content { margin-left: 220px; min-height: 100vh; }
@@ -161,6 +167,9 @@ tbody td { padding: 11px 14px; font-size: 13px; color: #374151; }
 /* ROLE BADGES */
 .role-admin { background: #ede9fe; color: #7c3aed; }
 .role-chef { background: #dbeafe; color: #1d4ed8; }
+.role-chef-service { background: #e0f2fe; color: #0369a1; }
+.role-dir-dept { background: #fef3c7; color: #b45309; }
+.role-dg { background: #fce7f3; color: #9d174d; }
 .role-agent { background: #dcfce7; color: #16a34a; }
 
 /* MODALS */

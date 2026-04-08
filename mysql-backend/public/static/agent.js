@@ -259,24 +259,43 @@ async function renderDashboard() {
             <span style="width:12px;height:12px;border-radius:2px;background:${o.color};display:inline-block"></span>
             <span style="font-size:13px;color:#374151">${o.name}</span>
           </div>
-          <span style="font-size:13px;font-weight:700;color:${o.color}">${o.hours_display}</span>
+          <div style="text-align:right">
+            <span style="font-size:14px;font-weight:800;color:${o.color}">${o.percentage}%</span>
+            <span style="font-size:11px;color:#6b7280;margin-left:4px">${o.hours_display}</span>
+          </div>
         </div>`).join('')}
       </div>
     </div>` : `<div style="text-align:center;padding:40px;color:#9ca3af"><i class="fas fa-chart-pie" style="font-size:40px;margin-bottom:12px;display:block"></i>Aucune session enregistrée</div>`}
-  </div>`;
+  </div>
 
-  // Chart
+  `;
+
+  // Charts
+  destroyCharts();
   if (stats.byObjective.length > 0) {
-    destroyCharts();
     agentCharts.dash = new Chart(document.getElementById('chartDash'), {
       type: 'doughnut',
       data: {
         labels: stats.byObjective.map(o => o.name),
         datasets: [{ data: stats.byObjective.map(o => o.total_minutes), backgroundColor: stats.byObjective.map(o => o.color), borderWidth: 2 }]
       },
-      options: { plugins: { legend: { display: false } }, cutout: '55%' }
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const o = stats.byObjective[ctx.dataIndex];
+                return ` ${o.name} : ${o.percentage}% (${o.hours_display})`;
+              }
+            }
+          }
+        },
+        cutout: '55%'
+      }
     });
   }
+
 }
 
 // ============================================
@@ -519,7 +538,10 @@ async function renderStats() {
       <div style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px">
           <span style="font-size:13px;font-weight:700;color:${o.color}">${o.name}</span>
-          <span style="font-size:13px;font-weight:700;color:${o.color}">${o.hours_display}</span>
+          <div style="text-align:right">
+            <span style="font-size:14px;font-weight:800;color:${o.color}">${o.percentage}%</span>
+            <span style="font-size:11px;color:#6b7280;margin-left:4px">${o.hours_display}</span>
+          </div>
         </div>
         <div style="font-size:11px;color:#9ca3af;margin-bottom:4px">${o.session_count} session(s)</div>
         <div class="progress-bar">
@@ -542,6 +564,17 @@ async function renderStats() {
       },
       options: {
         plugins: { legend: { display: false } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const o = stats.byObjective[ctx.dataIndex];
+                return ` ${o.name} : ${o.percentage}% (${o.hours_display})`;
+              }
+            }
+          }
+        },
         scales: { y: { ticks: { callback: v => v + 'h' } } }
       }
     });

@@ -85,7 +85,7 @@ function startChefNotifPolling() {
       const items = await r.json();
       _chefNotifSince = new Date().toISOString();
       items.forEach(n => {
-        if (n.status === 'Termine') {
+        if (n.status === 'Terminé') {
           toast('Nouvelle session a valider - ' + n.agent_name + ' : ' + n.task_name, 'info');
         }
       });
@@ -96,6 +96,79 @@ function startChefNotifPolling() {
 function destroyCharts() {
   Object.values(chefCharts).forEach(c => { try { c.destroy(); } catch(e){} });
   chefCharts = {};
+}
+
+// ============================================
+// TODAY LIVE — Statut temps réel agents
+// ============================================
+async function refreshLive() {
+  const grid = document.getElementById('live-agents-grid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="text-align:center;padding:20px;color:#9ca3af"><i class="fas fa-spinner fa-spin"></i> Chargement...</div>';
+
+  const data = await api('/api/chef/live');
+  if (!data || data.error) {
+    grid.innerHTML = '<div style="color:#ef4444;padding:16px">Erreur de chargement</div>';
+    return;
+  }
+
+  // Résumé
+  const wEl = document.getElementById('live-working');
+  const pEl = document.getElementById('live-paused');
+  const nEl = document.getElementById('live-not-started');
+  if (wEl) wEl.textContent = data.summary.working_now;
+  if (pEl) pEl.textContent = data.summary.paused;
+  if (nEl) nEl.textContent = data.summary.not_started;
+
+  if (data.is_weekend) {
+    grid.innerHTML = `<div style="text-align:center;padding:24px;color:#92400e;background:#fef9c3;border-radius:10px;grid-column:1/-1">
+      <i class="fas fa-moon" style="font-size:28px;margin-bottom:8px;display:block"></i>
+      <div style="font-weight:700">Week-end — Pas de journée attendue</div>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = data.agents.map(a => {
+    const statusConfig = {
+      working:     { bg: '#dcfce7', border: '#16a34a', icon: 'fa-play-circle', iconColor: '#16a34a', label: 'En cours', labelColor: '#16a34a' },
+      paused:      { bg: '#fef9c3', border: '#ca8a04', icon: 'fa-pause-circle', iconColor: '#ca8a04', label: 'En pause',  labelColor: '#ca8a04' },
+      not_started: { bg: '#fee2e2', border: '#dc2626', icon: 'fa-times-circle', iconColor: '#dc2626', label: 'Pas pointé', labelColor: '#dc2626' },
+      weekend:     { bg: '#f3f4f6', border: '#d1d5db', icon: 'fa-moon',        iconColor: '#9ca3af', label: 'Week-end',  labelColor: '#9ca3af' }
+    };
+    const s = statusConfig[a.live_status] || statusConfig.not_started;
+    const pct = a.productive_pct || 0;
+    const pctColor = pct >= 80 ? '#16a34a' : pct >= 50 ? '#f59e0b' : '#dc2626';
+    const taskInfo = a.is_active_now && a.current_task
+      ? `<div style="font-size:10px;color:#1e3a5f;background:#eff6ff;padding:3px 8px;border-radius:4px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${a.current_task}"><i class="fas fa-tasks"></i> ${a.current_task}</div>`
+      : '';
+    return `
+    <div style="background:${s.bg};border:1.5px solid ${s.border};border-radius:10px;padding:12px 14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-weight:700;font-size:13px;color:#1e3a5f">${a.agent_name}</span>
+        <span style="color:${s.labelColor};font-size:11px;font-weight:600"><i class="fas ${s.icon}" style="color:${s.iconColor}"></i> ${s.label}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7280;margin-bottom:6px">
+        <span>✅ ${a.total_pointed_hours}</span>
+        <span style="font-weight:700;color:${pctColor}">${pct}%</span>
+        <span>${a.sessions_done_today} session(s)</span>
+      </div>
+      <div style="height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${pctColor};transition:width .5s"></div>
+      </div>
+      ${taskInfo}
+    </div>`;
+  }).join('');
+}
+
+// Auto-refresh live toutes les 60 secondes si la carte est visible
+let liveRefreshInterval = null;
+function startLiveRefresh() {
+  if (liveRefreshInterval) clearInterval(liveRefreshInterval);
+  refreshLive();
+  liveRefreshInterval = setInterval(() => {
+    if (document.getElementById('live-agents-grid')) refreshLive();
+    else { clearInterval(liveRefreshInterval); liveRefreshInterval = null; }
+  }, 60000);
 }
 
 // ============================================
@@ -181,19 +254,50 @@ function renderLayout(title, content) {
 // ============================================
 // DASHBOARD CHEF
 // ============================================
+let chefMonth1 = new Date().toISOString().slice(0,7);
+let chefMonth2 = '';
+let chefBarMode = 'mensuel'; // 'mensuel' ou 'cumul'
+let chefLastData = null;     // cache pour le toggle sans re-fetch
+
 async function renderDashboard() {
   renderLayout('Tableau de bord équipe', '<div style="text-align:center;padding:32px"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:#9ca3af"></i></div>');
-  const data = await api('/api/chef/dashboard');
+  await loadChefDashboard();
+}
 
+async function loadChefDashboard() {
+  const m2p = chefMonth2 ? `&month2=${chefMonth2}` : '';
+  const data = await api(`/api/chef/dashboard?month=${chefMonth1}${m2p}`);
+  chefLastData = data; // cache pour le toggle
   const today = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
   document.getElementById('content').innerHTML = `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:8px">
       <i class="fas fa-check-circle" style="color:#22c55e;font-size:18px"></i>
       <h2 style="font-size:20px;font-weight:700;color:#1e3a5f">Vue d'ensemble de mon équipe</h2>
     </div>
     <span style="font-size:13px;color:#6b7280">${today}</span>
+  </div>
+
+  <!-- Filtre période -->
+  <div class="chart-card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <i class="fas fa-calendar-alt" style="color:#1e3a5f"></i>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:13px;font-weight:600;color:#374151">Mois 1</label>
+        <input type="month" id="chefFilterM1" value="${chefMonth1}" style="border:1px solid #d1d5db;border-radius:8px;padding:6px 10px;font-size:13px;color:#1e3a5f;outline:none">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:13px;font-weight:600;color:#374151">Mois 2</label>
+        <input type="month" id="chefFilterM2" value="${chefMonth2}" style="border:1px solid #d1d5db;border-radius:8px;padding:6px 10px;font-size:13px;color:#6b7280;outline:none">
+        <button onclick="document.getElementById('chefFilterM2').value='';chefMonth2='';loadChefDashboard()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:12px" title="Effacer">✕</button>
+      </div>
+      <button onclick="chefMonth1=document.getElementById('chefFilterM1').value;chefMonth2=document.getElementById('chefFilterM2').value;loadChefDashboard()"
+        style="background:#1e3a5f;color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer">
+        <i class="fas fa-search" style="margin-right:6px"></i>Appliquer
+      </button>
+      ${data.month2 ? `<span style="background:#eff6ff;color:#1e3a5f;font-size:12px;padding:4px 10px;border-radius:6px;font-weight:600"><i class="fas fa-code-branch" style="margin-right:4px"></i>${data.month||chefMonth1} vs ${data.month2}</span>` : `<span style="color:#9ca3af;font-size:12px">Période : <b>${data.month||chefMonth1}</b></span>`}
+    </div>
   </div>
 
   <!-- KPIs -->
@@ -231,12 +335,43 @@ async function renderDashboard() {
         <div style="width:200px;height:200px"><canvas id="chartObj"></canvas></div>
         <div style="flex:1">
           ${data.byObjective.map(o => `
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-            <span style="width:12px;height:12px;border-radius:2px;background:${o.color};display:inline-block"></span>
-            <span style="font-size:12px;color:#555">${o.name}</span>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="width:12px;height:12px;border-radius:2px;background:${o.color};display:inline-block"></span>
+              <span style="font-size:12px;color:#555">${o.name}</span>
+            </div>
+            <div style="text-align:right">
+              <span style="font-size:14px;font-weight:800;color:${o.color}">${o.percentage}%</span>
+              <span style="font-size:11px;color:#6b7280;margin-left:4px">${o.hours_display}</span>
+            </div>
           </div>`).join('')}
         </div>
       </div>` : `<div style="text-align:center;padding:40px;color:#9ca3af">Aucune donnée</div>`}
+    </div>
+  </div>
+
+  <!-- ══ TODAY LIVE : statut temps réel ══ -->
+  <div class="chart-card" style="margin-bottom:16px" id="live-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="chart-title" style="margin:0"><i class="fas fa-satellite-dish" style="color:#16a34a"></i> Statut Live — Aujourd'hui <span style="font-size:11px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:10px;margin-left:6px"><i class="fas fa-circle" style="font-size:8px"></i> Temps réel</span></div>
+      <button onclick="refreshLive()" style="background:none;border:1px solid #d1d5db;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;color:#6b7280"><i class="fas fa-sync-alt"></i> Actualiser</button>
+    </div>
+    <div id="live-summary" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:100px;background:#dcfce7;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:#16a34a" id="live-working">—</div>
+        <div style="font-size:11px;color:#6b7280">🟢 En train de bosser</div>
+      </div>
+      <div style="flex:1;min-width:100px;background:#fef9c3;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:#ca8a04" id="live-paused">—</div>
+        <div style="font-size:11px;color:#6b7280">🟡 A pointé / Pause</div>
+      </div>
+      <div style="flex:1;min-width:100px;background:#fee2e2;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:#dc2626" id="live-not-started">—</div>
+        <div style="font-size:11px;color:#6b7280">🔴 Pas encore pointé</div>
+      </div>
+    </div>
+    <div id="live-agents-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+      <div style="text-align:center;padding:20px;color:#9ca3af"><i class="fas fa-spinner fa-spin"></i> Chargement...</div>
     </div>
   </div>
 
@@ -302,55 +437,221 @@ async function renderDashboard() {
     </table>`}
   </div>
 
-  <!-- Détail par Agent — Ce mois -->
+  <!-- Détail par Agent — Ce mois (avec ratios 3-3-3) -->
   <div class="chart-card">
-    <div class="chart-title"><i class="fas fa-list" style="color:#1e3a5f"></i> Détail par Agent — Ce mois</div>
+    <div class="chart-title"><i class="fas fa-list" style="color:#1e3a5f"></i> Détail par Agent — Ce mois
+      <span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:8px">Capacité = jours ouvrés × 8h/agent</span>
+    </div>
     <div class="table-wrapper">
-      <table>
+      <table style="font-size:12px">
         <thead><tr>
-          <th>AGENT</th><th>SESSIONS</th><th>TOTAL HEURES</th><th>HEURES VALIDÉES</th><th>% VALIDÉ</th>
+          <th>AGENT</th>
+          <th style="text-align:center">SESSIONS</th>
+          <th style="text-align:center;color:#1e3a5f">🔵 PRODUCTION</th>
+          <th style="text-align:center;color:#f59e0b">🟡 ADMIN & REPORTING</th>
+          <th style="text-align:center;color:#10b981">🟢 CONTRÔLE</th>
+          <th style="text-align:center;color:#ef4444">🔴 NON POINTÉ</th>
+          <th style="text-align:center">CAPACITÉ</th>
+          <th style="text-align:center">% PRODUCTIF</th>
         </tr></thead>
         <tbody>
-          ${data.agentDetail.map(a => `<tr>
-            <td style="font-weight:600;color:#1e3a5f">${a.agent_name}</td>
-            <td>${a.total_sessions}</td>
-            <td style="font-weight:700">${a.total_hours}</td>
-            <td style="font-weight:700;color:#16a34a">${a.validated_hours}</td>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px">
-                <div style="width:80px;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden">
-                  <div style="width:${Math.min(100, Math.round(a.pct_validated))}%;height:100%;background:#1e3a5f;border-radius:3px"></div>
+          ${(data.agentComparison || []).map(a => {
+            const cap = a.capacity_minutes || 480;
+            const prod = a.Production || 0;
+            const admin = a['Administration & Reporting'] || 0;
+            const ctrl = a['Contrôle'] || 0;
+            const total = a.total_minutes || 0;
+            const np = Math.max(0, cap - total);
+            const pct = cap > 0 ? Math.round(total * 100 / cap) : 0;
+            const npPct = Math.max(0, 100 - pct);
+            const col = pct >= 80 ? '#16a34a' : pct >= 50 ? '#f59e0b' : '#dc2626';
+            const prodPct = total > 0 ? Math.round(prod * 100 / total) : 0;
+            const adminPct = total > 0 ? Math.round(admin * 100 / total) : 0;
+            const ctrlPct = total > 0 ? Math.round(ctrl * 100 / total) : 0;
+            return `<tr>
+              <td style="font-weight:600;color:#1e3a5f">${a.agent_name}</td>
+              <td style="text-align:center">${(data.agentDetail||[]).find(x=>x.agent_name===a.agent_name)?.total_sessions||'—'}</td>
+              <td style="text-align:center">
+                <span style="font-weight:700;color:#1e3a5f">${minutesToHours(prod)}</span>
+                <div style="font-size:10px;color:#9ca3af">${prodPct}% du pointé</div>
+              </td>
+              <td style="text-align:center">
+                <span style="font-weight:700;color:#f59e0b">${minutesToHours(admin)}</span>
+                <div style="font-size:10px;color:#9ca3af">${adminPct}% du pointé</div>
+              </td>
+              <td style="text-align:center">
+                <span style="font-weight:700;color:#10b981">${minutesToHours(ctrl)}</span>
+                <div style="font-size:10px;color:#9ca3af">${ctrlPct}% du pointé</div>
+              </td>
+              <td style="text-align:center">
+                <span style="font-weight:700;color:#ef4444">${minutesToHours(np)}</span>
+                <div style="font-size:10px;color:#9ca3af">${npPct}% cap.</div>
+              </td>
+              <td style="text-align:center;color:#6b7280">${minutesToHours(cap)}</td>
+              <td style="text-align:center">
+                <div style="display:flex;align-items:center;gap:6px;justify-content:center">
+                  <div style="width:60px;height:8px;background:#f3f4f6;border-radius:4px;overflow:hidden;display:flex">
+                    <div style="height:100%;width:${pct}%;background:${col}"></div>
+                  </div>
+                  <span style="font-size:12px;font-weight:800;color:${col}">${pct}%</span>
                 </div>
-                <span style="font-size:12px;font-weight:700;color:#1e3a5f">${Math.round(a.pct_validated)}%</span>
-              </div>
-            </td>
-          </tr>`).join('')}
+              </td>
+            </tr>`;
+          }).join('')}
+          ${!(data.agentComparison||[]).length ? '<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:20px">Aucune donnée</td></tr>' : ''}
         </tbody>
       </table>
     </div>
+  </div>
+
+  <!-- Toggle vue mensuelle / cumulative -->
+  <div id="chef-bar-toggle-wrap" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600;color:#374151"><i class="fas fa-layer-group" style="margin-right:6px;color:#1e3a5f"></i>Vue des barres :</span>
+    <button id="chef-btn-mensuel" onclick="chefSetBarMode('mensuel')"
+      style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:2px solid #1e3a5f;background:#1e3a5f;color:#fff">
+      <i class="fas fa-calendar-day" style="margin-right:5px"></i>Mensuel
+    </button>
+    <button id="chef-btn-cumul" onclick="chefSetBarMode('cumul')"
+      style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:2px solid #1e3a5f;background:#fff;color:#1e3a5f">
+      <i class="fas fa-layer-group" style="margin-right:5px"></i>Cumulatif <span id="chef-cumul-nb-months">${(data.cumulMonths||[]).length||6}</span> mois
+    </button>
+    <span id="chef-cumul-info" style="font-size:11px;color:#6b7280;display:none">
+      <i class="fas fa-info-circle" style="margin-right:4px"></i>Données cumulées sur <b>${(data.cumulMonths||[]).length||6}</b> mois
+    </span>
+  </div>
+
+  <!-- Barres comparatives par Agent (3-3-3) -->
+  <div class="chart-card">
+    <div class="chart-title">
+      <i class="fas fa-users" style="color:#1e3a5f"></i> Comparaison par Agent — Temps Reporting vs Production
+      <span id="chef-agent-mode-label" style="font-size:11px;font-weight:400;color:#6b7280;margin-left:8px"></span>
+    </div>
+    <canvas id="chartAgentBar333" height="${Math.max(160,(data.agentComparison||data.hoursByAgent||[]).length*(data.month2?42:30))}"></canvas>
   </div>`;
 
   destroyCharts();
+  // Démarrer le rafraîchissement live après le rendu
+  startLiveRefresh();
 
-  if (data.hoursByAgent.length > 0) {
+  if (data.hoursByAgent && data.hoursByAgent.length > 0 && document.getElementById('chartAgents')) {
     chefCharts.agents = new Chart(document.getElementById('chartAgents'), {
       type: 'bar',
       data: {
         labels: data.hoursByAgent.map(a => a.agent_name.split(' ')[1] || a.agent_name),
         datasets: [{ data: data.hoursByAgent.map(a => (a.total_minutes / 60).toFixed(2)), backgroundColor: '#1e3a5f' }]
       },
-      options: { plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => v + 'h' } } } }
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const a = data.hoursByAgent[ctx.dataIndex];
+                const totalTeam = data.hoursByAgent.reduce((s, x) => s + (x.total_minutes||0), 0);
+                const pct = totalTeam > 0 ? Math.round((a.total_minutes||0)*100/totalTeam) : 0;
+                return ` ${a.agent_name} : ${(a.total_minutes/60).toFixed(1)}h (${pct}% équipe)`;
+              }
+            }
+          }
+        },
+        scales: { y: { ticks: { callback: v => v + 'h' } } }
+      }
     });
   }
 
-  if (data.byObjective.length > 0) {
+  if (data.byObjective && data.byObjective.length > 0 && document.getElementById('chartObj')) {
     chefCharts.obj = new Chart(document.getElementById('chartObj'), {
       type: 'doughnut',
       data: {
         labels: data.byObjective.map(o => o.name),
         datasets: [{ data: data.byObjective.map(o => o.total_minutes), backgroundColor: data.byObjective.map(o => o.color), borderWidth: 2 }]
       },
-      options: { plugins: { legend: { display: false } }, cutout: '55%' }
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const o = data.byObjective[ctx.dataIndex];
+                return ` ${o.name} : ${o.percentage}% (${o.hours_display})`;
+              }
+            }
+          }
+        },
+        cutout: '55%'
+      }
+    });
+  }
+
+  // Mettre à jour le toggle UI puis rendre les barres
+  chefUpdateToggleUI();
+  renderChefAgentBar(data, chefBarMode);
+}
+
+// ── Toggle mode chef ──────────────────────────────────────────────────────────
+function chefSetBarMode(mode) {
+  chefBarMode = mode;
+  chefUpdateToggleUI();
+  if (chefLastData) renderChefAgentBar(chefLastData, mode);
+}
+
+function chefUpdateToggleUI() {
+  const btnM = document.getElementById('chef-btn-mensuel');
+  const btnC = document.getElementById('chef-btn-cumul');
+  const info = document.getElementById('chef-cumul-info');
+  if (btnM) { btnM.style.background = chefBarMode==='mensuel'?'#1e3a5f':'#fff'; btnM.style.color = chefBarMode==='mensuel'?'#fff':'#1e3a5f'; }
+  if (btnC) { btnC.style.background = chefBarMode==='cumul'?'#1e3a5f':'#fff'; btnC.style.color = chefBarMode==='cumul'?'#fff':'#1e3a5f'; }
+  if (info) info.style.display = chefBarMode==='cumul' ? 'inline' : 'none';
+}
+
+function renderChefAgentBar(data, mode) {
+  // Détruire seulement la barre agent
+  if (chefCharts.agentBar) { try { chefCharts.agentBar.destroy(); } catch(e){} delete chefCharts.agentBar; }
+
+  const isCumul = mode === 'cumul';
+  const cumulNb = (data.cumulMonths||[]).length || 6;
+  const modeLabel = isCumul ? `(${cumulNb} mois cumulés)` : (data.month2 ? `(${data.month||chefMonth1} vs ${data.month2})` : `(${data.month||chefMonth1})`);
+  const capLabel  = isCumul ? 'cap. cumulée' : 'cap. mensuelle';
+
+  const lbl = document.getElementById('chef-agent-mode-label');
+  if (lbl) lbl.textContent = modeLabel;
+
+  let agComp, agCompM2;
+  if (isCumul) {
+    agComp  = data.cumulAgentComparison || data.agentComparison || [];
+    agCompM2 = [];
+  } else {
+    agComp  = data.agentComparison || data.hoursByAgent || [];
+    agCompM2 = data.agentComparisonMonth2 || [];
+  }
+
+  if (agComp.length > 0 && document.getElementById('chartAgentBar333')) {
+    const mkDs = (src, suffix, stackSuffix) => [
+      { label:'Production'+suffix, data:src.map(a=>+((a.Production||a.total_minutes||0)/60).toFixed(2)), backgroundColor:'#1e3a5f', stack:'sa'+stackSuffix, _cap:src.map(a=>(a.capacity_minutes||480)/60) },
+      { label:'Admin & Reporting'+suffix, data:src.map(a=>+((a['Administration & Reporting']||0)/60).toFixed(2)), backgroundColor:'#f59e0b', stack:'sa'+stackSuffix, _cap:src.map(a=>(a.capacity_minutes||480)/60) },
+      { label:'Contrôle'+suffix, data:src.map(a=>+((a['Contrôle']||0)/60).toFixed(2)), backgroundColor:'#10b981', stack:'sa'+stackSuffix, _cap:src.map(a=>(a.capacity_minutes||480)/60) },
+      { label:'Non productif'+suffix, data:src.map(a=>{ const c=(a.capacity_minutes||480)/60; return +(Math.max(0,c-(a.total_minutes||0)/60).toFixed(2)); }), backgroundColor:'#ef4444cc', stack:'sa'+stackSuffix, _cap:src.map(a=>(a.capacity_minutes||480)/60) }
+    ];
+    const ds = mkDs(agComp, isCumul ? '' : (data.month2?' ('+data.month+')':''), 'M1');
+    if (!isCumul && agCompM2.length) ds.push(...mkDs(agCompM2, ' ('+data.month2+')', 'M2'));
+    chefCharts.agentBar = new Chart(document.getElementById('chartAgentBar333'), {
+      type: 'bar',
+      data: { labels: agComp.map(a => a.agent_name), datasets: ds },
+      options: {
+        indexAxis: 'y', responsive: true,
+        plugins: {
+          legend: { position:'bottom', labels:{ font:{size:11}, boxWidth:12 } },
+          tooltip: { callbacks: { label: ctx => {
+            const val = ctx.raw;
+            const cap = ctx.dataset._cap ? ctx.dataset._cap[ctx.dataIndex] : 8;
+            const pct = cap > 0 ? Math.round(val/cap*100) : 0;
+            const h = Math.floor(val), m = Math.round((val-h)*60);
+            const cH = Math.floor(cap), cM = Math.round((cap-cH)*60);
+            return ` ${ctx.dataset.label} : ${h}h ${String(m).padStart(2,'0')}m — ${pct}% ${capLabel} (${cH}h${cM>0?String(cM).padStart(2,'0')+'m':''})`;
+          }}}
+        },
+        scales: { x:{ stacked:true, ticks:{callback:v=>v+'h'}, grid:{color:'#f3f4f6'} }, y:{ stacked:true, ticks:{font:{size:11}} } }
+      }
     });
   }
 }
@@ -737,7 +1038,7 @@ function printChefReport() {
   const table = document.getElementById('chef-report-table');
   if (!table) return;
   const win = window.open('', '_blank');
-  win.document.write('<html><head><title>Rapport Chef - BGFIBank</title><style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px}h2{color:#1e3a5f}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e3a5f;color:white;padding:8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:11px}</style></head><body><h2>Rapport Departement - BGFIBank</h2><p style="color:#6b7280">Periode : ' + (_chefRptFrom || '-') + ' au ' + (_chefRptTo || '-') + ' | Genere le ' + new Date().toLocaleDateString('fr-FR') + '</p>' + table.outerHTML + '</body></html>');
+  win.document.write('<html><head><title>Rapport Chef - BGFIBank CA</title><style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px}h2{color:#1e3a5f}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e3a5f;color:white;padding:8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:11px}</style></head><body><h2>Rapport Departement - BGFIBank CA</h2><p style="color:#6b7280">Periode : ' + (_chefRptFrom || '-') + ' au ' + (_chefRptTo || '-') + ' | Genere le ' + new Date().toLocaleDateString('fr-FR') + '</p>' + table.outerHTML + '</body></html>');
   win.document.close();
   setTimeout(() => win.print(), 500);
 }
@@ -787,11 +1088,78 @@ function getStatusBadge(status) {
 }
 
 function exportCSV(data, name) {
-  if (!data || !data.length) { toast('Aucune donnee', 'error'); return; }
-  const headers = Object.keys(data[0]).join(',');
-  const rows = data.map(r => Object.values(r).map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(','));
-  const csv = [headers, ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
+  if (!data || !data.length) { toast('Aucune donnée à exporter', 'error'); return; }
+
+  // Normalisation catégorie 3-3-3
+  const normalize333 = t => {
+    if (!t) return 'Production';
+    if (t === 'Production' || t === 'Productive') return 'Production';
+    if (t === 'Administration & Reporting' || t === 'Non productive') return 'Administration & Reporting';
+    if (t === 'Contrôle') return 'Contrôle';
+    return 'Production';
+  };
+  const hhmm = min => { const h = Math.floor(min/60), m = min%60; return `${h}h ${String(m).padStart(2,'0')}m`; };
+  const pct = (n, d) => d > 0 ? (n/d*100).toFixed(1)+'%' : '0%';
+
+  // Enrichissement : colonnes calculées + % productivité par agent/mois
+  let enriched = data;
+  if (name === 'rapports' || name === 'sessions') {
+    // 1ère passe : agréger par agent+mois pour calculer les % (sessions validées uniquement)
+    const agentMonthMap = {};
+    data.forEach(r => {
+      if (r.status !== 'Validé') return;
+      const key = `${r.agent_name}|${(r.start_time||'').slice(0,7)}`;
+      if (!agentMonthMap[key]) agentMonthMap[key] = { prod:0, admin:0, ctrl:0, total:0 };
+      const cat = normalize333(r.session_type || r.task_type);
+      const dur = r.duration_minutes || 0;
+      agentMonthMap[key].total += dur;
+      if (cat === 'Production') agentMonthMap[key].prod += dur;
+      else if (cat === 'Administration & Reporting') agentMonthMap[key].admin += dur;
+      else if (cat === 'Contrôle') agentMonthMap[key].ctrl += dur;
+    });
+
+    // 2ème passe : enrichir chaque ligne
+    enriched = data.map(r => {
+      const dur = r.duration_minutes || 0;
+      const cat = normalize333(r.session_type || r.task_type);
+      const mois = (r.start_time || '').slice(0, 7);
+      const journee = (r.start_time || '').slice(0, 10);
+      const key = `${r.agent_name}|${mois}`;
+      const am = agentMonthMap[key] || { prod:0, admin:0, ctrl:0, total:0 };
+      const np = Math.max(0, am.total - am.prod - am.admin - am.ctrl);
+      return {
+        ...r,
+        heures_decimales: (dur / 60).toFixed(2),
+        heures_affichage: hhmm(dur),
+        categorie_333: cat,
+        mois,
+        journee,
+        pct_productif_mois: pct(am.prod, am.total),
+        pct_admin_reporting_mois: pct(am.admin, am.total),
+        pct_controle_mois: pct(am.ctrl, am.total),
+        pct_non_productif_mois: pct(np, am.total),
+        temps_reporting_mois: hhmm(am.admin + am.ctrl)
+      };
+    });
+  }
+
+  // Labels lisibles
+  const labelMap = {
+    agent_name: 'Agent', department_name: 'Département', task_name: 'Tâche',
+    process_name: 'Processus', objective_name: 'Objectif',
+    duration_minutes: 'Durée (min)', start_time: 'Début', end_time: 'Fin',
+    status: 'Statut', session_type: 'Type', comment: 'Commentaire',
+    heures_decimales: 'Heures (décimal)', heures_affichage: 'Heures (hh:mm)',
+    categorie_333: 'Catégorie 3-3-3', mois: 'Mois', journee: 'Journée',
+    pct_productif_mois: '% Productif (mois)', pct_admin_reporting_mois: '% Admin-Reporting (mois)',
+    pct_controle_mois: '% Contrôle (mois)', pct_non_productif_mois: '% Non productif (mois)',
+    temps_reporting_mois: 'Temps Reporting (mois)'
+  };
+  const headers = Object.keys(enriched[0]).map(k => labelMap[k] || k);
+  const rows = enriched.map(r => Object.values(r).map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(','));
+  // BOM UTF-8 pour Excel
+  const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name + '_' + new Date().toISOString().split('T')[0] + '.csv';

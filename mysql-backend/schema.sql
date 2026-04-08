@@ -42,15 +42,15 @@ CREATE TABLE IF NOT EXISTS processes (
   name          VARCHAR(255) NOT NULL,
   description   TEXT,
   department_id INT UNSIGNED NOT NULL,
-  objective_id  INT UNSIGNED NOT NULL,
+  process_type  VARCHAR(100) NOT NULL DEFAULT 'Production' COMMENT 'Production, Administration & Reporting, ou Contrôle',
   status        ENUM('Actif','Inactif') NOT NULL DEFAULT 'Actif',
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_processes_dept FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
-  CONSTRAINT fk_processes_obj  FOREIGN KEY (objective_id)  REFERENCES strategic_objectives(id) ON DELETE CASCADE
+  CONSTRAINT fk_processes_dept FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE INDEX IF NOT EXISTS idx_processes_dept ON processes(department_id);
+CREATE INDEX IF NOT EXISTS idx_processes_type ON processes(process_type);
 
 -- ============================================================
 -- TABLE : tasks

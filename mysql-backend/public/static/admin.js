@@ -528,38 +528,41 @@ async function loadDashboardStats() {
       <canvas id="chartDeptBar" height="${stats.month2 ? 260 : 200}"></canvas>
       <!-- Tableau récap heures non-productives par département -->
       <div style="margin-top:16px;overflow-x:auto">
-        <table style="width:100%;font-size:12px">
-          <thead><tr style="background:#f9fafb">
-            <th style="padding:8px;text-align:left">DÉPARTEMENT</th>
-            <th style="padding:8px;text-align:center">AGENTS</th>
-            <th style="padding:8px;text-align:center;color:#1e3a5f">PRODUCTION</th>
-            <th style="padding:8px;text-align:center;color:#f59e0b">ADMIN & REPORTING</th>
-            <th style="padding:8px;text-align:center;color:#10b981">CONTRÔLE</th>
-            <th style="padding:8px;text-align:center;color:#ef4444">NON PRODUCTIF</th>
-            <th style="padding:8px;text-align:center">CAPACITÉ</th>
-          </tr></thead>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e5e7eb">
+          <thead>
+            <tr style="background:#1e3a5f;color:white">
+              <th style="padding:12px 8px;text-align:left;font-weight:600;border-right:1px solid #3b5998">DÉPARTEMENT</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:80px">AGENTS</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:100px">PRODUCTION</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:120px">ADMIN & REPORTING</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:100px">CONTRÔLE</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:120px">NON PRODUCTIF</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;width:100px">CAPACITÉ</th>
+            </tr>
+          </thead>
           <tbody>
-            ${(stats.deptComparison||[]).map(d => {
+            ${(stats.deptComparison||[]).map((d, idx) => {
               const cap = d.capacity_minutes || d.agent_count * (stats.working_days||22) * 480;
               const np  = Math.max(0, cap - d.total_minutes);
               const npPct = cap > 0 ? Math.round(np/cap*100) : 0;
               const aMin = d['Administration & Reporting']||0;
               const cMin = d['Contrôle']||0;
               const repPct = d.total_minutes > 0 ? Math.round((aMin+cMin)/d.total_minutes*100) : 0;
-              return `<tr style="border-bottom:1px solid #f3f4f6">
-                <td style="padding:8px;font-weight:600">${d.dept_name}</td>
-                <td style="padding:8px;text-align:center">${d.agent_count}</td>
-                <td style="padding:8px;text-align:center;color:#1e3a5f;font-weight:700">${minutesToHours(d.Production||0)}</td>
-                <td style="padding:8px;text-align:center;color:#f59e0b;font-weight:700">
-                  ${minutesToHours(aMin)}
-                  <div style="font-size:10px;color:#9ca3af">${repPct}% du total</div>
+              const bgColor = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
+              return `<tr style="background:${bgColor};border-bottom:1px solid #e5e7eb">
+                <td style="padding:10px 8px;font-weight:600;color:#1f2937;border-right:1px solid #e5e7eb">${d.dept_name}</td>
+                <td style="padding:10px 8px;text-align:center;font-weight:500;border-right:1px solid #e5e7eb">${d.agent_count}</td>
+                <td style="padding:10px 8px;text-align:center;font-weight:700;color:#1e3a5f;font-size:14px;border-right:1px solid #e5e7eb">${minutesToHours(d.Production||0)}</td>
+                <td style="padding:10px 8px;text-align:center;border-right:1px solid #e5e7eb">
+                  <div style="font-weight:700;color:#f59e0b;font-size:14px">${minutesToHours(aMin)}</div>
+                  <div style="font-size:10px;color:#9ca3af;margin-top:2px">${repPct}% du total</div>
                 </td>
-                <td style="padding:8px;text-align:center;color:#10b981;font-weight:700">${minutesToHours(cMin)}</td>
-                <td style="padding:8px;text-align:center">
-                  <span style="font-weight:700;color:#ef4444">${minutesToHours(np)}</span>
-                  <div style="font-size:10px;color:#9ca3af">${npPct}% cap.</div>
+                <td style="padding:10px 8px;text-align:center;font-weight:700;color:#10b981;font-size:14px;border-right:1px solid #e5e7eb">${minutesToHours(cMin)}</td>
+                <td style="padding:10px 8px;text-align:center;border-right:1px solid #e5e7eb">
+                  <div style="font-weight:700;color:#ef4444;font-size:14px">${minutesToHours(np)}</div>
+                  <div style="font-size:10px;color:#9ca3af;margin-top:2px">${npPct}% cap.</div>
                 </td>
-                <td style="padding:8px;text-align:center;color:#6b7280">${minutesToHours(cap)}</td>
+                <td style="padding:10px 8px;text-align:center;font-weight:500;color:#6b7280">${minutesToHours(cap)}</td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -631,22 +634,39 @@ async function loadDashboardStats() {
   <div class="card" style="margin-bottom:20px">
     <div class="card-body">
       <div class="chart-title"><i class="fas fa-bullseye" style="color:#1e3a5f"></i> Objectifs Banque — Méthode 3-3-3 (Cible vs Réalisé)</div>
-      <table style="width:100%">
-        <thead><tr>
-          <th>CATÉGORIE</th><th>HEURES RÉALISÉES</th><th>% RÉALISÉ</th><th>% CIBLE</th><th>ÉCART</th><th>BARRE</th>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#1e3a5f;color:white">
+          <th style="padding:12px;text-align:left;border:1px solid #e5e7eb">ACTIVITÉS</th>
+          <th style="padding:12px;text-align:center;border:1px solid #e5e7eb">HEURES RÉALISÉES</th>
+          <th style="padding:12px;text-align:center;border:1px solid #e5e7eb">% RÉALISÉ</th>
+          <th style="padding:12px;text-align:center;border:1px solid #e5e7eb">% CIBLE</th>
+          <th style="padding:12px;text-align:center;border:1px solid #e5e7eb">ÉCART</th>
+          <th style="padding:12px;text-align:center;border:1px solid #e5e7eb">BARRE</th>
         </tr></thead>
         <tbody>
-          ${(stats.hoursByObjective||[]).map(o => {
-            const ecart = o.percentage - o.target_percentage;
+          ${(stats.ratio333||[]).map((r, idx) => {
+            const targetPct = 33; // Méthode 3-3-3 : chaque activité = 33%
+            const ecart = r.percentage - targetPct;
             const ecartClass = ecart>=0?'pct-ok':(ecart>-10?'pct-warning':'pct-danger');
-            return `<tr>
-              <td><span class="badge badge-obj" style="background:${o.color}">${o.name}</span></td>
-              <td style="font-weight:700">${o.hours_display}</td>
-              <td><span style="font-weight:700;color:${o.color}">${o.percentage}%</span></td>
-              <td style="color:#6b7280">${o.target_percentage}%</td>
-              <td class="${ecartClass}">${ecart>=0?'+':''}${ecart}%</td>
-              <td style="min-width:120px">
-                <div class="progress-bar"><div class="progress-fill" style="width:${o.percentage}%;background:${o.color}"></div></div>
+            const colors = ['#1e3a5f', '#f59e0b', '#10b981']; // Production, Admin, Contrôle
+            const color = colors[idx] || '#1e3a5f';
+            return `<tr style="border-bottom:1px solid #e5e7eb;${idx%2===1?'background:#f9fafb':''}">
+              <td style="padding:10px;font-weight:600;border:1px solid #e5e7eb">
+                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};margin-right:8px"></span>
+                ${r.label}
+              </td>
+              <td style="padding:10px;text-align:center;font-weight:700;border:1px solid #e5e7eb">${r.hours_display}</td>
+              <td style="padding:10px;text-align:center;border:1px solid #e5e7eb">
+                <span style="font-weight:700;color:${color}">${r.percentage}%</span>
+              </td>
+              <td style="padding:10px;text-align:center;color:#6b7280;border:1px solid #e5e7eb">${targetPct}%</td>
+              <td style="padding:10px;text-align:center;font-weight:700;border:1px solid #e5e7eb" class="${ecartClass}">
+                ${ecart>=0?'+':''}${ecart}%
+              </td>
+              <td style="padding:10px;min-width:120px;border:1px solid #e5e7eb">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width:${r.percentage}%;background:${color}"></div>
+                </div>
               </td>
             </tr>`;
           }).join('')}
@@ -1503,7 +1523,14 @@ let allProcsData = [], allProcsObjs = [];
 
 async function renderProcesses() {
   renderLayout('Gestion des Processus', '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i></div>');
-  [allProcsData, allDepts, allProcsObjs] = await Promise.all([api('/api/admin/processes'), api('/api/admin/departments'), api('/api/admin/objectives')]);
+  [allProcsData, allDepts] = await Promise.all([api('/api/admin/processes'), api('/api/admin/departments')]);
+
+  // Couleurs pour les 3 types d'activités
+  const activityColors = {
+    'Production': '#1e3a5f',
+    'Administration & Reporting': '#f59e0b',
+    'Contrôle': '#10b981'
+  };
 
   document.getElementById('content').innerHTML = `
   <div class="page-header">
@@ -1514,12 +1541,12 @@ async function renderProcesses() {
     <div class="card-body">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>PROCESSUS</th><th>DÉPARTEMENT</th><th>OBJECTIF</th><th>STATUT</th><th>ACTIONS</th></tr></thead>
+          <thead><tr><th>PROCESSUS</th><th>ACTIVITÉS</th><th>TYPE</th><th>STATUT</th><th>ACTIONS</th></tr></thead>
           <tbody>
             ${allProcsData.map(p => `<tr>
               <td style="font-weight:600;color:#1e3a5f">${p.name}</td>
               <td><a style="color:#1e3a5f">${p.department_name}</a></td>
-              <td><span class="badge badge-obj" style="background:${p.objective_color}">${p.objective_name}</span></td>
+              <td><span class="badge badge-obj" style="background:${activityColors[p.process_type] || '#6b7280'}">${p.process_type || 'Production'}</span></td>
               <td><span class="badge ${p.status==='Actif'?'badge-active':'badge-inactive'}">${p.status}</span></td>
               <td style="white-space:nowrap">
                 <button class="btn btn-sm btn-outline" onclick="showProcModal(${p.id})" title="Modifier"><i class="fas fa-edit"></i></button>
@@ -1550,16 +1577,16 @@ function showProcModal(id = null) {
     <form id="proc-form">
       <div class="form-group"><label class="form-label">Nom</label><input class="form-control" id="p_name" value="${p?.name||''}" required></div>
       <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="p_desc" rows="2">${p?.description||''}</textarea></div>
-      <div class="form-group"><label class="form-label">Département</label>
+      <div class="form-group"><label class="form-label">Activités</label>
         <select class="form-control" id="p_dept">
           ${allDepts.map(d => `<option value="${d.id}" ${p?.department_id===d.id?'selected':''}>${d.name}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label class="form-label">Catégorie 3-3-3</label>
-        <select class="form-control" id="p_obj">
-          <option value="10" ${(!p?.objective_id||p?.objective_id===10)?'selected':''}>🔵 Production</option>
-          <option value="11" ${p?.objective_id===11?'selected':''}>🟡 Administration & Reporting</option>
-          <option value="12" ${p?.objective_id===12?'selected':''}>🟢 Contrôle</option>
+      <div class="form-group"><label class="form-label">Type d'activité</label>
+        <select class="form-control" id="p_type">
+          <option value="Production" ${(!p?.process_type||p?.process_type==='Production')?'selected':''}>🔵 Production</option>
+          <option value="Administration & Reporting" ${p?.process_type==='Administration & Reporting'?'selected':''}>🟡 Administration & Reporting</option>
+          <option value="Contrôle" ${p?.process_type==='Contrôle'?'selected':''}>🟢 Contrôle</option>
         </select>
       </div>
       <div class="form-group"><label class="form-label">Statut</label>
@@ -1577,7 +1604,7 @@ function showProcModal(id = null) {
   document.body.appendChild(modal);
   document.getElementById('proc-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const data = { name: document.getElementById('p_name').value, description: document.getElementById('p_desc').value, department_id: document.getElementById('p_dept').value, objective_id: document.getElementById('p_obj').value, status: document.getElementById('p_status').value };
+    const data = { name: document.getElementById('p_name').value, description: document.getElementById('p_desc').value, department_id: document.getElementById('p_dept').value, process_type: document.getElementById('p_type').value, status: document.getElementById('p_status').value };
     const r = id ? await api('/api/admin/processes/' + id, { method: 'PUT', body: JSON.stringify(data) })
                  : await api('/api/admin/processes', { method: 'POST', body: JSON.stringify(data) });
     if (r.error) { toast(r.error, 'error'); return; }
