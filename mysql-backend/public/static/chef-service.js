@@ -43,7 +43,8 @@ function toast(msg, type = 'success') {
   setTimeout(() => t.remove(), 4500);
 }
 
-function logout() {
+async function logout() {
+  try { await fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }); } catch(e) {}
   localStorage.removeItem('token');
   localStorage.removeItem('user');
   window.location = '/login';

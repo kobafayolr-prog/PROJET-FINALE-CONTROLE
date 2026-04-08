@@ -30,7 +30,8 @@ function api(path, opts = {}) {
   });
 }
 
-function logout() {
+async function logout() {
+  try { await fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }); } catch(e) {}
   localStorage.removeItem('token');
   localStorage.removeItem('user');
   window.location = '/login';

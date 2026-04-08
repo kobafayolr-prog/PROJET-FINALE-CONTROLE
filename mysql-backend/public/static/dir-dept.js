@@ -36,7 +36,8 @@ function toast(msg, type = 'success') {
   setTimeout(() => t.remove(), 4500);
 }
 
-function logout() {
+async function logout() {
+  try { await fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }); } catch(e) {}
   localStorage.removeItem('token');
   localStorage.removeItem('user');
   window.location = '/login';
@@ -194,7 +195,7 @@ async function renderDashboard() {
     const ctx2 = document.getElementById('ddChartAgents');
     if (ctx2) {
       ddCharts.agents = new Chart(ctx2, {
-        type: 'horizontalBar',
+        type: 'bar',
         data: {
           labels: data.agentPerf.map(a => a.name),
           datasets: [{ label: 'Heures travaillées', data: data.agentPerf.map(a => Math.round(a.total_minutes/60*10)/10), backgroundColor: '#1e3a5f' }]

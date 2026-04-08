@@ -89,6 +89,13 @@ function minutesToHours (minutes) {
   return `${h}h ${String(m).padStart(2, '0')}m`
 }
 
+// Validation du format YYYY-MM pour prévenir injection SQL
+function validateMonthFormat (month) {
+  if (!month) return null
+  if (!/^\d{4}-\d{2}$/.test(month)) return null
+  return month
+}
+
 // ============================================
 // HACHAGE MOT DE PASSE (PBKDF2 — identique au frontend)
 // Format stocké : pbkdf2:sha256:600000:<salt_hex>:<hash_hex>
@@ -724,8 +731,10 @@ app.get('/api/admin/stats', async (req, res) => {
   const user = getUser(req)
   if (!user || user.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
   try {
-    const month  = req.query.month  || new Date().toISOString().slice(0, 7)
-    const month2 = req.query.month2 || null
+    const rawMonth  = req.query.month  || new Date().toISOString().slice(0, 7)
+    const rawMonth2 = req.query.month2 || null
+    const month  = validateMonthFormat(rawMonth)  || new Date().toISOString().slice(0, 7)
+    const month2 = validateMonthFormat(rawMonth2) || null
 
     const wdStd  = calcWorkingDays(month, false)
     const wdSat  = calcWorkingDays(month, true)
@@ -1214,8 +1223,10 @@ app.get('/api/chef/dashboard', async (req, res) => {
     return res.status(401).json({ error: 'Non autorisé' })
   }
   const deptId = user.department_id
-  const month  = req.query.month  || new Date().toISOString().slice(0, 7)
-  const month2 = req.query.month2 || null
+  const rawMonth  = req.query.month  || new Date().toISOString().slice(0, 7)
+  const rawMonth2 = req.query.month2 || null
+  const month  = validateMonthFormat(rawMonth)  || new Date().toISOString().slice(0, 7)
+  const month2 = validateMonthFormat(rawMonth2) || null
   const CIBLES = { 'Production': 70, 'Administration & Reporting': 20, 'Contrôle': 10 }
 
   const activeAgents = await query(`SELECT COUNT(DISTINCT user_id) as count FROM work_sessions WHERE department_id=? AND DATE(start_time)=CURDATE()`, [deptId])
@@ -1783,8 +1794,10 @@ app.get('/api/dg/dashboard', async (req, res) => {
     return res.status(401).json({ error: 'Non autorisé' })
   }
   try {
-    const month  = req.query.month  || new Date().toISOString().slice(0, 7)
-    const month2 = req.query.month2 || null
+    const rawMonth  = req.query.month  || new Date().toISOString().slice(0, 7)
+    const rawMonth2 = req.query.month2 || null
+    const month  = validateMonthFormat(rawMonth)  || new Date().toISOString().slice(0, 7)
+    const month2 = validateMonthFormat(rawMonth2) || null
 
     const dgWdStd  = calcWorkingDays(month, false)
     const dgWdSat  = calcWorkingDays(month, true)
