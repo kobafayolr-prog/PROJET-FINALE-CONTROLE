@@ -1577,7 +1577,7 @@ function showProcModal(id = null) {
     <form id="proc-form">
       <div class="form-group"><label class="form-label">Nom</label><input class="form-control" id="p_name" value="${p?.name||''}" required></div>
       <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="p_desc" rows="2">${p?.description||''}</textarea></div>
-      <div class="form-group"><label class="form-label">Département</label>
+      <div class="form-group"><label class="form-label">Activités</label>
         <select class="form-control" id="p_dept">
           ${allDepts.map(d => `<option value="${d.id}" ${p?.department_id===d.id?'selected':''}>${d.name}</option>`).join('')}
         </select>
