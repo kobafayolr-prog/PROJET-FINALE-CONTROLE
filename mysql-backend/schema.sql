@@ -153,3 +153,15 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 
 CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
+
+-- ============================================================
+-- TABLE : invalidated_tokens (JWT blacklist persistante)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS invalidated_tokens (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  token_hash  VARCHAR(64) NOT NULL UNIQUE COMMENT 'SHA-256 hash du token JWT',
+  invalidated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at  DATETIME NOT NULL COMMENT 'Date expiration du token original',
+  INDEX idx_token_hash (token_hash),
+  INDEX idx_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

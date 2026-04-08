@@ -1,4 +1,25 @@
+# Dependencies
 node_modules/
+
+# Environment variables (SECRETS - NE JAMAIS COMMITTER)
 .env
-logs/*.log
+.env.local
+.env.production
+
+# Logs
+logs/
 *.log
+
+# PM2
+.pm2/
+pids/
+
+# Backups
+*.backup
+*.bak
+*.tar.gz
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db

@@ -39,10 +39,14 @@ bash start-linux.sh
 # 1. Installer les dépendances
 npm install
 
-# 2. Créer la base de données (avec accès root MySQL)
+# 2. Copier et configurer les variables d'environnement
+cp .env.example .env
+# Éditer .env et définir JWT_SECRET et DB_PASSWORD
+
+# 3. Créer la base de données (avec accès root MySQL)
 node scripts/init-db.js
 
-# 3. Démarrer le serveur
+# 4. Démarrer le serveur
 node server.js
 # ou avec PM2 :
 pm2 start ecosystem.config.js
@@ -52,7 +56,18 @@ pm2 start ecosystem.config.js
 
 ## Configuration
 
-Toutes les variables se configurent via des **variables d'environnement** ou directement dans `ecosystem.config.js` :
+**IMPORTANT :** Avant le premier démarrage, copiez `.env.example` vers `.env` et définissez les secrets :
+
+```bash
+cp .env.example .env
+nano .env  # ou notepad .env sur Windows
+```
+
+**Valeurs obligatoires à changer en production :**
+- `JWT_SECRET` : Générez un secret aléatoire avec `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- `DB_PASSWORD` : Mot de passe MySQL de l'utilisateur `timetrack_user`
+
+Toutes les variables se configurent via le fichier **`.env`** :
 
 | Variable      | Valeur par défaut                       | Description           |
 |---------------|-----------------------------------------|-----------------------|

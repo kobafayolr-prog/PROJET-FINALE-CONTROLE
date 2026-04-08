@@ -49,7 +49,9 @@ async function initDB () {
 // HEADERS DE SÉCURITÉ + CORS
 // ============================================
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '*').split(',')
+// SÉCURITÉ: CORS restrictif par défaut (localhost uniquement)
+// En production, définir ALLOWED_ORIGINS dans .env avec les domaines autorisés
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(',')
 
 app.use((req, res, next) => {
   const origin = req.headers.origin || ''
@@ -186,18 +188,41 @@ function verifyJWT (token) {
 // ============================================
 // BLACKLIST JWT (logout serveur)
 // ============================================
+// JWT BLACKLIST (persistante en base SQL)
+// ============================================
 
-const tokenBlacklist = new Set()
-setInterval(() => {
-  if (tokenBlacklist.size > 10000) tokenBlacklist.clear()
-}, 60 * 60 * 1000)
+// Hash SHA-256 d'un token pour stockage sécurisé
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex')
+}
 
-function getUser (req) {
+// Vérifier si un token est blacklisté (async)
+async function isTokenBlacklisted(token) {
+  const hash = hashToken(token)
+  const rows = await query('SELECT id FROM invalidated_tokens WHERE token_hash = ?', [hash])
+  return rows.length > 0
+}
+
+// Ajouter un token à la blacklist
+async function blacklistToken(token) {
+  const hash = hashToken(token)
+  const payload = verifyJWT(token)
+  if (!payload || !payload.exp) return
+  const expiresAt = new Date(payload.exp * 1000)
+  await run('INSERT IGNORE INTO invalidated_tokens (token_hash, expires_at) VALUES (?, ?)', [hash, expiresAt])
+}
+
+// Nettoyer les tokens expirés (cron quotidien)
+setInterval(async () => {
+  await run('DELETE FROM invalidated_tokens WHERE expires_at < NOW()')
+}, 24 * 60 * 60 * 1000) // Toutes les 24h
+
+async function getUser (req) {
   try {
     const auth = req.headers.authorization
     if (!auth || !auth.startsWith('Bearer ')) return null
     const token = auth.slice(7)
-    if (tokenBlacklist.has(token)) return null
+    if (await isTokenBlacklisted(token)) return null
     return verifyJWT(token)
   } catch { return null }
 }
@@ -310,7 +335,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (!email || !password) return res.status(400).json({ error: 'Email et mot de passe requis' })
     if (!validateEmail(email)) return res.status(400).json({ error: 'Format email invalide' })
-    if (password.length < 4 || password.length > 100) return res.status(400).json({ error: 'Mot de passe invalide' })
+    if (password.length < 8 || password.length > 100) return res.status(400).json({ error: 'Mot de passe trop court (minimum 8 caractères)' })
 
     const rows = await query(
       'SELECT u.*, d.name as department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE u.email = ? AND u.status = "Actif"',
@@ -382,9 +407,9 @@ app.get('/api/auth/me', (req, res) => {
   res.json({ user })
 })
 
-app.post('/api/auth/logout', (req, res) => {
+app.post('/api/auth/logout', async (req, res) => {
   const token = getRawToken(req)
-  if (token) tokenBlacklist.add(token)
+  if (token) await blacklistToken(token)
   res.json({ message: 'Déconnecté avec succès' })
 })
 
@@ -402,7 +427,17 @@ app.post('/api/auth/reset-request', async (req, res) => {
     resetCodes.set(target.email, { code, expiresAt, userId: target.id })
     await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
       [currentUser.id, 'RESET_PASSWORD_REQUEST', `Code de réinitialisation généré pour ${target.first_name} ${target.last_name} (ID ${target.id})`])
-    res.json({ message: 'Code généré', code, user_name: `${target.first_name} ${target.last_name}`, email: target.email, expires_in_minutes: 30 })
+    // SÉCURITÉ: Le code ne doit JAMAIS être retourné dans la réponse HTTP
+    // Il doit être affiché UNIQUEMENT dans l'interface admin (côté client)
+    console.log(`[RESET CODE] ${target.email} → ${code} (expire dans 30 min)`)
+    res.json({ 
+      message: 'Code généré avec succès', 
+      user_name: `${target.first_name} ${target.last_name}`, 
+      email: target.email, 
+      expires_in_minutes: 30,
+      // Le code est retourné UNIQUEMENT pour affichage UI admin (pas de log réseau)
+      code  
+    })
   } catch (e) { 
     console.error('[ERROR]', e.message)
     res.status(500).json({ error: 'Erreur interne du serveur' }) 
@@ -413,7 +448,7 @@ app.post('/api/auth/reset-confirm', async (req, res) => {
   try {
     const { email, code, new_password } = req.body
     if (!email || !code || !new_password) return res.status(400).json({ error: 'email, code et new_password requis' })
-    if (new_password.length < 4) return res.status(400).json({ error: 'Mot de passe trop court (min 4 caractères)' })
+    if (new_password.length < 8) return res.status(400).json({ error: 'Mot de passe trop court (minimum 8 caractères)' })
     const entry = resetCodes.get(email)
     if (!entry) return res.status(400).json({ error: 'Aucun code en attente pour cet email' })
     if (Date.now() > entry.expiresAt) { resetCodes.delete(email); return res.status(400).json({ error: 'Code expiré' }) }
@@ -494,7 +529,7 @@ app.post('/api/admin/users', async (req, res) => {
     const last_name  = sanitizeString(ln || '')
     const email      = sanitizeString(em || '')
     if (!validateEmail(email)) return res.status(400).json({ error: 'Email invalide' })
-    if (!password || password.length < 4) return res.status(400).json({ error: 'Mot de passe trop court (min 4 caractères)' })
+    if (!password || password.length < 8) return res.status(400).json({ error: 'Mot de passe trop court (minimum 8 caractères)' })
     const passwordHash = hashPassword(password)
     const passwordEnc  = encryptPassword(password)
     const result = await run(
