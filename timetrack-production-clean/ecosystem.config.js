@@ -14,8 +14,9 @@ module.exports = {
       name: 'timetrack',
       script: 'server.js',
       cwd: __dirname,
-      instances: 1,
-      exec_mode: 'fork',
+      // ⭐ MODE CLUSTER pour supporter 200+ utilisateurs simultanés
+      instances: 4,        // 4 instances (utilise 4 cœurs CPU)
+      exec_mode: 'cluster', // Mode cluster au lieu de fork
       watch: false,
       env: {
         NODE_ENV: 'production',
@@ -31,7 +32,8 @@ module.exports = {
       error_file: 'logs/err.log',
       out_file:   'logs/out.log',
       merge_logs: true,
-      max_memory_restart: '200M'
+      // ⭐ Augmenter limite mémoire pour haute charge
+      max_memory_restart: '500M'
     }
   ]
 }
