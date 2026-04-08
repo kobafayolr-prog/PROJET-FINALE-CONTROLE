@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guide Simple Dashboard Admin - TimeTrack</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.8;
+            color: #1f2937;
+            background: #f9fafb;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        
+        /* En-tête */
+        .header {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 12px;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        /* Bouton PDF */
+        .pdf-button {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 15px 30px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 20px 0;
+            cursor: pointer;
+            border: none;
+            font-size: 1.1em;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+            transition: all 0.3s;
+        }
+        .pdf-button:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+        }
+        
+        /* Titres */
+        h1 {
+            color: #1e3a5f;
+            font-size: 2.2em;
+            margin: 30px 0 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #2563eb;
+        }
+        h2 {
+            color: #1e3a5f;
+            font-size: 1.8em;
+            margin: 25px 0 15px;
+            padding-left: 15px;
+            border-left: 5px solid #2563eb;
+        }
+        h3 {
+            color: #2563eb;
+            font-size: 1.4em;
+            margin: 20px 0 10px;
+        }
+        h4 {
+            color: #3b82f6;
+            font-size: 1.2em;
+            margin: 15px 0 10px;
+        }
+        
+        /* Paragraphes */
+        p {
+            margin: 12px 0;
+            text-align: justify;
+        }
+        
+        /* Listes */
+        ul, ol {
+            margin: 15px 0;
+            padding-left: 30px;
+        }
+        li {
+            margin: 8px 0;
+            line-height: 1.6;
+        }
+        
+        /* Tableaux */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.95em;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        th {
+            background: #1e3a5f;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        tr:nth-child(even) {
+            background: #f9fafb;
+        }
+        tr:hover {
+            background: #f3f4f6;
+        }
+        
+        /* Code */
+        code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #dc2626;
+            font-size: 0.9em;
+        }
+        pre {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            line-height: 1.5;
+        }
+        pre code {
+            background: none;
+            color: #f9fafb;
+            padding: 0;
+        }
+        
+        /* Encadrés colorés */
+        .box {
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 5px solid;
+        }
+        .box-success {
+            background: #d1fae5;
+            border-color: #10b981;
+            color: #065f46;
+        }
+        .box-warning {
+            background: #fef3c7;
+            border-color: #f59e0b;
+            color: #92400e;
+        }
+        .box-danger {
+            background: #fee2e2;
+            border-color: #ef4444;
+            color: #991b1b;
+        }
+        .box-info {
+            background: #dbeafe;
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+        
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: bold;
+            margin: 0 5px;
+        }
+        .badge-green { background: #d1fae5; color: #065f46; }
+        .badge-yellow { background: #fef3c7; color: #92400e; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        
+        /* Responsive */
+        @media print {
+            body { background: white; padding: 0; }
+            .container { box-shadow: none; padding: 20px; }
+            .pdf-button { display: none; }
+            .no-print { display: none; }
+        }
+        
+        @media (max-width: 768px) {
+            .container { padding: 20px; }
+            h1 { font-size: 1.8em; }
+            h2 { font-size: 1.5em; }
+            table { font-size: 0.85em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Guide Simple du Dashboard</h1>
+            <p>TimeTrack - BGFIBank CA</p>
+            <p style="font-size:0.9em;margin-top:10px;opacity:0.8">
+                Guide pratique pour comprendre et interpréter le tableau de bord administrateur
+            </p>
+        </div>
+        
+        <div style="text-align:center;margin:30px 0;">
+            <button class="pdf-button no-print" onclick="window.print()">
+                🖨️ Imprimer en PDF
+            </button>
+        </div>
+        
+        <div class="content">
+            <p><h1>📊 Guide Simple du Dashboard Administrateur</h1>
+<h2>TimeTrack - BGFIBank CA</h2></p><p>---</p><p><h2>🎯 C'est quoi ce dashboard ?</h2></p><p>C'est un tableau de bord qui vous montre <strong>comment les employés utilisent leur temps de travail</strong> chaque jour.</p><p><strong>Objectif simple</strong> : Vérifier que les équipes travaillent efficacement et identifier les problèmes rapidement.</p><p>---</p><p><h2>📱 Les 4 Indicateurs en Haut (Cartes KPI)</h2></p><p><h3>1️⃣ Sessions Validées</h3></p><p><strong>C'est quoi ?</strong>
+Le nombre total de sessions de travail validées par les superviseurs.</p><p><strong>Exemple concret :</strong>
+<li>Lundi : 45 sessions validées</li>
+<li>Mardi : 52 sessions validées</li>
+<li><span style="color:#3b82f6">➡️</span> <strong>+7 sessions</strong> = amélioration <span style="color:#10b981">✅</span></li></p><p><strong>Comment lire :</strong>
+<li><span style="color:#10b981">🟢</span> <strong>Flèche verte montante</strong> = plus de sessions qu'hier (bon signe)</li>
+<li><span style="color:#ef4444">🔴</span> <strong>Flèche rouge descendante</strong> = moins de sessions qu'hier (attention !)</li></p><p><strong>Exemple de problème :</strong>
+Si vous voyez <strong>15 sessions</strong> alors que d'habitude c'est <strong>50</strong>, ça veut dire :
+<li>Soit les gens ne pointent pas</li>
+<li>Soit il y a un jour férié</li>
+<li>Soit il y a un problème technique</li></p><p><strong>Action à prendre :</strong> Appeler les chefs d'équipe pour vérifier.</p><p>---</p><p><h3>2️⃣ Temps Productif</h3></p><p><strong>C'est quoi ?</strong>
+Le nombre d'heures travaillées sur des tâches qui génèrent de la valeur pour la banque (traitement de dossiers, service client, etc.).</p><p><strong>Exemple concret :</strong>
+<strong>118h 30min</strong> de temps productif sur une journée</p><p><strong>Comment c'est calculé ?</strong>
+On additionne toutes les sessions de type "Production" validées.</p><p><strong>Exemple de calcul :</strong>
+<li>Agent 1 : 7h de traitement de dossiers <span style="color:#10b981">✅</span></li>
+<li>Agent 2 : 6h de service client <span style="color:#10b981">✅</span></li>
+<li>Agent 3 : 5h 30min de contrôle qualité <span style="color:#10b981">✅</span></li>
+<li><strong>Total = 18h 30min productives</strong></li></p><p><strong>Qu'est-ce qui est productif ?</strong>
+<li><span style="color:#10b981">✅</span> Traiter un dossier client</li>
+<li><span style="color:#10b981">✅</span> Répondre à un client</li>
+<li><span style="color:#10b981">✅</span> Valider une transaction</li>
+<li><span style="color:#10b981">✅</span> Analyser un risque</li>
+<li>❌ Réunion administrative (c'est de l'admin, pas de la production)</li>
+<li>❌ Remplir des rapports (c'est de l'admin)</li></p><p><strong>Interprétation :</strong>
+<li><span style="color:#10b981">🟢</span> <strong>+15h par rapport à hier</strong> = les équipes sont efficaces</li>
+<li><span style="color:#ef4444">🔴</span> <strong>-20h par rapport à hier</strong> = problème à investiguer</li></p><p>---</p><p><h3>3️⃣ Temps en Attente</h3></p><p><strong>C'est quoi ?</strong>
+Le temps que les employés ont pointé mais qui n'a PAS ENCORE été validé par leur superviseur.</p><p><strong>Exemple concret :</strong>
+<strong>32h 15min en attente</strong></p><p><strong>Pourquoi c'est important ?</strong>
+<li>Si ce chiffre est <strong>élevé</strong> (>50h) = les superviseurs ne valident pas assez vite</li>
+<li>Si ce chiffre est <strong>faible</strong> (<10h) = tout va bien <span style="color:#10b981">✅</span></li></p><p><strong>Exemple de situation :</strong>
+<li>Lundi matin : <strong>5h en attente</strong> (normal, juste le début de journée)</li>
+<li>Vendredi soir : <strong>85h en attente</strong> <span style="color:#f59e0b">⚠️</span> PROBLÈME !</li>
+  - <span style="color:#3b82f6">➡️</span> Les superviseurs n'ont pas validé la semaine
+  - <span style="color:#3b82f6">➡️</span> Les statistiques ne sont pas à jour
+  - <span style="color:#3b82f6">➡️</span> Les employés ne savent pas si leur temps est accepté</p><p><strong>Action à prendre :</strong> Demander aux superviseurs de valider les sessions en attente.</p><p>---</p><p><h3>4️⃣ Taux de Productivité</h3></p><p><strong>C'est quoi ?</strong>
+Le pourcentage du temps de travail qui est vraiment productif.</p><p><strong>Exemple concret :</strong>
+<strong>67%</strong> de productivité</p><p><strong>Comment c'est calculé ?</strong></p><p><strong>Formule simple :</strong>
+<pre><code>
+Productivité = (Temps productif ÷ Temps total disponible) × 100
+</code></pre></p><p><strong>Exemple de calcul :</strong>
+<li>Temps productif = <strong>118h 30min</strong></li>
+<li>Capacité totale = <strong>560h</strong> (70 agents × 8h)</li>
+<li>Productivité = (118,5 ÷ 560) × 100 = <strong>21%</strong> <span style="color:#f59e0b">⚠️</span></li></p><p><strong>Interprétation :</strong>
+<li><span style="color:#10b981">🟢</span> <strong>>70%</strong> = EXCELLENT (objectif atteint)</li>
+<li><span style="color:#f59e0b">🟡</span> <strong>50-70%</strong> = MOYEN (à améliorer)</li>
+<li><span style="color:#ef4444">🔴</span> <strong><50%</strong> = MAUVAIS (problème grave)</li></p><p><strong>Exemple de problème avec 21% :</strong>
+Sur 8 heures de travail, l'employé ne fait QUE <strong>1h 40min</strong> de travail productif !
+<span style="color:#3b82f6">➡️</span> Où sont passées les 6h 20min restantes ?</p><p><strong>Causes possibles :</strong>
+<li>Trop de réunions administratives</li>
+<li>Problèmes techniques (ordinateur en panne)</li>
+<li>Manque de dossiers à traiter</li>
+<li>Employés absents mais non déclarés</li>
+<li>Employés qui ne pointent pas correctement</li></p><p>---</p><p><h2>📈 Graphique 1 : Tendance Mensuelle</h2></p><p><strong>C'est quoi ?</strong>
+Un graphique qui montre l'évolution du temps productif sur les 30 derniers jours.</p><p><strong>Exemple visuel :</strong>
+<pre><code>
+Minutes
+  500 │         ╭─╮
+  400 │      ╭──╯ ╰─╮
+  300 │   ╭──╯      ╰─╮
+  200 │╭──╯           ╰──╮
+  100 │╯                 ╰─
+      └──────────────────────
+       1  5  10  15  20  25  30
+              Jours
+</code></pre></p><p><strong>Comment lire ce graphique :</strong></p><p><strong>1. Ligne qui monte</strong> 📈
+<li><span style="color:#3b82f6">➡️</span> <strong>Bon signe</strong> : la productivité augmente</li>
+<li><strong>Exemple :</strong> Du jour 1 au jour 10, on passe de 200 à 400 minutes productives = AMÉLIORATION</li></p><p><strong>2. Ligne qui descend</strong> 📉
+<li><span style="color:#3b82f6">➡️</span> <strong>Mauvais signe</strong> : la productivité baisse</li>
+<li><strong>Exemple :</strong> Du jour 20 au jour 30, on passe de 450 à 250 minutes = DÉGRADATION</li></p><p><strong>3. Ligne plate</strong> <span style="color:#3b82f6">➡️</span>
+<li><span style="color:#3b82f6">➡️</span> <strong>Stable</strong> : pas de changement</li>
+<li><strong>Exemple :</strong> Du jour 5 au jour 15, on reste autour de 350 minutes = STABLE</li></p><p><strong>Exemples concrets d'interprétation :</strong></p><p><strong>📊 Cas 1 : Pic brutal</strong>
+<pre><code>
+Jour 15 : 200 min
+Jour 16 : 500 min ⬆️⬆️⬆️
+Jour 17 : 210 min
+</code></pre>
+<strong>Explication :</strong> Probablement une erreur de saisie ou un rattrapage de pointage.
+<strong>Action :</strong> Vérifier les données du jour 16.</p><p><strong>📊 Cas 2 : Chute progressive</strong>
+<pre><code>
+Jour 1 : 450 min
+Jour 10 : 350 min
+Jour 20 : 250 min
+Jour 30 : 150 min ⬇️⬇️⬇️
+</code></pre>
+<strong>Explication :</strong> Baisse continue de productivité.
+<strong>Causes possibles :</strong>
+<li>Période de vacances (beaucoup d'absents)</li>
+<li>Manque de dossiers à traiter</li>
+<li>Démotivation des équipes</li>
+<strong>Action :</strong> Réunion avec les chefs de département.</p><p><strong>📊 Cas 3 : Stabilité haute</strong>
+<pre><code>
+Jour 1-30 : entre 400 et 450 min <span style="color:#3b82f6">➡️</span><span style="color:#3b82f6">➡️</span><span style="color:#3b82f6">➡️</span>
+</code></pre>
+<strong>Explication :</strong> Performance stable et élevée.
+<strong>Action :</strong> RIEN ! Tout va bien <span style="color:#10b981">✅</span></p><p>---</p><p><h2>📊 Graphique 2 : Productivité du Jour</h2></p><p><strong>C'est quoi ?</strong>
+Un graphique en camembert (rond) qui montre la répartition du temps <strong>aujourd'hui</strong>.</p><p><strong>Exemple visuel :</strong>
+<pre><code>
+        Production
+           45%
+          ┌──────┐
+  Admin   │      │  Contrôle
+   30%   │      │    15%
+         │      │
+         └──────┘
+      Non productif
+           10%
+</code></pre></p><p><strong>Les 4 parties du camembert :</strong></p><p><h3>🔵 Production (bleu)</h3>
+<strong>C'est quoi :</strong> Le temps passé sur des tâches productives.
+<strong>Exemple :</strong> 45% = sur 8h de travail, 3h 36min sont productives.</p><p><h3><span style="color:#f59e0b">🟡</span> Administration & Reporting (jaune)</h3>
+<strong>C'est quoi :</strong> Le temps passé sur des tâches administratives.
+<strong>Exemple :</strong> 30% = sur 8h de travail, 2h 24min sont en admin.
+<strong>Détail :</strong>
+<li>Remplir des rapports</li>
+<li>Réunions de coordination</li>
+<li>Emails administratifs</li></p><p><h3><span style="color:#10b981">🟢</span> Contrôle (vert)</h3>
+<strong>C'est quoi :</strong> Le temps passé sur des vérifications et validations.
+<strong>Exemple :</strong> 15% = sur 8h de travail, 1h 12min sont en contrôle.
+<strong>Détail :</strong>
+<li>Vérifier des dossiers</li>
+<li>Valider des opérations</li>
+<li>Audits internes</li></p><p><h3><span style="color:#ef4444">🔴</span> Non Productif (rouge)</h3>
+<strong>C'est quoi :</strong> Le temps où l'employé est là mais ne fait rien de pointé.
+<strong>Exemple :</strong> 10% = sur 8h de travail, 48min ne sont pas utilisées.
+<strong>Causes possibles :</strong>
+<li>Pause café non déclarée</li>
+<li>Problème technique</li>
+<li>Attente de dossiers</li>
+<li>Employé ne pointe pas correctement</li></p><p>---</p><p><strong>Interprétation complète d'un exemple :</strong></p><p><strong>Situation :</strong>
+<li>Production : <strong>35%</strong></li>
+<li>Admin : <strong>40%</strong> <span style="color:#f59e0b">⚠️</span></li>
+<li>Contrôle : <strong>10%</strong></li>
+<li>Non productif : <strong>15%</strong> <span style="color:#f59e0b">⚠️</span></li></p><p><strong>Diagnostic :</strong>
+<li><strong>Admin trop élevé (40%)</strong> <span style="color:#3b82f6">➡️</span> L'équipe passe plus de temps en réunions et rapports qu'à travailler !</li>
+<li><strong>Non productif élevé (15%)</strong> <span style="color:#3b82f6">➡️</span> Plus d'1h par jour est perdue.</li>
+<li><strong>Production faible (35%)</strong> <span style="color:#3b82f6">➡️</span> Moins de 3h sur 8h sont vraiment productives.</li></p><p><strong>Actions à prendre :</strong>
+<li>Réduire le nombre de réunions</li>
+<li>Simplifier les rapports administratifs</li>
+<li>Vérifier pourquoi il y a autant de temps non productif</li></p><p>---</p><p><h2>🎯 Graphique 3 : Méthode 3-3-3</h2></p><p><strong>C'est quoi la méthode 3-3-3 ?</strong>
+C'est une règle simple : <strong>diviser le temps de travail en 3 catégories égales</strong>.</p><p><strong>L'objectif idéal (cible) :</strong>
+<li><strong>33%</strong> Production</li>
+<li><strong>33%</strong> Administration & Reporting</li>
+<li><strong>33%</strong> Contrôle</li></p><p><strong>Pourquoi 33-33-33 ?</strong>
+Parce qu'un employé de banque doit :
+<li><strong>Produire</strong> (traiter des dossiers) = 33%</li>
+<li><strong>Gérer l'administratif</strong> (rapports, emails) = 33%</li>
+<li><strong>Contrôler la qualité</strong> (vérifications) = 33%</li></p><p><strong>Exemple visuel du graphique :</strong>
+<pre><code>
+     Cible  Réalisé
+Production
+  33% ████████████  45% ████████████████ <span style="color:#10b981">✅</span> DÉPASSÉ !
+  
+Admin
+  33% ████████████  20% ███████ <span style="color:#f59e0b">⚠️</span> INSUFFISANT
+  
+Contrôle
+  33% ████████████  35% █████████████ <span style="color:#10b981">✅</span> BON
+</code></pre></p><p><strong>Comment lire :</strong></p><p><strong>1. Barre "Réalisé" plus longue que "Cible" <span style="color:#10b981">✅</span></strong>
+<span style="color:#3b82f6">➡️</span> Bon signe, vous dépassez l'objectif</p><p><strong>2. Barre "Réalisé" plus courte que "Cible" <span style="color:#f59e0b">⚠️</span></strong>
+<span style="color:#3b82f6">➡️</span> Attention, vous êtes en dessous de l'objectif</p><p>---</p><p><strong>Exemples concrets d'interprétation :</strong></p><p><strong>📊 Exemple 1 : Équilibre parfait</strong>
+<pre><code>
+Production   : Cible 33%  Réalisé 35% <span style="color:#10b981">✅</span>
+Admin        : Cible 33%  Réalisé 32% <span style="color:#10b981">✅</span>
+Contrôle     : Cible 33%  Réalisé 33% <span style="color:#10b981">✅</span>
+</code></pre>
+<strong>Diagnostic :</strong> PARFAIT ! L'équipe est bien équilibrée.
+<strong>Action :</strong> RIEN, continuer comme ça.</p><p>---</p><p><strong>📊 Exemple 2 : Trop d'administratif</strong>
+<pre><code>
+Production   : Cible 33%  Réalisé 20% <span style="color:#f59e0b">⚠️</span>
+Admin        : Cible 33%  Réalisé 60% <span style="color:#ef4444">🔴</span>
+Contrôle     : Cible 33%  Réalisé 20% <span style="color:#f59e0b">⚠️</span>
+</code></pre>
+<strong>Diagnostic :</strong> PROBLÈME GRAVE !
+<li>L'équipe passe <strong>60%</strong> de son temps en réunions et rapports</li>
+<li>Seulement <strong>20%</strong> du temps est productif</li></p><p><strong>Conséquences :</strong>
+<li>Les clients attendent trop longtemps</li>
+<li>Les dossiers s'accumulent</li>
+<li>La rentabilité baisse</li></p><p><strong>Actions à prendre :</strong>
+<li><strong>Réduire les réunions</strong> (max 2 par semaine)</li>
+<li><strong>Simplifier les rapports</strong> (modèles pré-remplis)</li>
+<li><strong>Automatiser l'admin</strong> (formulaires en ligne)</li></p><p>---</p><p><strong>📊 Exemple 3 : Pas assez de contrôle</strong>
+<pre><code>
+Production   : Cible 33%  Réalisé 70% <span style="color:#f59e0b">⚠️</span>
+Admin        : Cible 33%  Réalisé 25% <span style="color:#f59e0b">⚠️</span>
+Contrôle     : Cible 33%  Réalisé 5% <span style="color:#ef4444">🔴</span>
+</code></pre>
+<strong>Diagnostic :</strong> RISQUE !
+<li>L'équipe produit beaucoup (70%) mais ne contrôle presque pas (5%)</li></p><p><strong>Conséquences :</strong>
+<li>Risque d'erreurs non détectées</li>
+<li>Problèmes de conformité bancaire</li>
+<li>Risque de fraude</li></p><p><strong>Actions à prendre :</strong>
+<li><strong>Imposer des contrôles systématiques</strong></li>
+<li><strong>Former les équipes au contrôle</strong></li>
+<li><strong>Allouer du temps dédié au contrôle</strong></li></p><p>---</p><p><h2>📊 Tableau : Comparaison par Département</h2></p><p><strong>C'est quoi ?</strong>
+Un tableau qui compare les départements entre eux pour voir qui est le plus productif.</p><p><strong>Exemple de tableau :</strong></p><p><tr><td>DÉPARTEMENT</td><td>AGENTS</td><td>PRODUCTION</td><td>ADMIN & REPORTING</td><td>CONTRÔLE</td><td>NON PRODUCTIF</td><td>CAPACITÉ</td></tr>
+<tr><td>-------------</td><td>--------</td><td>------------</td><td>-------------------</td><td>----------</td><td>---------------</td><td>----------</td></tr>
+<tr><td>Direction Commerciale</td><td>70</td><td>89h 30min</td><td>18h 30min (23% du total)</td><td>10h 30min</td><td>441h 30min (79% cap)</td><td>560h</td></tr>
+<tr><td>Service Crédit</td><td>25</td><td>45h 00min</td><td>12h 00min (21% du total)</td><td>8h 00min</td><td>135h 00min (68% cap)</td><td>200h</td></tr>
+<tr><td>Contrôle Interne</td><td>15</td><td>10h 00min</td><td>5h 00min (33% du total)</td><td>25h 00min</td><td>80h 00min (67% cap)</td><td>120h</td></tr></p><p>---</p><p><strong>Explication de chaque colonne :</strong></p><p><h3>1️⃣ DÉPARTEMENT</h3>
+<strong>C'est quoi :</strong> Le nom du service.
+<strong>Exemple :</strong> Direction Commerciale, Service Crédit, Contrôle Interne.</p><p>---</p><p><h3>2️⃣ AGENTS</h3>
+<strong>C'est quoi :</strong> Le nombre d'employés dans ce département.
+<strong>Exemple :</strong> Direction Commerciale = 70 agents</p><p><strong>Comment c'est calculé :</strong>
+On compte simplement le nombre d'employés actifs dans le département.</p><p>---</p><p><h3>3️⃣ PRODUCTION</h3>
+<strong>C'est quoi :</strong> Le temps total de travail productif du département.
+<strong>Exemple :</strong> 89h 30min</p><p><strong>Comment c'est calculé :</strong>
+On additionne toutes les sessions de type "Production" du département.</p><p><strong>Exemple de calcul :</strong>
+<li>Agent 1 : 7h de production</li>
+<li>Agent 2 : 6h de production</li>
+<li>Agent 3 : 5h 30min de production</li>
+<li>... (× 70 agents)</li>
+<li><strong>Total = 89h 30min</strong></li></p><p>---</p><p><h3>4️⃣ ADMIN & REPORTING <strong>(23% du total)</strong></h3></p><p><strong>C'est quoi :</strong> Le temps passé en administration.
+<strong>Exemple :</strong> 18h 30min</p><p><strong>C'est quoi le "23% du total" ?</strong></p><p><strong>Formule :</strong>
+<pre><code>
+% Admin = (Temps Admin ÷ Temps Total Productif) × 100
+</code></pre></p><p><strong>Exemple de calcul :</strong>
+<li>Temps Admin = 18h 30min = <strong>1 110 minutes</strong></li>
+<li>Temps Contrôle = 10h 30min = <strong>630 minutes</strong></li>
+<li>Total Admin + Contrôle = <strong>1 740 minutes</strong></li>
+<li>Temps Total Productif = 89h 30min + 18h 30min + 10h 30min = <strong>7 110 minutes</strong></li>
+<li>% Admin = (1 740 ÷ 7 110) × 100 = <strong>23%</strong></li></p><p><strong>Interprétation :</strong>
+<li><span style="color:#10b981">🟢</span> <strong>< 20%</strong> = BON (admin raisonnable)</li>
+<li><span style="color:#f59e0b">🟡</span> <strong>20-30%</strong> = MOYEN (surveiller)</li>
+<li><span style="color:#ef4444">🔴</span> <strong>> 30%</strong> = MAUVAIS (trop d'admin)</li></p><p><strong>Exemple :</strong>
+Si vous voyez <strong>45% du total</strong> :
+<span style="color:#3b82f6">➡️</span> Presque <strong>la moitié</strong> du temps est en admin !
+<span style="color:#3b82f6">➡️</span> PROBLÈME GRAVE : trop de réunions, trop de rapports.</p><p>---</p><p><h3>5️⃣ CONTRÔLE</h3>
+<strong>C'est quoi :</strong> Le temps passé à vérifier et valider.
+<strong>Exemple :</strong> 10h 30min</p><p><strong>Comment c'est calculé :</strong>
+On additionne toutes les sessions de type "Contrôle".</p><p>---</p><p><h3>6️⃣ NON PRODUCTIF <strong>(79% cap)</strong></h3></p><p><strong>C'est quoi :</strong> Le temps où les employés sont censés travailler mais ne pointent rien.
+<strong>Exemple :</strong> 441h 30min</p><p><strong>C'est quoi le "79% cap" ?</strong></p><p><strong>Formule :</strong>
+<pre><code>
+% Non Productif = (Temps Non Productif ÷ Capacité Totale) × 100
+</code></pre></p><p><strong>Exemple de calcul :</strong>
+<li>Capacité totale = 70 agents × 8h = <strong>560h</strong> = <strong>33 600 minutes</strong></li>
+<li>Temps travaillé (Production + Admin + Contrôle) = 89h 30min + 18h 30min + 10h 30min = <strong>118h 30min</strong> = <strong>7 110 minutes</strong></li>
+<li>Temps NON travaillé = 560h - 118h 30min = <strong>441h 30min</strong> = <strong>26 490 minutes</strong></li>
+<li>% Non Productif = (26 490 ÷ 33 600) × 100 = <strong>79%</strong></li></p><p><strong>Interprétation :</strong>
+<li><span style="color:#10b981">🟢</span> <strong>< 20%</strong> = BON (peu de perte)</li>
+<li><span style="color:#f59e0b">🟡</span> <strong>20-40%</strong> = MOYEN (à surveiller)</li>
+<li><span style="color:#ef4444">🔴</span> <strong>> 40%</strong> = MAUVAIS (beaucoup de perte)</li>
+<li><span style="color:#ef4444">🔴</span><span style="color:#ef4444">🔴</span> <strong>79%</strong> = TRÈS MAUVAIS (catastrophe !)</li></p><p><strong>Qu'est-ce que ça veut dire "79% cap" ?</strong>
+<span style="color:#3b82f6">➡️</span> Sur 560h disponibles, <strong>441h 30min</strong> ne sont PAS utilisées !
+<span style="color:#3b82f6">➡️</span> Seulement <strong>21%</strong> du temps disponible est utilisé !</p><p><strong>Causes possibles :</strong>
+<li><strong>Absences non déclarées</strong> (maladie, congés)</li>
+<li><strong>Employés qui ne pointent pas</strong> (oubli, flemme)</li>
+<li><strong>Manque de dossiers</strong> (pas assez de travail)</li>
+<li><strong>Sessions en attente</strong> (pas encore validées)</li>
+<li><strong>Problèmes techniques</strong> (système de pointage en panne)</li></p><p><strong>Actions à prendre :</strong>
+<li>Vérifier les absences (congés, maladies)</li>
+<li>Rappeler aux employés de pointer systématiquement</li>
+<li>Demander aux superviseurs de valider rapidement</li>
+<li>Vérifier s'il y a assez de dossiers à traiter</li></p><p>---</p><p><h3>7️⃣ CAPACITÉ</h3>
+<strong>C'est quoi :</strong> Le temps de travail total théoriquement disponible.
+<strong>Exemple :</strong> 560h</p><p><strong>Comment c'est calculé :</strong>
+<pre><code>
+Capacité = Nombre d'agents × Heures de travail par jour × Jours travaillés
+</code></pre></p><p><strong>Exemple de calcul :</strong>
+<li>70 agents</li>
+<li>8h par jour</li>
+<li>1 jour (tableau du jour)</li>
+<li>Capacité = 70 × 8 = <strong>560h</strong></li></p><p><strong>Pour un mois (22 jours travaillés) :</strong>
+<li>Capacité = 70 × 8 × 22 = <strong>12 320h</strong></li></p><p>---</p><p><h2>📊 Exemples Complets d'Interprétation</h2></p><p><h3><span style="color:#10b981">🟢</span> Exemple 1 : Département EXCELLENT</h3></p><p><tr><td>DÉPARTEMENT</td><td>AGENTS</td><td>PRODUCTION</td><td>ADMIN & REPORTING</td><td>CONTRÔLE</td><td>NON PRODUCTIF</td><td>CAPACITÉ</td></tr>
+<tr><td>-------------</td><td>--------</td><td>------------</td><td>-------------------</td><td>----------</td><td>---------------</td><td>----------</td></tr>
+<tr><td>Service Crédit</td><td>25</td><td>150h 00min</td><td>25h 00min (14% du total)</td><td>20h 00min</td><td>5h 00min (3% cap)</td><td>200h</td></tr></p><p><strong>Diagnostic :</strong>
+<li><span style="color:#10b981">✅</span> <strong>Production élevée</strong> : 150h sur 200h = 75% de productivité</li>
+<li><span style="color:#10b981">✅</span> <strong>Admin faible</strong> : 14% du total (objectif < 20%)</li>
+<li><span style="color:#10b981">✅</span> <strong>Non productif très faible</strong> : 3% seulement</li>
+<li><span style="color:#10b981">✅</span> <strong>Équipe efficace et bien organisée</strong></li></p><p><strong>Actions :</strong> RIEN ! Féliciter l'équipe et partager les bonnes pratiques.</p><p>---</p><p><h3><span style="color:#ef4444">🔴</span> Exemple 2 : Département EN DIFFICULTÉ</h3></p><p><tr><td>DÉPARTEMENT</td><td>AGENTS</td><td>PRODUCTION</td><td>ADMIN & REPORTING</td><td>CONTRÔLE</td><td>NON PRODUCTIF</td><td>CAPACITÉ</td></tr>
+<tr><td>-------------</td><td>--------</td><td>------------</td><td>-------------------</td><td>----------</td><td>---------------</td><td>----------</td></tr>
+<tr><td>Direction Commerciale</td><td>70</td><td>50h 00min</td><td>40h 00min (44% du total)</td><td>5h 00min</td><td>465h 00min (83% cap)</td><td>560h</td></tr></p><p><strong>Diagnostic :</strong>
+<li><span style="color:#ef4444">🔴</span> <strong>Production très faible</strong> : 50h sur 560h = 9% seulement !</li>
+<li><span style="color:#ef4444">🔴</span> <strong>Admin très élevé</strong> : 44% du total (objectif < 20%)</li>
+<li><span style="color:#ef4444">🔴</span> <strong>Non productif catastrophique</strong> : 83% du temps est perdu !</li></p><p><strong>Qu'est-ce qui se passe ?</strong>
+Sur 70 agents :
+<li>Seulement <strong>9%</strong> de leur temps est productif</li>
+<li><strong>44%</strong> de leur temps productif est en admin (réunions, rapports)</li>
+<li><strong>83%</strong> du temps disponible est perdu</li></p><p><strong>Exemple concret :</strong>
+Un agent qui travaille 8h :
+<li>Production : 0h 43min (9% de 8h)</li>
+<li>Admin : 0h 19min (44% du temps productif)</li>
+<li>Contrôle : 0h 03min</li>
+<li><strong>Non pointé : 6h 55min</strong> <span style="color:#f59e0b">⚠️</span><span style="color:#f59e0b">⚠️</span><span style="color:#f59e0b">⚠️</span></li></p><p><strong>Actions URGENTES à prendre :</strong>
+<li><strong>Réunion d'urgence</strong> avec le chef de département</li>
+<li><strong>Vérifier les absences</strong> (congés, maladies)</li>
+<li><strong>Audit du système de pointage</strong> (fonctionne-t-il ?)</li>
+<li><strong>Formation des équipes</strong> (rappeler comment pointer)</li>
+<li><strong>Réduire les réunions</strong> (trop d'admin)</li>
+<li><strong>Vérifier la charge de travail</strong> (assez de dossiers ?)</li></p><p>---</p><p><h3><span style="color:#f59e0b">🟡</span> Exemple 3 : Département MOYEN (à améliorer)</h3></p><p><tr><td>DÉPARTEMENT</td><td>AGENTS</td><td>PRODUCTION</td><td>ADMIN & REPORTING</td><td>CONTRÔLE</td><td>NON PRODUCTIF</td><td>CAPACITÉ</td></tr>
+<tr><td>-------------</td><td>--------</td><td>------------</td><td>-------------------</td><td>----------</td><td>---------------</td><td>----------</td></tr>
+<tr><td>Contrôle Interne</td><td>15</td><td>60h 00min</td><td>30h 00min (33% du total)</td><td>10h 00min</td><td>20h 00min (17% cap)</td><td>120h</td></tr></p><p><strong>Diagnostic :</strong>
+<li><span style="color:#f59e0b">🟡</span> <strong>Production correcte</strong> : 60h sur 120h = 50% de productivité</li>
+<li><span style="color:#f59e0b">🟡</span> <strong>Admin limite</strong> : 33% du total (objectif < 20%, mais acceptable pour du contrôle)</li>
+<li><span style="color:#10b981">✅</span> <strong>Non productif acceptable</strong> : 17% (limite mais acceptable)</li></p><p><strong>Actions :</strong>
+<li><strong>Surveiller l'évolution</strong> (vérifier chaque semaine)</li>
+<li><strong>Optimiser l'admin</strong> (réduire de 33% à 25%)</li>
+<li><strong>Réduire le non productif</strong> (passer de 17% à < 10%)</li></p><p>---</p><p><h2>📊 Graphique : Comparaison par Agent</h2></p><p><strong>C'est quoi ?</strong>
+Un graphique qui montre la productivité de chaque agent individuellement.</p><p><strong>Exemple visuel :</strong>
+<pre><code>
+Agent             Productif   Non-productif
+Jean Dupont       ████████████████ 85%  ███ 15%
+Marie Martin      ██████████ 60%        ████████ 40%
+Paul Bernard      ████████████████████ 95%  █ 5%
+Sophie Durand     ████ 25%              ██████████████ 75%
+</code></pre></p><p><strong>Comment lire :</strong></p><p><strong>1. Barre verte longue (>70%) <span style="color:#10b981">✅</span></strong>
+<span style="color:#3b82f6">➡️</span> Agent très productif</p><p><strong>Exemple : Paul Bernard (95%)</strong>
+<li>Sur 8h de travail, il fait 7h 36min de productif</li>
+<li>Seulement 24min de perdu</li>
+<li><span style="color:#3b82f6">➡️</span> <strong>EXCELLENT</strong> : féliciter et prendre comme modèle</li></p><p>---</p><p><strong>2. Barre verte moyenne (50-70%) <span style="color:#f59e0b">🟡</span></strong>
+<span style="color:#3b82f6">➡️</span> Agent moyennement productif</p><p><strong>Exemple : Marie Martin (60%)</strong>
+<li>Sur 8h de travail, elle fait 4h 48min de productif</li>
+<li>3h 12min de perdu</li>
+<li><span style="color:#3b82f6">➡️</span> <strong>MOYEN</strong> : chercher comment améliorer</li></p><p><strong>Actions :</strong>
+<li>Lui demander ce qui ralentit son travail</li>
+<li>Vérifier s'il y a des problèmes techniques</li>
+<li>Proposer une formation si besoin</li></p><p>---</p><p><strong>3. Barre verte courte (<50%) <span style="color:#ef4444">🔴</span></strong>
+<span style="color:#3b82f6">➡️</span> Agent peu productif</p><p><strong>Exemple : Sophie Durand (25%)</strong>
+<li>Sur 8h de travail, elle fait seulement 2h de productif</li>
+<li>6h de perdu !</li>
+<li><span style="color:#3b82f6">➡️</span> <strong>PROBLÈME</strong> : action urgente nécessaire</li></p><p><strong>Causes possibles :</strong>
+<li>Ne sait pas comment utiliser le système de pointage</li>
+<li>Problèmes personnels (démotivation, burn-out)</li>
+<li>Problèmes techniques (ordinateur en panne)</li>
+<li>Manque de formation</li>
+<li>Absences fréquentes non déclarées</li></p><p><strong>Actions :</strong>
+<li><strong>Entretien individuel</strong> avec l'agent</li>
+<li><strong>Vérifier les problèmes techniques</strong></li>
+<li><strong>Proposer une formation</strong></li>
+<li><strong>Plan d'amélioration</strong> (objectifs clairs)</li>
+<li><strong>Suivi hebdomadaire</strong></li></p><p>---</p><p><h2>📊 Tableau : Productivité par Agent Aujourd'hui</h2></p><p><strong>C'est quoi ?</strong>
+Un tableau qui montre en temps réel ce que chaque agent a fait aujourd'hui.</p><p><strong>Exemple de tableau :</strong></p><p><tr><td>AGENT</td><td>VALIDÉ</td><td>EN ATTENTE</td><td>NON POINTÉ</td><td>PRODUCTIVITÉ</td></tr>
+<tr><td>-------</td><td>--------</td><td>------------</td><td>------------</td><td>--------------</td></tr>
+<tr><td>Jean Dupont</td><td>6h 30min</td><td>1h 00min</td><td>0h 30min</td><td>████████████████ 85%</td></tr>
+<tr><td>Marie Martin</td><td>4h 00min</td><td>1h 30min</td><td>2h 30min</td><td>██████████ 60%</td></tr>
+<tr><td>Paul Bernard</td><td>7h 00min</td><td>0h 30min</td><td>0h 30min</td><td>████████████████████ 95%</td></tr>
+<tr><td>Sophie Durand</td><td>1h 30min</td><td>0h 30min</td><td>6h 00min</td><td>████ 25%</td></tr></p><p>---</p><p><strong>Explication de chaque colonne :</strong></p><p><h3>1️⃣ AGENT</h3>
+<strong>C'est quoi :</strong> Le nom de l'employé.</p><p>---</p><p><h3>2️⃣ VALIDÉ</h3>
+<strong>C'est quoi :</strong> Le temps de travail déjà validé par le superviseur.
+<strong>Exemple :</strong> 6h 30min</p><p><strong>Qu'est-ce que ça veut dire ?</strong>
+<span style="color:#3b82f6">➡️</span> Le superviseur a vérifié et accepté 6h 30min de travail.</p><p>---</p><p><h3>3️⃣ EN ATTENTE</h3>
+<strong>C'est quoi :</strong> Le temps pointé mais pas encore validé.
+<strong>Exemple :</strong> 1h 00min</p><p><strong>Qu'est-ce que ça veut dire ?</strong>
+<span style="color:#3b82f6">➡️</span> L'agent a déclaré 1h de travail, mais le superviseur ne l'a pas encore vérifié.</p><p><strong>Interprétation :</strong>
+<li><span style="color:#10b981">🟢</span> <strong>< 1h</strong> = Normal (validations en cours)</li>
+<li><span style="color:#ef4444">🔴</span> <strong>> 3h</strong> = Problème (superviseur en retard)</li></p><p>---</p><p><h3>4️⃣ NON POINTÉ</h3>
+<strong>C'est quoi :</strong> Le temps où l'agent est censé travailler mais n'a rien déclaré.
+<strong>Exemple :</strong> 0h 30min</p><p><strong>Comment c'est calculé :</strong>
+<pre><code>
+Non pointé = 8h - (Validé + En attente)
+</code></pre></p><p><strong>Exemple :</strong>
+<li>Validé = 6h 30min</li>
+<li>En attente = 1h 00min</li>
+<li>Non pointé = 8h - 7h 30min = <strong>0h 30min</strong></li></p><p><strong>Interprétation :</strong>
+<li><span style="color:#10b981">🟢</span> <strong>< 30min</strong> = Normal (pauses, déplacements)</li>
+<li><span style="color:#f59e0b">🟡</span> <strong>30min - 2h</strong> = À surveiller</li>
+<li><span style="color:#ef4444">🔴</span> <strong>> 2h</strong> = Problème (agent ne pointe pas ou absent)</li></p><p>---</p><p><h3>5️⃣ PRODUCTIVITÉ (barre de progression)</h3></p><p><strong>C'est quoi :</strong> La barre de couleur qui visualise le taux de productivité.</p><p><strong>Comment c'est calculé :</strong>
+<pre><code>
+Productivité = (Validé ÷ 8h) × 100
+</code></pre></p><p><strong>Exemple :</strong>
+<li>Validé = 6h 30min = 6,5h</li>
+<li>Productivité = (6,5 ÷ 8) × 100 = <strong>81%</strong></li></p><p><strong>Les couleurs :</strong>
+<li><span style="color:#10b981">🟢</span> <strong>Barre verte</strong> (>70%) = BON</li>
+<li><span style="color:#f59e0b">🟡</span> <strong>Barre jaune</strong> (50-70%) = MOYEN</li>
+<li><span style="color:#ef4444">🔴</span> <strong>Barre rouge</strong> (<50%) = MAUVAIS</li></p><p>---</p><p><strong>Exemples d'interprétation complète :</strong></p><p><strong><span style="color:#10b981">🟢</span> Jean Dupont (85%)</strong>
+<li>Validé : 6h 30min <span style="color:#10b981">✅</span></li>
+<li>En attente : 1h 00min (normal)</li>
+<li>Non pointé : 0h 30min (acceptable)</li>
+<li><strong>Diagnostic :</strong> EXCELLENT, agent très productif</li></p><p>---</p><p><strong><span style="color:#f59e0b">🟡</span> Marie Martin (60%)</strong>
+<li>Validé : 4h 00min</li>
+<li>En attente : 1h 30min</li>
+<li>Non pointé : 2h 30min <span style="color:#f59e0b">⚠️</span></li>
+<li><strong>Diagnostic :</strong> MOYEN</li>
+<li><strong>Problème :</strong> 2h 30min non pointées (31% du temps)</li>
+<li><strong>Action :</strong> Lui rappeler de pointer toutes ses activités</li></p><p>---</p><p><strong><span style="color:#10b981">🟢</span> Paul Bernard (95%)</strong>
+<li>Validé : 7h 00min <span style="color:#10b981">✅</span><span style="color:#10b981">✅</span><span style="color:#10b981">✅</span></li>
+<li>En attente : 0h 30min</li>
+<li>Non pointé : 0h 30min</li>
+<li><strong>Diagnostic :</strong> EXCELLENT, agent modèle</li>
+<li><strong>Action :</strong> Le féliciter et partager ses bonnes pratiques</li></p><p>---</p><p><strong><span style="color:#ef4444">🔴</span> Sophie Durand (25%)</strong>
+<li>Validé : 1h 30min <span style="color:#ef4444">🔴</span></li>
+<li>En attente : 0h 30min</li>
+<li>Non pointé : 6h 00min <span style="color:#ef4444">🔴</span><span style="color:#ef4444">🔴</span><span style="color:#ef4444">🔴</span></li>
+<li><strong>Diagnostic :</strong> PROBLÈME GRAVE</li>
+<li><strong>Problème :</strong> 6h non pointées (75% du temps !)</li>
+<li><strong>Causes possibles :</strong></li>
+  - Absente (maladie, congé non déclaré)
+  - Ne sait pas pointer
+  - Problème technique (ordinateur en panne)
+  - Démotivation
+<li><strong>Actions URGENTES :</strong></li>
+  1. Appeler l'agent immédiatement
+  2. Vérifier si elle est présente au bureau
+  3. Lui expliquer comment pointer
+  4. Vérifier son matériel informatique
+  5. Entretien individuel si problème récurrent</p><p>---</p><p><h2>📊 Tableau : Objectifs Banque (3-3-3)</h2></p><p><strong>C'est quoi ?</strong>
+Un tableau qui compare les résultats du mois avec les objectifs de la banque.</p><p><strong>Exemple de tableau :</strong></p><p><tr><td>CATÉGORIE</td><td>CIBLE</td><td>RÉALISÉ</td><td>ÉCART</td></tr>
+<tr><td>-----------</td><td>-------</td><td>---------</td><td>-------</td></tr>
+<tr><td>Production</td><td>33%</td><td>45%</td><td>+12% <span style="color:#10b981">✅</span></td></tr>
+<tr><td>Administration & Reporting</td><td>33%</td><td>20%</td><td>-13% <span style="color:#f59e0b">⚠️</span></td></tr>
+<tr><td>Contrôle</td><td>33%</td><td>35%</td><td>+2% <span style="color:#10b981">✅</span></td></tr></p><p>---</p><p><strong>Explication de chaque colonne :</strong></p><p><h3>1️⃣ CATÉGORIE</h3>
+<strong>C'est quoi :</strong> Le type d'activité.
+<li>Production</li>
+<li>Administration & Reporting</li>
+<li>Contrôle</li></p><p>---</p><p><h3>2️⃣ CIBLE</h3>
+<strong>C'est quoi :</strong> L'objectif fixé par la banque.
+<strong>Exemple :</strong> 33% pour chaque catégorie (méthode 3-3-3)</p><p>---</p><p><h3>3️⃣ RÉALISÉ</h3>
+<strong>C'est quoi :</strong> Le résultat réel du mois.
+<strong>Exemple :</strong> 45% pour Production</p><p><strong>Comment c'est calculé :</strong>
+<pre><code>
+% Réalisé = (Temps de la catégorie ÷ Temps total productif) × 100
+</code></pre></p><p><strong>Exemple :</strong>
+<li>Temps Production = 8 492 minutes</li>
+<li>Temps Admin = 1 590 minutes</li>
+<li>Temps Contrôle = 1 200 minutes</li>
+<li><strong>Total = 11 282 minutes</strong></li>
+<li>% Production = (8 492 ÷ 11 282) × 100 = <strong>75%</strong></li>
+<li>% Admin = (1 590 ÷ 11 282) × 100 = <strong>14%</strong></li>
+<li>% Contrôle = (1 200 ÷ 11 282) × 100 = <strong>11%</strong></li></p><p>---</p><p><h3>4️⃣ ÉCART</h3>
+<strong>C'est quoi :</strong> La différence entre la cible et le réalisé.</p><p><strong>Formule :</strong>
+<pre><code>
+Écart = Réalisé - Cible
+</code></pre></p><p><strong>Exemple :</strong>
+<li>Production : 45% - 33% = <strong>+12%</strong> <span style="color:#10b981">✅</span> (DÉPASSEMENT)</li>
+<li>Admin : 20% - 33% = <strong>-13%</strong> <span style="color:#f59e0b">⚠️</span> (INSUFFISANT)</li>
+<li>Contrôle : 35% - 33% = <strong>+2%</strong> <span style="color:#10b981">✅</span> (LÉGÈREMENT AU-DESSUS)</li></p><p><strong>Interprétation :</strong>
+<li><span style="color:#10b981">🟢</span> <strong>Écart entre -5% et +5%</strong> = BON (proche de la cible)</li>
+<li><span style="color:#f59e0b">🟡</span> <strong>Écart entre -10% et +10%</strong> = MOYEN (à surveiller)</li>
+<li><span style="color:#ef4444">🔴</span> <strong>Écart > 10%</strong> = PROBLÈME (loin de la cible)</li></p><p>---</p><p><strong>Exemples complets :</strong></p><p><strong>📊 Exemple 1 : Tout va bien</strong>
+<tr><td>CATÉGORIE</td><td>CIBLE</td><td>RÉALISÉ</td><td>ÉCART</td></tr>
+<tr><td>-----------</td><td>-------</td><td>---------</td><td>-------</td></tr>
+<tr><td>Production</td><td>33%</td><td>35%</td><td>+2% <span style="color:#10b981">✅</span></td></tr>
+<tr><td>Administration</td><td>33%</td><td>32%</td><td>-1% <span style="color:#10b981">✅</span></td></tr>
+<tr><td>Contrôle</td><td>33%</td><td>33%</td><td>0% <span style="color:#10b981">✅</span></td></tr></p><p><strong>Diagnostic :</strong> PARFAIT ! Tous les indicateurs sont dans la cible.
+<strong>Action :</strong> RIEN, continuer comme ça.</p><p>---</p><p><strong>📊 Exemple 2 : Trop de production, pas assez de contrôle</strong>
+<tr><td>CATÉGORIE</td><td>CIBLE</td><td>RÉALISÉ</td><td>ÉCART</td></tr>
+<tr><td>-----------</td><td>-------</td><td>---------</td><td>-------</td></tr>
+<tr><td>Production</td><td>33%</td><td>70%</td><td>+37% <span style="color:#ef4444">🔴</span></td></tr>
+<tr><td>Administration</td><td>33%</td><td>25%</td><td>-8% <span style="color:#f59e0b">⚠️</span></td></tr>
+<tr><td>Contrôle</td><td>33%</td><td>5%</td><td>-28% <span style="color:#ef4444">🔴</span></td></tr></p><p><strong>Diagnostic :</strong> DÉSÉQUILIBRE GRAVE !
+<li><strong>Trop de production</strong> (70% au lieu de 33%)</li>
+<li><strong>Pas assez de contrôle</strong> (5% au lieu de 33%)</li></p><p><strong>Qu'est-ce que ça veut dire ?</strong>
+<span style="color:#3b82f6">➡️</span> Les équipes produisent beaucoup mais ne contrôlent presque pas !
+<span style="color:#3b82f6">➡️</span> <strong>RISQUE</strong> : erreurs, fraudes, non-conformité</p><p><strong>Actions URGENTES :</strong>
+<li><strong>Ralentir la production</strong></li>
+<li><strong>Imposer des contrôles systématiques</strong></li>
+<li><strong>Former les équipes au contrôle</strong></li>
+<li><strong>Audit de conformité</strong></li></p><p>---</p><p><strong>📊 Exemple 3 : Trop d'admin, pas de production</strong>
+<tr><td>CATÉGORIE</td><td>CIBLE</td><td>RÉALISÉ</td><td>ÉCART</td></tr>
+<tr><td>-----------</td><td>-------</td><td>---------</td><td>-------</td></tr>
+<tr><td>Production</td><td>33%</td><td>15%</td><td>-18% <span style="color:#ef4444">🔴</span></td></tr>
+<tr><td>Administration</td><td>33%</td><td>70%</td><td>+37% <span style="color:#ef4444">🔴</span></td></tr>
+<tr><td>Contrôle</td><td>33%</td><td>15%</td><td>-18% <span style="color:#ef4444">🔴</span></td></tr></p><p><strong>Diagnostic :</strong> PROBLÈME CRITIQUE !
+<li><strong>70%</strong> du temps est en admin (réunions, rapports)</li>
+<li>Seulement <strong>15%</strong> est productif</li></p><p><strong>Qu'est-ce que ça veut dire ?</strong>
+<span style="color:#3b82f6">➡️</span> Les équipes passent leur temps en réunions au lieu de travailler !</p><p><strong>Conséquences :</strong>
+<li>Baisse de rentabilité</li>
+<li>Clients insatisfaits (attente trop longue)</li>
+<li>Perte de compétitivité</li></p><p><strong>Actions URGENTES :</strong>
+<li><strong>Réduire drastiquement les réunions</strong> (max 2 par semaine)</li>
+<li><strong>Simplifier les rapports</strong> (automatisation)</li>
+<li><strong>Recentrer sur le cœur de métier</strong></li>
+<li><strong>Audit organisationnel</strong></li></p><p>---</p><p><h2>🎯 Résumé : Comment Interpréter le Dashboard en 5 Minutes</h2></p><p><h3>1️⃣ Regarder les 4 Cartes KPI en haut</h3>
+<li><strong>Sessions validées</strong> : ça monte ? <span style="color:#10b981">✅</span> Bon signe</li>
+<li><strong>Temps productif</strong> : > 100h par jour ? <span style="color:#10b981">✅</span> Bon</li>
+<li><strong>Temps en attente</strong> : < 20h ? <span style="color:#10b981">✅</span> Bon</li>
+<li><strong>Productivité</strong> : > 70% ? <span style="color:#10b981">✅</span> Excellent</li></p><p>---</p><p><h3>2️⃣ Regarder le Graphique de Tendance Mensuelle</h3>
+<li><strong>Ligne qui monte</strong> ? <span style="color:#10b981">✅</span> Amélioration</li>
+<li><strong>Ligne qui descend</strong> ? <span style="color:#ef4444">🔴</span> Dégradation</li>
+<li><strong>Ligne plate</strong> ? <span style="color:#3b82f6">➡️</span> Stable</li></p><p>---</p><p><h3>3️⃣ Regarder le Camembert du Jour</h3>
+<li><strong>Production > 40%</strong> ? <span style="color:#10b981">✅</span> Bon</li>
+<li><strong>Admin < 30%</strong> ? <span style="color:#10b981">✅</span> Bon</li>
+<li><strong>Non productif < 10%</strong> ? <span style="color:#10b981">✅</span> Excellent</li></p><p>---</p><p><h3>4️⃣ Regarder le Tableau Comparaison par Département</h3>
+<li><strong>% du total < 20%</strong> ? <span style="color:#10b981">✅</span> Admin raisonnable</li>
+<li><strong>% cap < 20%</strong> ? <span style="color:#10b981">✅</span> Peu de perte</li>
+<li><strong>% cap > 50%</strong> ? <span style="color:#ef4444">🔴</span> PROBLÈME</li></p><p>---</p><p><h3>5️⃣ Regarder le Tableau Productivité par Agent</h3>
+<li><strong>Barre verte > 70%</strong> ? <span style="color:#10b981">✅</span> Féliciter</li>
+<li><strong>Barre rouge < 50%</strong> ? <span style="color:#ef4444">🔴</span> Entretien individuel</li>
+<li><strong>Non pointé > 2h</strong> ? <span style="color:#ef4444">🔴</span> Action urgente</li></p><p>---</p><p><h2>📋 Checklist d'Actions selon les Indicateurs</h2></p><p><h3><span style="color:#10b981">🟢</span> SI TOUT EST VERT (>70% productivité, <20% admin, <10% non productif)</h3>
+<span style="color:#10b981">✅</span> <strong>RIEN À FAIRE</strong> : féliciter les équipes et continuer</p><p>---</p><p><h3><span style="color:#f59e0b">🟡</span> SI C'EST MOYEN (50-70% productivité, 20-30% admin, 10-20% non productif)</h3>
+<span style="color:#f59e0b">⚠️</span> <strong>ACTIONS :</strong>
+<li>Surveiller l'évolution (vérifier chaque semaine)</li>
+<li>Identifier les points d'amélioration</li>
+<li>Former les équipes si besoin</li></p><p>---</p><p><h3><span style="color:#ef4444">🔴</span> SI C'EST ROUGE (<50% productivité, >30% admin, >20% non productif)</h3>
+<span style="color:#ef4444">🔴</span> <strong>ACTIONS URGENTES :</strong>
+<li><strong>Réunion d'urgence</strong> avec les chefs de département</li>
+<li><strong>Audit complet</strong> du système de pointage</li>
+<li><strong>Vérifier les absences</strong> (congés, maladies)</li>
+<li><strong>Réduire les réunions</strong> (max 2 par semaine)</li>
+<li><strong>Simplifier l'admin</strong> (automatisation)</li>
+<li><strong>Entretiens individuels</strong> avec les agents peu productifs</li>
+<li><strong>Plan d'action</strong> avec objectifs clairs et suivi hebdomadaire</li></p><p>---</p><p><h2>📞 Questions Fréquentes (FAQ)</h2></p><p><h3>❓ Pourquoi le % non productif est si élevé (79%) ?</h3>
+<strong>Réponses possibles :</strong>
+<li>Beaucoup d'absents (congés, maladies)</li>
+<li>Employés qui ne pointent pas</li>
+<li>Sessions en attente de validation</li>
+<li>Manque de dossiers à traiter</li>
+<li>Problème technique du système</li></p><p><strong>Action :</strong> Vérifier chaque cause une par une.</p><p>---</p><p><h3>❓ Comment réduire le temps administratif ?</h3>
+<strong>Solutions :</strong>
+<li>Limiter les réunions (max 2 par semaine)</li>
+<li>Utiliser des modèles de rapports pré-remplis</li>
+<li>Automatiser avec des formulaires en ligne</li>
+<li>Déléguer l'admin à des assistants</li></p><p>---</p><p><h3>❓ Un agent a 6h non pointées, qu'est-ce que je fais ?</h3>
+<strong>Actions :</strong>
+<li>L'appeler immédiatement</li>
+<li>Vérifier s'il est présent au bureau</li>
+<li>Lui expliquer comment pointer</li>
+<li>Vérifier son matériel (ordinateur)</li>
+<li>Entretien individuel si récurrent</li></p><p>---</p><p><h3>❓ Comment améliorer la productivité globale ?</h3>
+<strong>Solutions :</strong>
+<li>Former tous les agents au pointage</li>
+<li>Rappeler l'importance de pointer TOUTES les activités</li>
+<li>Demander aux superviseurs de valider rapidement</li>
+<li>Réduire l'admin (réunions, rapports)</li>
+<li>Vérifier qu'il y a assez de dossiers à traiter</li>
+<li>Automatiser les tâches répétitives</li>
+<li>Mettre en place des objectifs clairs</li>
+<li>Féliciter les agents productifs (motivation)</li></p><p>---</p><p><h2><span style="color:#10b981">✅</span> Ce Que Vous Devez Retenir</h2></p><p><h3>Les 5 Points Clés :</h3>
+<li><strong>Productivité > 70%</strong> = BON <span style="color:#10b981">✅</span></li>
+<li><strong>Admin < 20%</strong> = BON <span style="color:#10b981">✅</span></li>
+<li><strong>Non productif < 20%</strong> = BON <span style="color:#10b981">✅</span></li>
+<li><strong>Sessions validées en hausse</strong> = AMÉLIORATION <span style="color:#10b981">✅</span></li>
+<li><strong>Méthode 3-3-3 respectée</strong> (33-33-33) = ÉQUILIBRE <span style="color:#10b981">✅</span></li></p><p><h3>Les 3 Alertes Principales :</h3>
+<li><span style="color:#ef4444">🔴</span> <strong>Productivité < 50%</strong> <span style="color:#3b82f6">➡️</span> PROBLÈME GRAVE</li>
+<li><span style="color:#ef4444">🔴</span> <strong>Admin > 30%</strong> <span style="color:#3b82f6">➡️</span> TROP DE RÉUNIONS</li>
+<li><span style="color:#ef4444">🔴</span> <strong>Non productif > 40%</strong> <span style="color:#3b82f6">➡️</span> PERTE DE TEMPS</li></p><p><h3>La Règle d'Or :</h3>
+<strong>Si un indicateur est rouge pendant 3 jours consécutifs <span style="color:#3b82f6">➡️</span> ACTION IMMÉDIATE OBLIGATOIRE</strong></p><p>---</p><p><h2>🎓 Glossaire Simple</h2></p><p><tr><td>TERME</td><td>EXPLICATION SIMPLE</td></tr>
+<tr><td>-------</td><td>-------------------</td></tr>
+<tr><td><strong>Session</strong></td><td>Une période de travail pointée par un employé (ex : 9h-12h)</td></tr>
+<tr><td><strong>Validé</strong></td><td>Temps de travail vérifié et accepté par le superviseur</td></tr>
+<tr><td><strong>En attente</strong></td><td>Temps pointé mais pas encore vérifié</td></tr>
+<tr><td><strong>Non pointé</strong></td><td>Temps où l'employé est là mais ne déclare rien</td></tr>
+<tr><td><strong>Productif</strong></td><td>Travail qui génère de la valeur (traiter un dossier)</td></tr>
+<tr><td><strong>Admin</strong></td><td>Travail administratif (réunions, rapports, emails)</td></tr>
+<tr><td><strong>Contrôle</strong></td><td>Vérifications et validations</td></tr>
+<tr><td><strong>Capacité</strong></td><td>Temps de travail total disponible (agents × heures)</td></tr>
+<tr><td><strong>% du total</strong></td><td>Part de l'admin dans le temps productif total</td></tr>
+<tr><td><strong>% cap</strong></td><td>Part du temps non utilisé sur la capacité totale</td></tr>
+<tr><td><strong>Méthode 3-3-3</strong></td><td>Règle d'équilibre : 33% Production, 33% Admin, 33% Contrôle</td></tr></p><p>---</p><p><h2>📝 Exemple Complet de Présentation (15 minutes)</h2></p><p><strong>"Bonjour à tous, je vais vous présenter notre productivité du mois."</strong></p><p>---</p><p><strong>1️⃣ Vue d'ensemble (2 minutes)</strong>
+"Ce mois-ci, nous avons validé <strong>1 250 sessions</strong> de travail, soit <strong>+150</strong> par rapport au mois dernier. C'est une bonne nouvelle <span style="color:#10b981">✅</span>."</p><p>"Le temps productif total est de <strong>2 850 heures</strong>, soit <strong>+12%</strong> par rapport au mois dernier. Nous sommes sur une bonne tendance."</p><p>---</p><p><strong>2️⃣ Répartition 3-3-3 (3 minutes)</strong>
+"Selon la méthode 3-3-3, nous devrions avoir <strong>33% Production, 33% Admin, 33% Contrôle</strong>."</p><p>"Nos résultats :"
+<li>Production : <strong>45%</strong> (cible 33%) <span style="color:#3b82f6">➡️</span> +12% <span style="color:#10b981">✅</span> BON</li>
+<li>Admin : <strong>35%</strong> (cible 33%) <span style="color:#3b82f6">➡️</span> +2% <span style="color:#10b981">✅</span> BON</li>
+<li>Contrôle : <strong>20%</strong> (cible 33%) <span style="color:#3b82f6">➡️</span> -13% <span style="color:#f59e0b">⚠️</span> INSUFFISANT</li></p><p>"Nous devons <strong>renforcer le contrôle</strong> pour respecter les normes bancaires."</p><p>---</p><p><strong>3️⃣ Comparaison par département (5 minutes)</strong>
+"<strong>Direction Commerciale</strong> (70 agents) :"
+<li>Production : 89h 30min</li>
+<li>Admin : 18h 30min (23% du total) <span style="color:#f59e0b">⚠️</span> un peu élevé</li>
+<li>Non productif : 79% <span style="color:#f59e0b">⚠️</span><span style="color:#f59e0b">⚠️</span><span style="color:#f59e0b">⚠️</span> PROBLÈME</li></p><p>"<strong>79% de capacité non utilisée</strong>, ça veut dire que sur 560h disponibles, seulement 118h sont utilisées."</p><p>"Causes probables :"
+<li>Absences non déclarées</li>
+<li>Employés qui ne pointent pas</li>
+<li>Sessions en attente de validation</li></p><p>"Actions : vérifier les absences, rappeler de pointer, demander aux superviseurs de valider rapidement."</p><p>---</p><p><strong>4️⃣ Top et Flop Agents (3 minutes)</strong>
+"<strong>Top 3 Agents les plus productifs :</strong>"
+<li>Paul Bernard : <strong>95%</strong> <span style="color:#10b981">✅</span> EXCELLENT</li>
+<li>Jean Dupont : <strong>85%</strong> <span style="color:#10b981">✅</span> TRÈS BON</li>
+<li>Marie Martin : <strong>60%</strong> <span style="color:#10b981">✅</span> CORRECT</li></p><p>"<strong>Agent en difficulté :</strong>"
+<li>Sophie Durand : <strong>25%</strong> <span style="color:#ef4444">🔴</span> PROBLÈME</li>
+<li>6h non pointées sur 8h</li>
+<li>Action : entretien individuel prévu cette semaine</li></p><p>---</p><p><strong>5️⃣ Actions et Objectifs (2 minutes)</strong>
+"<strong>Actions pour le mois prochain :</strong>"
+<li>Réduire le % admin de 23% à 20%</li>
+<li>Réduire le non productif de 79% à 50%</li>
+<li>Renforcer le contrôle (passer de 20% à 30%)</li>
+<li>Former les agents au pointage</li>
+<li>Valider les sessions plus rapidement</li></p><p>"<strong>Objectif global : passer de 21% à 40% de productivité</strong>"</p><p>"Merci pour votre attention ! Des questions ?"</p><p>---</p><p><h2>📎 Annexes</h2></p><p><h3>📊 Formules de Calcul Récapitulatives</h3></p><p><pre><code>
+Productivité = (Temps Productif ÷ Capacité) × 100</p><p>Capacité = Nombre d'agents × Heures par jour × Jours travaillés</p><p>% Admin = (Temps Admin + Temps Contrôle) ÷ Temps Total Productif × 100</p><p>% Non Productif = (Capacité - Temps Total Productif) ÷ Capacité × 100</p><p>Temps Total Productif = Production + Admin + Contrôle</p><p>Non Pointé = 8h - (Validé + En Attente)
+</code></pre></p><p>---</p><p><h3>🎯 Objectifs Recommandés</h3></p><p><tr><td>INDICATEUR</td><td>OBJECTIF</td><td>ACCEPTABLE</td><td>PROBLÈME</td></tr>
+<tr><td>------------</td><td>----------</td><td>------------</td><td>----------</td></tr>
+<tr><td>Productivité</td><td>> 70%</td><td>50-70%</td><td>< 50%</td></tr>
+<tr><td>% Admin</td><td>< 20%</td><td>20-30%</td><td>> 30%</td></tr>
+<tr><td>% Non Productif</td><td>< 20%</td><td>20-40%</td><td>> 40%</td></tr>
+<tr><td>Sessions en attente</td><td>< 20h</td><td>20-50h</td><td>> 50h</td></tr>
+<tr><td>Non pointé par agent</td><td>< 30min</td><td>30min-2h</td><td>> 2h</td></tr></p><p>---</p><p><h3>📞 Contacts</h3></p><p><strong>Support Technique :</strong> [à compléter]
+<strong>Formation Pointage :</strong> [à compléter]
+<strong>Audit Productivité :</strong> [à compléter]</p><p>---</p><p><strong>FIN DU GUIDE</strong></p><p><span style="color:#10b981">✅</span> Vous savez maintenant comment lire et interpréter le Dashboard Administrateur !
+</p>
+        </div>
+        
+        <div style="text-align:center;margin:40px 0;padding:20px;background:#f9fafb;border-radius:8px;">
+            <p style="color:#6b7280;font-size:0.9em;">
+                Document généré automatiquement par TimeTrack<br>
+                BGFIBank CA - Dashboard Administrateur<br>
+                Version 1.0 - Avril 2026
+            </p>
+        </div>
+    </div>
+</body>
+</html>
