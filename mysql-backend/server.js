@@ -398,6 +398,43 @@ async function transaction (callback) {
   }
 }
 
+/**
+ * ✅ NOUVEAU: Helper de pagination serveur
+ * Parse les paramètres de pagination et retourne SQL LIMIT/OFFSET
+ * @param {Object} req - Objet Request Express
+ * @param {number} [defaultPerPage=50] - Nombre d'éléments par page par défaut
+ * @param {number} [maxPerPage=200] - Maximum d'éléments par page
+ * @returns {Object} { page, per_page, offset, limit, sql }
+ * 
+ * Usage:
+ *   const pagination = getPagination(req, 25, 100)
+ *   const rows = await query(`SELECT * FROM users ORDER BY id ${pagination.sql}`, [...params, pagination.limit, pagination.offset])
+ *   res.json({ data: rows, ...pagination.meta(totalCount) })
+ */
+function getPagination (req, defaultPerPage = 50, maxPerPage = 200) {
+  const page = Math.max(1, parseInt(req.query.page) || 1)
+  let per_page = parseInt(req.query.per_page) || defaultPerPage
+  per_page = Math.min(per_page, maxPerPage) // Cap à maxPerPage
+  const offset = (page - 1) * per_page
+  const limit = per_page
+
+  return {
+    page,
+    per_page,
+    offset,
+    limit,
+    sql: `LIMIT ? OFFSET ?`,
+    meta: (totalCount) => ({
+      page,
+      per_page,
+      total_items: totalCount,
+      total_pages: Math.ceil(totalCount / per_page),
+      has_next: page < Math.ceil(totalCount / per_page),
+      has_prev: page > 1
+    })
+  }
+}
+
 // Helper : calcule les jours ouvrés d'un mois (lun-ven ou lun-sam)
 function calcWorkingDays (monthStr, includeSaturday = false) {
   const [y, mo] = monthStr.split('-').map(Number)
@@ -813,10 +850,32 @@ app.get('/api/notifications', async (req, res) => {
 // ADMIN - USERS
 // ============================================
 
-// ✅ REFACTORÉ: Utilisation du middleware requireRole
+// ✅ REFACTORÉ: Utilisation du middleware requireRole + PAGINATION serveur
 app.get('/api/admin/users', requireRole('Administrateur'), async (req, res) => {
-  const rows = await query('SELECT u.*, d.name as department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.created_at DESC')
-  res.json(rows.map(r => ({ ...r, password_hash: undefined })))
+  try {
+    const pagination = getPagination(req, 50, 200)
+    
+    // Compter le total (pour métadonnées pagination)
+    const [{ total }] = await query('SELECT COUNT(*) as total FROM users')
+    
+    // Récupérer page courante
+    const rows = await query(
+      `SELECT u.*, d.name as department_name 
+       FROM users u 
+       LEFT JOIN departments d ON u.department_id = d.id 
+       ORDER BY u.created_at DESC 
+       ${pagination.sql}`,
+      [pagination.limit, pagination.offset]
+    )
+    
+    res.json({
+      data: rows.map(r => ({ ...r, password_hash: undefined })),
+      ...pagination.meta(total)
+    })
+  } catch (e) {
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' })
+  }
 })
 
 // ✅ REFACTORÉ: Utilisation du middleware requireRole + req.user
