@@ -1,0 +1,1317 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guide Complet Dashboard Administrateur - TimeTrack BGFIBank</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+        }
+        
+        h1 {
+            color: #1e3a5f;
+            border-bottom: 3px solid #3b82f6;
+            padding-bottom: 10px;
+            font-size: 28px;
+            margin-top: 30px;
+            page-break-before: always;
+        }
+        
+        h1:first-of-type {
+            page-break-before: avoid;
+            margin-top: 0;
+        }
+        
+        h2 {
+            color: #1e3a5f;
+            border-left: 4px solid #3b82f6;
+            padding-left: 15px;
+            font-size: 22px;
+            margin-top: 25px;
+            page-break-after: avoid;
+        }
+        
+        h3 {
+            color: #374151;
+            font-size: 18px;
+            margin-top: 20px;
+            page-break-after: avoid;
+        }
+        
+        p {
+            margin: 10px 0;
+            text-align: justify;
+        }
+        
+        code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #dc2626;
+        }
+        
+        pre {
+            background: #1f2937;
+            color: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            page-break-inside: avoid;
+            margin: 15px 0;
+        }
+        
+        pre code {
+            background: transparent;
+            color: #10b981;
+            padding: 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            page-break-inside: avoid;
+            font-size: 13px;
+        }
+        
+        th {
+            background: #1e3a5f;
+            color: white;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: 600;
+            border: 1px solid #3b5998;
+        }
+        
+        td {
+            padding: 10px 8px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        tr:nth-child(even) {
+            background: #f9fafb;
+        }
+        
+        ul, ol {
+            margin: 10px 0;
+            padding-left: 30px;
+        }
+        
+        li {
+            margin: 5px 0;
+        }
+        
+        strong {
+            color: #1e3a5f;
+            font-weight: 600;
+        }
+        
+        em {
+            color: #6b7280;
+        }
+        
+        a {
+            color: #3b82f6;
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        .toc {
+            background: #eff6ff;
+            border: 2px solid #3b82f6;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 30px 0;
+            page-break-inside: avoid;
+        }
+        
+        .toc h2 {
+            margin-top: 0;
+            border: none;
+            padding: 0;
+        }
+        
+        .note {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            page-break-inside: avoid;
+        }
+        
+        .warning {
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            page-break-inside: avoid;
+        }
+        
+        .success {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            page-break-inside: avoid;
+        }
+        
+        .page-break {
+            page-break-after: always;
+        }
+        
+        @media print {
+            body {
+                padding: 0;
+            }
+            
+            .no-print {
+                display: none;
+            }
+        }
+        
+        .cover-page {
+            text-align: center;
+            padding: 100px 0;
+            page-break-after: always;
+        }
+        
+        .cover-page h1 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            border: none;
+            page-break-before: avoid;
+        }
+        
+        .cover-page p {
+            font-size: 18px;
+            color: #6b7280;
+        }
+        
+        .cover-page .subtitle {
+            font-size: 24px;
+            color: #1e3a5f;
+            margin: 30px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="cover-page">
+        <h1>📊 GUIDE COMPLET</h1>
+        <div class="subtitle">Dashboard Administrateur</div>
+        <div class="subtitle">TimeTrack BGFIBank</div>
+        <p style="margin-top: 50px; font-size: 16px;">
+            Documentation complète des graphiques, tableaux et calculs
+        </p>
+        <p style="margin-top: 30px;">
+            <strong>Version 1.0</strong><br>
+            Avril 2026
+        </p>
+    </div>
+    
+    <h1>📊 GUIDE COMPLET - Dashboard Administrateur TimeTrack BGFIBank</h1>
+<h2>📋 TABLE DES MATIÈRES</h2>
+<p>1. <a href="#1-vue-densemble-du-dashboard">Vue d'ensemble du Dashboard</a>
+2. <a href="#2-les-cartes-de-statistiques-kpi">Les Cartes de Statistiques (KPI)</a>
+3. <a href="#3-graphique-tendance-mensuelle">Graphique : Tendance Mensuelle</a>
+4. <a href="#4-graphique-productivité-du-jour">Graphique : Productivité du Jour</a>
+5. <a href="#5-graphique-méthode-3-3-3-camembert">Graphique : Méthode 3-3-3 (Camembert)</a>
+6. <a href="#6-graphique-comparaison-par-département-barres">Graphique : Comparaison par Département (Barres)</a>
+7. <a href="#7-tableau-comparaison-par-département">Tableau : Comparaison par Département</a>
+8. <a href="#8-graphique-comparaison-par-agent-barres">Graphique : Comparaison par Agent (Barres)</a>
+9. <a href="#9-tableau-productivité-par-agent-aujourdhui">Tableau : Productivité par Agent Aujourd'hui</a>
+10. <a href="#10-tableau-objectifs-banque-3-3-3">Tableau : Objectifs Banque (3-3-3)</a>
+11. <a href="#11-sources-de-données-et-calculs-sql">Sources de Données et Calculs SQL</a>
+12. <a href="#12-glossaire-des-termes">Glossaire des Termes</a></p>
+<p>---</p>
+<h2>1. VUE D'ENSEMBLE DU DASHBOARD</h2>
+<h3>🎯 Objectif</h3>
+Le dashboard administrateur permet de <strong>suivre en temps réel</strong> la productivité de toute la banque, par département et par agent.
+<h3>📐 Organisation</h3>
+Le dashboard est organisé en <strong>rangées verticales</strong> :
+<p>``<code>
+┌─────────────────────────────────────────────────────┐
+│  📊 RANGÉE 1 : 4 Cartes KPI                         │
+│     (Sessions, Heures, Taux validation, Agents)     │
+├─────────────────────────────────────────────────────┤
+│  📈 RANGÉE 2 : Tendance + Productivité du jour      │
+│     (Graphique ligne + Camembert)                   │
+├─────────────────────────────────────────────────────┤
+│  🥧 RANGÉE 3 : Méthode 3-3-3                        │
+│     (Camembert Production/Admin/Contrôle)           │
+├─────────────────────────────────────────────────────┤
+│  📊 RANGÉE 4 : Comparaison par Département          │
+│     (Graphique barres + Tableau détaillé)           │
+├─────────────────────────────────────────────────────┤
+│  👥 RANGÉE 5 : Comparaison par Agent                │
+│     (Graphique barres horizontales)                 │
+├─────────────────────────────────────────────────────┤
+│  ⏱️  RANGÉE 6 : Productivité aujourd'hui            │
+│     (Tableau agents avec progression)               │
+├─────────────────────────────────────────────────────┤
+│  🎯 RANGÉE 7 : Objectifs Banque 3-3-3               │
+│     (Tableau cible vs réalisé)                      │
+└─────────────────────────────────────────────────────┘
+</code>`<code></p>
+<h3>🔄 Rafraîchissement</h3>
+<li><strong>Automatique</strong> : Toutes les 60 secondes</li>
+<li><strong>Manuel</strong> : Bouton "🔄 Rafraîchir" en haut à droite</li>
+<p>---</p>
+<h2>2. LES CARTES DE STATISTIQUES (KPI)</h2>
+<h3>🔢 Vue d'ensemble</h3>
+4 cartes affichées en haut du dashboard, côte à côte.
+<p></code>`<code>
+┌──────────────┬──────────────┬──────────────┬──────────────┐
+│  📊 Sessions │  ⏱️  Heures  │  ✅ Validées │  👥 Agents   │
+│    du mois   │  du mois     │    (%)       │   actifs     │
+└──────────────┴──────────────┴──────────────┴──────────────┘
+</code>`<code></p>
+<p>---</p>
+<h3>📊 CARTE 1 : Sessions du mois</h3>
+<p><strong>Titre</strong> : "Sessions du mois"  
+<strong>Icône</strong> : 📋 (clipboard)  
+<strong>Couleur</strong> : Bleu (#3b82f6)</p>
+<p><strong>Définition</strong> :  
+Nombre total de <strong>sessions de travail validées</strong> ce mois-ci.</p>
+<p><strong>Source de données</strong> :
+</code>`<code>sql
+SELECT COUNT(*) 
+FROM work_sessions 
+WHERE status = 'Validé' 
+  AND strftime('%Y-%m', start_time) = '2026-04'
+</code>`<code></p>
+<p><strong>Calcul</strong> :
+<li>Compte TOUTES les sessions <strong>validées</strong> du mois en cours</li>
+<li>Exclut les sessions "En attente" ou "Rejeté"</li></p>
+<p><strong>Exemple</strong> :
+</code>`<code>
+Sessions du mois : 1,247
+</code>`<code></p>
+<p><strong>Interprétation</strong> :
+<li>✅ <strong>Élevé</strong> : Beaucoup d'activité, bonne discipline de pointage</li>
+<li>❌ <strong>Faible</strong> : Peu d'activité, manque de pointage ou absences</li></p>
+<p>---</p>
+<h3>⏱️ CARTE 2 : Heures du mois</h3>
+<p><strong>Titre</strong> : "Heures du mois"  
+<strong>Icône</strong> : ⏱️ (clock)  
+<strong>Couleur</strong> : Vert (#10b981)</p>
+<p><strong>Définition</strong> :  
+Nombre total d'<strong>heures validées</strong> ce mois-ci.</p>
+<p><strong>Source de données</strong> :
+</code>`<code>sql
+SELECT SUM(duration_minutes) 
+FROM work_sessions 
+WHERE status = 'Validé' 
+  AND strftime('%Y-%m', start_time) = '2026-04'
+</code>`<code></p>
+<p><strong>Calcul</strong> :
+</code>`<code>javascript
+const total_minutes = 125430  // Exemple
+const heures = Math.floor(total_minutes / 60)
+const minutes = total_minutes % 60
+// Affichage : "2,090h 30m"
+</code>`<code></p>
+<p><strong>Format d'affichage</strong> :
+<li><strong>Heures</strong> : séparateur de milliers (virgule)</li>
+<li><strong>Minutes</strong> : 2 chiffres avec zéro initial si < 10</li></p>
+<p><strong>Exemple</strong> :
+</code>`<code>
+Heures du mois : 2,090h 30m
+</code>`<code></p>
+<p><strong>Interprétation</strong> :
+<li>✅ <strong>Élevé</strong> : Productivité globale bonne</li>
+<li>❌ <strong>Faible</strong> : Sous-activité, absences, ou manque de pointage</li></p>
+<p>---</p>
+<h3>✅ CARTE 3 : Taux de validation</h3>
+<p><strong>Titre</strong> : "Validées"  
+<strong>Icône</strong> : ✅ (check)  
+<strong>Couleur</strong> : Jaune/Orange (#f59e0b)</p>
+<p><strong>Définition</strong> :  
+Pourcentage de sessions <strong>validées</strong> par rapport au total de sessions.</p>
+<p><strong>Source de données</strong> :
+</code>`<code>sql
+-- Sessions validées
+SELECT COUNT(*) as validated
+FROM work_sessions 
+WHERE status = 'Validé' 
+  AND strftime('%Y-%m', start_time) = '2026-04'</p>
+<p>-- Total sessions
+SELECT COUNT(*) as total
+FROM work_sessions 
+WHERE strftime('%Y-%m', start_time) = '2026-04'
+</code>`<code></p>
+<p><strong>Calcul</strong> :
+</code>`<code>javascript
+const validated = 1247  // Sessions validées
+const total = 1350      // Total sessions (validées + en attente + rejetées)
+const percentage = Math.round((validated / total) * 100)
+// Résultat : 92%
+</code>`<code></p>
+<p><strong>Exemple</strong> :
+</code>`<code>
+Validées : 92%
+</code>`<code></p>
+<p><strong>Interprétation</strong> :
+<li>✅ <strong>> 90%</strong> : Excellent, les chefs valident rapidement</li>
+<li>⚠️ <strong>80-90%</strong> : Acceptable, mais des retards de validation</li>
+<li>❌ <strong>< 80%</strong> : Problème, beaucoup de sessions en attente</li></p>
+<p>---</p>
+<h3>👥 CARTE 4 : Agents actifs</h3>
+<p><strong>Titre</strong> : "Agents actifs"  
+<strong>Icône</strong> : 👥 (users)  
+<strong>Couleur</strong> : Violet (#8b5cf6)</p>
+<p><strong>Définition</strong> :  
+Nombre total d'<strong>agents avec le statut "Actif"</strong> dans la base.</p>
+<p><strong>Source de données</strong> :
+</code>`<code>sql
+SELECT COUNT(*) 
+FROM users 
+WHERE status = 'Actif' 
+  AND role IN ('Agent', 'Chef de Service')
+</code>`<code></p>
+<p><strong>Calcul</strong> :
+<li>Compte UNIQUEMENT les utilisateurs actifs</li>
+<li>Exclut les utilisateurs "Inactif" ou "Suspendu"</li>
+<li>Exclut les rôles admin (Administrateur, Directeur Général, etc.)</li></p>
+<p><strong>Exemple</strong> :
+</code>`<code>
+Agents actifs : 47
+</code>`<code></p>
+<p><strong>Interprétation</strong> :
+<li>C'est un <strong>indicateur fixe</strong> (change rarement)</li>
+<li>Utile pour calculer les <strong>ratios</strong> (ex: heures/agent)</li></p>
+<p>---</p>
+<h2>3. GRAPHIQUE : TENDANCE MENSUELLE</h2>
+<h3>📈 Vue d'ensemble</h3>
+<p><strong>Type</strong> : Graphique en <strong>lignes</strong> (Line Chart)  
+<strong>Titre</strong> : "📈 Tendance Mensuelle"  
+<strong>Bibliothèque</strong> : Chart.js  
+<strong>Canvas ID</strong> : </code>chartTrend<code></p>
+<p><strong>Objectif</strong> :  
+Visualiser l'<strong>évolution quotidienne</strong> des heures travaillées sur les 30 derniers jours.</p>
+<p>---</p>
+<h3>📊 Axes du graphique</h3>
+<p><strong>Axe X (horizontal)</strong> : Dates (30 derniers jours)  
+<strong>Axe Y (vertical)</strong> : Heures travaillées</p>
+<p><strong>Exemple</strong> :
+</code>`<code>
+Heures
+  250h │                               ●
+       │                          ●    
+  200h │                     ●         
+       │                ●              
+  150h │           ●                   
+       │      ●                        
+  100h │ ●                             
+       └─────────────────────────────────► Dates
+         1    5    10   15   20   25   30
+        Avril                        Avril
+</code>`<code></p>
+<p>---</p>
+<h3>📐 Source de données</h3>
+<p><strong>Requête SQL</strong> :
+</code>`<code>sql
+SELECT 
+  DATE(start_time) as date,
+  SUM(duration_minutes) as total_minutes
+FROM work_sessions
+WHERE status = 'Validé'
+  AND start_time >= DATE('now', '-30 days')
+GROUP BY DATE(start_time)
+ORDER BY date
+</code>`<code></p>
+<p><strong>Résultat</strong> :
+</code>`<code>javascript
+[
+  { date: '2026-04-01', total_minutes: 7230 },  // 120h 30m
+  { date: '2026-04-02', total_minutes: 8100 },  // 135h 00m
+  { date: '2026-04-03', total_minutes: 7890 },  // 131h 30m
+  ...
+]
+</code>`<code></p>
+<p>---</p>
+<h3>🎨 Configuration du graphique</h3>
+<p><strong>Couleur de la ligne</strong> : Bleu (#3b82f6)  
+<strong>Points</strong> : Ronds, bleu foncé (#1e3a5f)  
+<strong>Remplissage</strong> : Gradient bleu clair sous la courbe</p>
+<p><strong>Code Chart.js</strong> :
+</code>`<code>javascript
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: dates,  // ['1 Avr', '2 Avr', '3 Avr', ...]
+    datasets: [{
+      label: 'Heures travaillées',
+      data: hours,  // [120.5, 135.0, 131.5, ...]
+      borderColor: '#3b82f6',
+      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+      tension: 0.4  // Courbe lissée
+    }]
+  }
+})
+</code>`<code></p>
+<p>---</p>
+<h3>📊 Interprétation</h3>
+<p><strong>Tendance à la hausse</strong> ⬆️ :
+<li>✅ Productivité en augmentation</li>
+<li>✅ Meilleure discipline de pointage</li>
+<li>✅ Moins d'absences</li></p>
+<p><strong>Tendance à la baisse</strong> ⬇️ :
+<li>❌ Baisse de productivité</li>
+<li>❌ Augmentation des absences</li>
+<li>❌ Problème de pointage</li></p>
+<p><strong>Pic isolé</strong> :
+<li>Peut indiquer un jour de <strong>forte activité</strong> (fin de mois, campagne)</li></p>
+<p><strong>Creux isolé</strong> :
+<li>Peut indiquer un <strong>jour férié</strong> ou <strong>absence collective</strong></li></p>
+<p>---</p>
+<h2>4. GRAPHIQUE : PRODUCTIVITÉ DU JOUR</h2>
+<h3>🥧 Vue d'ensemble</h3>
+<p><strong>Type</strong> : Graphique en <strong>camembert</strong> (Doughnut Chart)  
+<strong>Titre</strong> : "🥧 Productivité du Jour (base 8h/agent)"  
+<strong>Bibliothèque</strong> : Chart.js  
+<strong>Canvas ID</strong> : </code>chartProductivity<code></p>
+<p><strong>Objectif</strong> :  
+Montrer la <strong>répartition du temps aujourd'hui</strong> entre heures validées, en attente, et non pointées.</p>
+<p>---</p>
+<h3>📊 Les 3 segments</h3>
+<p></code>`<code>
+     ┌─────────────────┐
+     │  🟢 Validées    │ 65%
+     ├─────────────────┤
+     │  🟡 En attente  │ 20%
+     ├─────────────────┤
+     │  🔴 Non pointées│ 15%
+     └─────────────────┘
+</code>`<code></p>
+<p>#### 🟢 Segment 1 : Heures VALIDÉES
+<strong>Couleur</strong> : Vert (#10b981)</p>
+<p><strong>Définition</strong> : Heures déjà <strong>validées</strong> par les chefs aujourd'hui</p>
+<p><strong>Calcul</strong> :
+</code>`<code>sql
+SELECT SUM(duration_minutes) 
+FROM work_sessions
+WHERE status = 'Validé'
+  AND DATE(start_time) = DATE('now')
+</code>`<code></p>
+<p>---</p>
+<p>#### 🟡 Segment 2 : Heures EN ATTENTE
+<strong>Couleur</strong> : Orange (#f59e0b)</p>
+<p><strong>Définition</strong> : Heures <strong>pointées mais pas encore validées</strong> aujourd'hui</p>
+<p><strong>Calcul</strong> :
+</code>`<code>sql
+SELECT SUM(duration_minutes) 
+FROM work_sessions
+WHERE status = 'En attente'
+  AND DATE(start_time) = DATE('now')
+</code>`<code></p>
+<p>---</p>
+<p>#### 🔴 Segment 3 : Heures NON POINTÉES
+<strong>Couleur</strong> : Rouge clair (#ef4444)</p>
+<p><strong>Définition</strong> : Heures <strong>théoriques restantes</strong> (capacité - validées - en attente)</p>
+<p><strong>Calcul</strong> :
+</code>`<code>javascript
+// 1. Calculer la capacité totale aujourd'hui
+const agents_actifs = 47
+const heures_par_jour = 8
+const capacité_totale = agents_actifs <em> heures_par_jour </em> 60  // En minutes
+// = 47 × 8 × 60 = 22,560 minutes = 376h</p>
+<p>// 2. Calculer les heures validées et en attente
+const validées = 14700  // 245h (65%)
+const en_attente = 4500  // 75h (20%)</p>
+<p>// 3. Calculer les heures non pointées
+const non_pointées = capacité_totale - validées - en_attente
+// = 22,560 - 14,700 - 4,500 = 3,360 minutes = 56h (15%)
+</code>`<code></p>
+<p>---</p>
+<h3>📐 Calcul des pourcentages</h3>
+<p></code>`<code>javascript
+const total = validées + en_attente + non_pointées
+const pct_validées = Math.round((validées / total) * 100)      // 65%
+const pct_en_attente = Math.round((en_attente / total) * 100)  // 20%
+const pct_non_pointées = Math.round((non_pointées / total) * 100)  // 15%
+</code>`<code></p>
+<p>---</p>
+<h3>📊 Interprétation</h3>
+<p><strong>Bon indicateur</strong> (exemple) :
+<li>✅ <strong>Validées</strong> : 70-80%</li>
+<li>⚠️ <strong>En attente</strong> : 10-20%</li>
+<li>✅ <strong>Non pointées</strong> : 5-10%</li></p>
+<p><strong>Mauvais indicateur</strong> (exemple) :
+<li>❌ <strong>Validées</strong> : 40%</li>
+<li>❌ <strong>En attente</strong> : 30%</li>
+<li>❌ <strong>Non pointées</strong> : 30%</li></p>
+<p><strong>Problèmes possibles</strong> :
+<li><strong>Trop de "En attente"</strong> → Les chefs ne valident pas assez vite</li>
+<li><strong>Trop de "Non pointées"</strong> → Les agents oublient de pointer</li></p>
+<p>---</p>
+<h3>⚠️ Spécificité : Week-end</h3>
+<p><strong>Si aujourd'hui = Samedi ou Dimanche</strong> :</p>
+<p>Le graphique affiche :
+</code>`<code>
+🌙 Week-end - Pas de calcul de productivité
+</code>`<code></p>
+<p><strong>Raison</strong> : La capacité théorique est différente (seuls certains agents travaillent le samedi/dimanche).</p>
+<p>---</p>
+<h2>5. GRAPHIQUE : MÉTHODE 3-3-3 (CAMEMBERT)</h2>
+<h3>🥧 Vue d'ensemble</h3>
+<p><strong>Type</strong> : Graphique en <strong>camembert</strong> (Pie Chart)  
+<strong>Titre</strong> : "🥧 Méthode 3-3-3 — Répartition du temps"  
+<strong>Bibliothèque</strong> : Chart.js  
+<strong>Canvas ID</strong> : </code>chart333M1<code> (mois actuel) et </code>chart333M2<code> (mois précédent si comparaison)</p>
+<p><strong>Objectif</strong> :  
+Visualiser la <strong>répartition du temps</strong> entre les 3 types d'activités (Production, Admin & Reporting, Contrôle).</p>
+<p>---</p>
+<h3>📊 Les 3 segments</h3>
+<p></code>`<code>
+     ┌─────────────────────┐
+     │  🔵 Production      │ 75%
+     ├─────────────────────┤
+     │  🟠 Admin & Reporting│ 15%
+     ├─────────────────────┤
+     │  🟢 Contrôle        │ 10%
+     └─────────────────────┘
+</code>`<code></p>
+<p>#### 🔵 Segment 1 : PRODUCTION
+<strong>Couleur</strong> : Bleu foncé (#1e3a5f)</p>
+<p><strong>Définition</strong> : Temps passé sur des <strong>tâches de production</strong> (cœur de métier)</p>
+<p><strong>Calcul</strong> :
+</code>`<code>sql
+SELECT SUM(ws.duration_minutes) as total_minutes
+FROM work_sessions ws
+LEFT JOIN tasks t ON ws.task_id = t.id
+WHERE ws.status = 'Validé'
+  AND strftime('%Y-%m', ws.start_time) = '2026-04'
+  AND COALESCE(t.task_type, 'Production') = 'Production'
+</code>`<code></p>
+<p><strong>Exemples de tâches Production</strong> :
+<li>Traitement de dossiers clients</li>
+<li>Octroi de crédits</li>
+<li>Gestion de comptes</li>
+<li>Vente de produits bancaires</li></p>
+<p>---</p>
+<p>#### 🟠 Segment 2 : ADMINISTRATION & REPORTING
+<strong>Couleur</strong> : Orange (#f59e0b)</p>
+<p><strong>Définition</strong> : Temps passé sur des <strong>tâches administratives</strong></p>
+<p><strong>Calcul</strong> :
+</code>`<code>sql
+SELECT SUM(ws.duration_minutes) as total_minutes
+FROM work_sessions ws
+LEFT JOIN tasks t ON ws.task_id = t.id
+WHERE ws.status = 'Validé'
+  AND strftime('%Y-%m', ws.start_time) = '2026-04'
+  AND t.task_type = 'Administration & Reporting'
+</code>`<code></p>
+<p><strong>Exemples de tâches Admin & Reporting</strong> :
+<li>Rédaction de rapports</li>
+<li>Réunions administratives</li>
+<li>Saisie de données</li>
+<li>Traitement de courriers</li>
+<li>Classement de documents</li></p>
+<p>---</p>
+<p>#### 🟢 Segment 3 : CONTRÔLE
+<strong>Couleur</strong> : Vert (#10b981)</p>
+<p><strong>Définition</strong> : Temps passé sur des <strong>tâches de contrôle</strong></p>
+<p><strong>Calcul</strong> :
+</code>`<code>sql
+SELECT SUM(ws.duration_minutes) as total_minutes
+FROM work_sessions ws
+LEFT JOIN tasks t ON ws.task_id = t.id
+WHERE ws.status = 'Validé'
+  AND strftime('%Y-%m', ws.start_time) = '2026-04'
+  AND t.task_type = 'Contrôle'
+</code>`<code></p>
+<p><strong>Exemples de tâches Contrôle</strong> :
+<li>Vérification de conformité</li>
+<li>Audit interne</li>
+<li>Contrôle qualité</li>
+<li>Validation de dossiers</li>
+<li>Revue de processus</li></p>
+<p>---</p>
+<h3>📐 Calcul des pourcentages</h3>
+<p></code>`<code>javascript
+const production = 450000     // 7,500h = 75%
+const admin = 90000          // 1,500h = 15%
+const controle = 60000       // 1,000h = 10%</p>
+<p>const total = production + admin + controle  // 600,000 minutes = 10,000h</p>
+<p>const pct_production = Math.round((production / total) * 100)  // 75%
+const pct_admin = Math.round((admin / total) * 100)           // 15%
+const pct_controle = Math.round((controle / total) * 100)     // 10%
+</code>`<code></p>
+<p>---</p>
+<h3>📊 Interprétation (Règle 3-3-3)</h3>
+<p><strong>Objectif théorique</strong> (règle 3-3-3) :
+<li>Production : <strong>33%</strong></li>
+<li>Admin & Reporting : <strong>33%</strong></li>
+<li>Contrôle : <strong>33%</strong></li></p>
+<p><strong>Objectif réaliste (banque)</strong> :
+<li>✅ Production : <strong>60-70%</strong></li>
+<li>✅ Admin & Reporting : <strong>15-25%</strong></li>
+<li>✅ Contrôle : <strong>10-15%</strong></li></p>
+<p><strong>Bon indicateur</strong> :
+<li>✅ <strong>Production</strong> : 70% → La majorité du temps est consacrée au cœur de métier</li>
+<li>✅ <strong>Admin</strong> : 20% → Temps admin maîtrisé</li>
+<li>✅ <strong>Contrôle</strong> : 10% → Conformité respectée</li></p>
+<p><strong>Mauvais indicateur</strong> :
+<li>❌ <strong>Production</strong> : 40% → Trop peu de temps sur le cœur de métier</li>
+<li>❌ <strong>Admin</strong> : 45% → Trop de bureaucratie</li>
+<li>❌ <strong>Contrôle</strong> : 15% → Temps de contrôle acceptable</li></p>
+<p>---</p>
+<h3>🔄 Comparaison mois-1 vs mois-2</h3>
+<p><strong>Si un 2ème mois est sélectionné</strong>, le dashboard affiche <strong>2 camemberts côte à côte</strong> :</p>
+<p></code>`<code>
+┌──────────────────┐  ┌──────────────────┐
+│  Avril 2026      │  │  Mars 2026       │
+│  (ce mois)       │  │  (mois précédent)│
+│                  │  │                  │
+│  🔵 Production   │  │  🔵 Production   │
+│     75%          │  │     68%          │
+│  🟠 Admin 15%    │  │  🟠 Admin 22%    │
+│  🟢 Contrôle 10% │  │  🟢 Contrôle 10% │
+└──────────────────┘  └──────────────────┘
+</code>`<code></p>
+<p><strong>Analyse</strong> :
+<li>Production : <strong>75% vs 68%</strong> → ✅ <strong>Amélioration de +7%</strong></li>
+<li>Admin : <strong>15% vs 22%</strong> → ✅ <strong>Réduction de -7%</strong></li>
+<li>Contrôle : <strong>10% vs 10%</strong> → Stable</li></p>
+<p>---</p>
+<h2>6. GRAPHIQUE : COMPARAISON PAR DÉPARTEMENT (BARRES)</h2>
+<h3>📊 Vue d'ensemble</h3>
+<p><strong>Type</strong> : Graphique en <strong>barres empilées</strong> (Stacked Bar Chart)  
+<strong>Titre</strong> : "📊 Comparaison par Département — Productif vs Non-productif"  
+<strong>Bibliothèque</strong> : Chart.js  
+<strong>Canvas ID</strong> : </code>chartDeptBar<code></p>
+<p><strong>Objectif</strong> :  
+Comparer les départements en visualisant le <strong>temps productif</strong> (vert) vs <strong>temps non-productif</strong> (rouge).</p>
+<p>---</p>
+<h3>📊 Structure du graphique</h3>
+<p><strong>Axe X</strong> : Départements (Direction Commerciale, Direction Conformité, etc.)  
+<strong>Axe Y</strong> : Heures</p>
+<p><strong>2 barres empilées par département</strong> :
+<li>🟢 <strong>Barre verte</strong> (en bas) : Heures productives (Production + Admin + Contrôle)</li>
+<li>🔴 <strong>Barre rouge</strong> (en haut) : Heures non-productives (Capacité - Heures productives)</li></p>
+<p><strong>Exemple visuel</strong> :
+</code>`<code>
+Heures
+  600h │
+       │         ┌───────┐
+  500h │         │  🔴   │  Direction
+       │         │ 441h  │  Commerciale
+  400h │         │       │  
+       │         ├───────┤
+  300h │         │       │
+       │         │  🟢   │
+  200h │         │ 119h  │
+       │         │       │
+  100h │         └───────┘
+       └───────────────────────► Départements
+           Dir. Com.
+</code>`<code></p>
+<p>---</p>
+<h3>📐 Source de données</h3>
+<p><strong>Requête SQL (par département)</strong> :
+</code>`<code>sql
+SELECT 
+  d.name as dept_name,
+  COUNT(DISTINCT u.id) as agent_count,
+  COALESCE(t.task_type, 'Production') as type_333,
+  SUM(ws.duration_minutes) as total_minutes
+FROM work_sessions ws
+LEFT JOIN tasks t ON ws.task_id = t.id
+LEFT JOIN departments d ON ws.department_id = d.id
+LEFT JOIN users u ON ws.user_id = u.id
+WHERE ws.status = 'Validé'
+  AND strftime('%Y-%m', ws.start_time) = '2026-04'
+GROUP BY d.id, d.name, COALESCE(t.task_type, 'Production')
+ORDER BY d.name
+</code>`<code></p>
+<p><strong>Transformation des données</strong> :
+</code>`<code>javascript
+// Résultat SQL (exemple pour Direction Commerciale)
+[
+  { dept_name: 'Direction Commerciale', type_333: 'Production', total_minutes: 5370 },
+  { dept_name: 'Direction Commerciale', type_333: 'Administration & Reporting', total_minutes: 1110 },
+  { dept_name: 'Direction Commerciale', type_333: 'Contrôle', total_minutes: 630 }
+]</p>
+<p>// Calcul des heures productives
+const production = 5370 / 60          // 89.5h
+const admin = 1110 / 60               // 18.5h
+const controle = 630 / 60             // 10.5h
+const total_productif = production + admin + controle  // 118.5h</p>
+<p>// Calcul des heures non-productives
+const capacité = 560h  // 3 agents × 22 jours × 8h (ou avec samedi)
+const non_productif = capacité - total_productif  // 441.5h</p>
+<p>// Données pour Chart.js
+{
+  labels: ['Direction Commerciale', 'Direction Conformité', ...],
+  datasets: [
+    {
+      label: 'Heures productives',
+      data: [118.5, 98.2, ...],
+      backgroundColor: '#10b981'  // Vert
+    },
+    {
+      label: 'Heures non-productives',
+      data: [441.5, 301.8, ...],
+      backgroundColor: '#ef444480'  // Rouge transparent
+    }
+  ]
+}
+</code>`<code></p>
+<p>---</p>
+<h3>📊 Interprétation</h3>
+<p><strong>Bon département</strong> :
+<li>🟢 <strong>Barre verte grande</strong> (> 70% de la capacité)</li>
+<li>🔴 <strong>Barre rouge petite</strong> (< 30% de la capacité)</li></p>
+<p><strong>Mauvais département</strong> :
+<li>🟢 <strong>Barre verte petite</strong> (< 50% de la capacité)</li>
+<li>🔴 <strong>Barre rouge grande</strong> (> 50% de la capacité)</li></p>
+<p><strong>Exemple d'analyse</strong> :</p>
+<tr><td>Département</td><td>Capacité</td><td>Productif</td><td>Non-productif</td><td>Taux</td></tr>
+<tr><td>-------------</td><td>----------</td><td>-----------</td><td>---------------</td><td>------</td></tr>
+<tr><td>Direction A</td><td>560h</td><td>400h</td><td>160h</td><td><strong>71%</strong> ✅</td></tr>
+<tr><td>Direction B</td><td>440h</td><td>200h</td><td>240h</td><td><strong>45%</strong> ❌</td></tr>
+<p><strong>Direction A</strong> : Bon taux d'utilisation (71%)  
+<strong>Direction B</strong> : Mauvais taux d'utilisation (45%) → Investiguer</p>
+<p>---</p>
+<h3>🔄 Comparaison mois-1 vs mois-2</h3>
+<p><strong>Si un 2ème mois est sélectionné</strong>, chaque département a <strong>2 paires de barres</strong> :</p>
+<p></code>`<code>
+    Direction Commerciale
+    ┌────┬────┐
+    │🟢🔴│🟢🔴│
+    └────┴────┘
+    Avr  Mars
+</code>`<code></p>
+<p>---</p>
+<h2>7. TABLEAU : COMPARAISON PAR DÉPARTEMENT</h2>
+<h3>📊 Vue d'ensemble</h3>
+<p><strong>Type</strong> : Tableau HTML  
+<strong>Titre</strong> : (inclus dans le graphique ci-dessus)  
+<strong>Position</strong> : Juste en dessous du graphique barres</p>
+<p><strong>Objectif</strong> :  
+Afficher les <strong>chiffres précis</strong> pour chaque département avec les 7 colonnes.</p>
+<p>---</p>
+<h3>📐 Les 7 colonnes</h3>
+<tr><td>#</td><td>Colonne</td><td>Largeur</td><td>Description</td></tr>
+<tr><td>---</td><td>---------</td><td>---------</td><td>-------------</td></tr>
+<tr><td>1</td><td>DÉPARTEMENT</td><td>Auto</td><td>Nom du département</td></tr>
+<tr><td>2</td><td>AGENTS</td><td>80px</td><td>Nombre d'agents actifs</td></tr>
+<tr><td>3</td><td>PRODUCTION</td><td>100px</td><td>Heures de production</td></tr>
+<tr><td>4</td><td>ADMIN & REPORTING</td><td>120px</td><td>Heures admin (avec % du total)</td></tr>
+<tr><td>5</td><td>CONTRÔLE</td><td>100px</td><td>Heures contrôle</td></tr>
+<tr><td>6</td><td>NON PRODUCTIF</td><td>120px</td><td>Heures non travaillées (avec % cap.)</td></tr>
+<tr><td>7</td><td>CAPACITÉ</td><td>100px</td><td>Capacité théorique</td></tr>
+<p>---</p>
+<h3>🔢 Exemple de ligne</h3>
+<p></code>`<code>
+Direction Commerciale <tr><td>3</td><td>89h 30m</td><td>18h 30m (23% du total)</td><td>10h 30m</td><td>441h 30m (79% cap.)</td></tr> 560h 00m
+</code>`<code></p>
+<p><strong>Explication détaillée</strong> : Voir document </code>EXPLICATION_TABLEAU_DEPARTEMENTS.md<code></p>
+<p>---</p>
+<h3>📊 Calculs</h3>
+<p>#### Colonne 4 : "% du total"
+</code>`<code>javascript
+const admin_minutes = 1110
+const controle_minutes = 630
+const total_productif = 5370 + 1110 + 630  // 7110 minutes
+const pct = Math.round((admin_minutes + controle_minutes) / total_productif * 100)
+// = 24%
+</code>`<code></p>
+<p>#### Colonne 6 : "% cap."
+</code>`<code>javascript
+const capacité_minutes = 33600
+const temps_travaillé = 7110
+const temps_non_productif = capacité_minutes - temps_travaillé  // 26490
+const pct = Math.round(temps_non_productif / capacité_minutes * 100)
+// = 79%
+</code>`<code></p>
+<p>---</p>
+<h2>8. GRAPHIQUE : COMPARAISON PAR AGENT (BARRES)</h2>
+<h3>📊 Vue d'ensemble</h3>
+<p><strong>Type</strong> : Graphique en <strong>barres horizontales empilées</strong>  
+<strong>Titre</strong> : "👥 Comparaison par Agent — Productif vs Non-productif"  
+<strong>Bibliothèque</strong> : Chart.js  
+<strong>Canvas ID</strong> : </code>chartAgentBar<code></p>
+<p><strong>Objectif</strong> :  
+Comparer les agents <strong>individuellement</strong> en visualisant leur temps productif vs non-productif.</p>
+<p>---</p>
+<h3>📊 Structure du graphique</h3>
+<p><strong>Axe Y</strong> : Noms des agents (Nom Prénom)  
+<strong>Axe X</strong> : Heures</p>
+<p><strong>2 barres empilées par agent</strong> :
+<li>🟢 <strong>Barre verte</strong> (à gauche) : Heures productives</li>
+<li>🔴 <strong>Barre rouge</strong> (à droite) : Heures non-productives</li></p>
+<p><strong>Exemple visuel</strong> :
+</code>`<code>
+Agent 1 │████████████████░░░░│ 120h / 176h (68%)
+Agent 2 │████████████░░░░░░░░│  96h / 176h (55%)
+Agent 3 │███████████████████░│ 152h / 176h (86%)
+        └────────────────────────────────► Heures
+        0   50  100  150  200
+</code>`<code></p>
+<p>---</p>
+<h3>📐 Source de données</h3>
+<p><strong>Requête SQL (par agent)</strong> :
+</code>`<code>sql
+SELECT 
+  u.first_name <tr><td>' '</td></tr> u.last_name as agent_name,
+  u.id as agent_id,
+  d.name as dept_name,
+  u.works_saturday,
+  COALESCE(t.task_type, 'Production') as type_333,
+  SUM(ws.duration_minutes) as total_minutes
+FROM work_sessions ws
+LEFT JOIN tasks t ON ws.task_id = t.id
+LEFT JOIN users u ON ws.user_id = u.id
+LEFT JOIN departments d ON u.department_id = d.id
+WHERE ws.status = 'Validé'
+  AND strftime('%Y-%m', ws.start_time) = '2026-04'
+GROUP BY u.id, u.first_name, u.last_name, d.name, u.works_saturday, type_333
+ORDER BY d.name, u.last_name
+</code>`<code></p>
+<p>---</p>
+<h3>📐 Calcul de la capacité individuelle</h3>
+<p><strong>Agent qui NE travaille PAS le samedi</strong> :
+</code>`<code>javascript
+const jours_ouvrés = 22  // Lundi-Vendredi
+const capacité = jours_ouvrés <em> 8 </em> 60  // 10,560 minutes = 176h
+</code>`<code></p>
+<p><strong>Agent qui travaille le samedi</strong> :
+</code>`<code>javascript
+const jours_ouvrés = 26  // Lundi-Samedi
+const capacité = jours_ouvrés <em> 8 </em> 60  // 12,480 minutes = 208h
+</code>`<code></p>
+<p>---</p>
+<h3>📊 Interprétation</h3>
+<p><strong>Bon agent</strong> :
+<li>✅ <strong>Taux d'utilisation > 80%</strong> (ex: 140h / 176h = 80%)</li>
+<li>Barre verte remplit presque toute la barre</li></p>
+<p><strong>Mauvais agent</strong> :
+<li>❌ <strong>Taux d'utilisation < 60%</strong> (ex: 100h / 176h = 57%)</li>
+<li>Beaucoup de rouge (temps non travaillé)</li></p>
+<p><strong>Causes possibles d'un faible taux</strong> :
+<li>Absences (congés, maladie)</li>
+<li>Manque de pointage (oublis)</li>
+<li>Sous-charge de travail</li>
+<li>Sessions non validées</li></p>
+<p>---</p>
+<h2>9. TABLEAU : PRODUCTIVITÉ PAR AGENT AUJOURD'HUI</h2>
+<h3>📊 Vue d'ensemble</h3>
+<p><strong>Type</strong> : Tableau HTML  
+<strong>Titre</strong> : "⏱️ Productivité par Agent — Aujourd'hui (base 8h)"  
+<strong>Position</strong> : Rangée 6</p>
+<p><strong>Objectif</strong> :  
+Afficher la <strong>progression en temps réel</strong> de chaque agent aujourd'hui.</p>
+<p>---</p>
+<h3>📐 Les 7 colonnes</h3>
+<tr><td>#</td><td>Colonne</td><td>Description</td></tr>
+<tr><td>---</td><td>---------</td><td>-------------</td></tr>
+<tr><td>1</td><td>AGENT</td><td>Nom et prénom</td></tr>
+<tr><td>2</td><td>DÉPARTEMENT</td><td>Département d'affectation</td></tr>
+<tr><td>3</td><td>✅ VALIDÉES</td><td>Heures déjà validées aujourd'hui (vert)</td></tr>
+<tr><td>4</td><td>⏳ EN ATTENTE</td><td>Heures pointées mais non validées (orange)</td></tr>
+<tr><td>5</td><td>❌ NON POINTÉES</td><td>Heures restantes à pointer (rouge)</td></tr>
+<tr><td>6</td><td>PROGRESSION</td><td>Barre de progression visuelle</td></tr>
+<tr><td>7</td><td>STATUT</td><td>Badge coloré (À jour / En retard / Complet)</td></tr>
+<p>---</p>
+<h3>🔢 Exemple de ligne</h3>
+<p></code>`<code>
+Jean DUPONT <tr><td>Direction Commerciale</td><td>5h 30m</td><td>1h 15m</td><td>1h 15m</td><td>[████████░░] 84%</td></tr> ✅ À jour
+</code>`<code></p>
+<p>---</p>
+<h3>📐 Calculs</h3>
+<p>#### Colonne 3 : VALIDÉES
+</code>`<code>sql
+SELECT SUM(duration_minutes)
+FROM work_sessions
+WHERE user_id = 12
+  AND status = 'Validé'
+  AND DATE(start_time) = DATE('now')
+</code>`<code></p>
+<p>#### Colonne 4 : EN ATTENTE
+</code>`<code>sql
+SELECT SUM(duration_minutes)
+FROM work_sessions
+WHERE user_id = 12
+  AND status = 'En attente'
+  AND DATE(start_time) = DATE('now')
+</code>`<code></p>
+<p>#### Colonne 5 : NON POINTÉES
+</code>`<code>javascript
+const capacité_jour = 8 * 60  // 480 minutes
+const validées = 330          // 5h 30m
+const en_attente = 75         // 1h 15m
+const non_pointées = capacité_jour - validées - en_attente
+// = 480 - 330 - 75 = 75 minutes = 1h 15m
+</code>`<code></p>
+<p>#### Colonne 6 : PROGRESSION
+</code>`<code>javascript
+const pct = Math.round((validées + en_attente) / capacité_jour * 100)
+// = (330 + 75) / 480 × 100 = 84%
+</code>`<code></p>
+<p>#### Colonne 7 : STATUT</p>
+<p><strong>Badge vert "✅ À jour"</strong> : </code>pct >= 80%<code>  
+<strong>Badge orange "⏳ En cours"</strong> : </code>50% <= pct < 80%<code>  
+<strong>Badge rouge "❌ En retard"</strong> : </code>pct < 50%<code>  
+<strong>Badge bleu "🎯 Complet"</strong> : </code>pct >= 100%<code></p>
+<p>---</p>
+<h3>⚠️ Spécificité : Week-end</h3>
+<p><strong>Si aujourd'hui = Week-end</strong> :
+</code>`<code>
+🌙 Week-end - Aucun calcul de productivité
+</code>`<code></p>
+<p>---</p>
+<h2>10. TABLEAU : OBJECTIFS BANQUE (3-3-3)</h2>
+<h3>📊 Vue d'ensemble</h3>
+<p><strong>Type</strong> : Tableau HTML  
+<strong>Titre</strong> : "🎯 Objectifs Banque — Méthode 3-3-3 (Cible vs Réalisé)"  
+<strong>Position</strong> : Rangée 7</p>
+<p><strong>Objectif</strong> :  
+Comparer les <strong>objectifs fixés</strong> (cibles) avec les <strong>résultats réels</strong> (réalisés) pour la règle 3-3-3.</p>
+<p>---</p>
+<h3>📐 Les 5 colonnes</h3>
+<tr><td>#</td><td>Colonne</td><td>Description</td></tr>
+<tr><td>---</td><td>---------</td><td>-------------</td></tr>
+<tr><td>1</td><td>CATÉGORIE</td><td>Type d'activité (Production / Admin / Contrôle)</td></tr>
+<tr><td>2</td><td>OBJECTIF (%)</td><td>Pourcentage cible fixé par la banque</td></tr>
+<tr><td>3</td><td>RÉALISÉ (%)</td><td>Pourcentage réel ce mois-ci</td></tr>
+<tr><td>4</td><td>ÉCART</td><td>Différence (Réalisé - Objectif)</td></tr>
+<tr><td>5</td><td>STATUT</td><td>✅ Atteint / ⚠️ Proche / ❌ Non atteint</td></tr>
+<p>---</p>
+<h3>🔢 Exemple</h3>
+<tr><td>CATÉGORIE</td><td>OBJECTIF</td><td>RÉALISÉ</td><td>ÉCART</td><td>STATUT</td></tr>
+<tr><td>-----------</td><td>----------</td><td>---------</td><td>-------</td><td>--------</td></tr>
+<tr><td>Production</td><td>60%</td><td>75%</td><td><strong>+15%</strong></td><td>✅ Atteint</td></tr>
+<tr><td>Admin & Reporting</td><td>25%</td><td>15%</td><td><strong>-10%</strong></td><td>✅ Atteint</td></tr>
+<tr><td>Contrôle</td><td>15%</td><td>10%</td><td><strong>-5%</strong></td><td>⚠️ Proche</td></tr>
+<p>---</p>
+<h3>📐 Source des objectifs</h3>
+<p><strong>Objectifs (configurables dans la table </code>strategic_objectives<code>)</strong> :
+</code>`<code>sql
+SELECT 
+  name,
+  target_percentage
+FROM strategic_objectives
+WHERE category = '3-3-3'
+  AND status = 'Actif'
+</code>`<code></p>
+<p><strong>Exemple de données</strong> :
+</code>`<code>javascript
+[
+  { name: 'Production', target_percentage: 60 },
+  { name: 'Administration & Reporting', target_percentage: 25 },
+  { name: 'Contrôle', target_percentage: 15 }
+]
+</code>`<code></p>
+<p>---</p>
+<h3>📐 Calcul de l'écart</h3>
+<p></code>`<code>javascript
+const objectif = 60  // Production doit être à 60%
+const réalisé = 75   // Production est à 75%
+const écart = réalisé - objectif  // +15%</p>
+<p>// Statut
+if (écart >= 0) {
+  statut = '✅ Atteint'
+} else if (écart >= -5) {
+  statut = '⚠️ Proche'
+} else {
+  statut = '❌ Non atteint'
+}
+</code>`<code></p>
+<p>---</p>
+<h3>📊 Interprétation</h3>
+<p><strong>Production</strong> :
+<li>✅ Écart <strong>positif</strong> : Excellent, on dépasse l'objectif</li>
+<li>❌ Écart <strong>négatif</strong> : Problème, pas assez de production</li></p>
+<p><strong>Admin & Reporting</strong> :
+<li>✅ Écart <strong>négatif</strong> : Excellent, moins de temps admin que prévu</li>
+<li>❌ Écart <strong>positif</strong> : Problème, trop de temps admin</li></p>
+<p><strong>Contrôle</strong> :
+<li>✅ Écart <strong>proche de 0</strong> : Bon équilibre</li>
+<li>❌ Écart <strong>très négatif</strong> : Risque de non-conformité</li></p>
+<p>---</p>
+<h2>11. SOURCES DE DONNÉES ET CALCULS SQL</h2>
+<h3>🗄️ Tables principales</h3>
+<p>#### 📋 Table </code>work_sessions<code>
+<strong>Rôle</strong> : Stocke chaque <strong>session de travail</strong> pointée par un agent</p>
+<p><strong>Colonnes principales</strong> :
+<li></code>id<code> : Identifiant unique</li>
+<li></code>user_id<code> : Agent qui a pointé</li>
+<li></code>task_id<code> : Tâche effectuée</li>
+<li></code>start_time<code> : Début de la session</li>
+<li></code>end_time<code> : Fin de la session</li>
+<li></code>duration_minutes<code> : Durée en minutes</li>
+<li></code>status<code> : Validé / En attente / Rejeté</li>
+<li></code>department_id<code> : Département concerné</li></p>
+<p><strong>Exemple de ligne</strong> :
+</code>`<code>sql
+id: 1247
+user_id: 12
+task_id: 45
+start_time: '2026-04-08 09:00:00'
+end_time: '2026-04-08 12:30:00'
+duration_minutes: 210  -- 3h 30m
+status: 'Validé'
+department_id: 3
+</code>`<code></p>
+<p>---</p>
+<p>#### 📋 Table </code>tasks<code>
+<strong>Rôle</strong> : Définit les <strong>tâches</strong> que les agents peuvent pointer</p>
+<p><strong>Colonnes principales</strong> :
+<li></code>id<code> : Identifiant unique</li>
+<li></code>name<code> : Nom de la tâche</li>
+<li></code>task_type<code> : Production / Administration & Reporting / Contrôle</li>
+<li></code>department_id<code> : Département concerné</li>
+<li></code>status<code> : Actif / Inactif</li></p>
+<p><strong>Exemple de ligne</strong> :
+</code>`<code>sql
+id: 45
+name: 'Traitement dossier crédit'
+task_type: 'Production'
+department_id: 3
+status: 'Actif'
+</code>`<code></p>
+<p>---</p>
+<p>#### 📋 Table </code>users<code>
+<strong>Rôle</strong> : Stocke les <strong>utilisateurs</strong> (agents, chefs, admin)</p>
+<p><strong>Colonnes principales</strong> :
+<li></code>id<code> : Identifiant unique</li>
+<li></code>first_name<code> : Prénom</li>
+<li></code>last_name<code> : Nom</li>
+<li></code>email<code> : Email</li>
+<li></code>role<code> : Administrateur / Agent / Chef de Service / etc.</li>
+<li></code>department_id<code> : Département d'affectation</li>
+<li></code>works_saturday<code> : 1 si travaille le samedi, 0 sinon</li>
+<li></code>status<code> : Actif / Inactif</li></p>
+<p><strong>Exemple de ligne</strong> :
+</code>`<code>sql
+id: 12
+first_name: 'Jean'
+last_name: 'DUPONT'
+email: 'jean.dupont@bgfibank.com'
+role: 'Agent'
+department_id: 3
+works_saturday: 0
+status: 'Actif'
+</code>`<code></p>
+<p>---</p>
+<p>#### 📋 Table </code>departments<code>
+<strong>Rôle</strong> : Définit les <strong>départements</strong></p>
+<p><strong>Colonnes principales</strong> :
+<li></code>id<code> : Identifiant unique</li>
+<li></code>name<code> : Nom du département</li>
+<li></code>status<code> : Actif / Inactif</li></p>
+<p><strong>Exemple de ligne</strong> :
+</code>`<code>sql
+id: 3
+name: 'Direction Commerciale'
+status: 'Actif'
+</code>`<code></p>
+<p>---</p>
+<h3>🔍 Requêtes SQL principales</h3>
+<p>#### Requête 1 : Heures totales du mois
+</code>`<code>sql
+SELECT 
+  SUM(duration_minutes) as total_minutes
+FROM work_sessions
+WHERE status = 'Validé'
+  AND strftime('%Y-%m', start_time) = '2026-04'
+</code>`<code></p>
+<p><strong>Résultat</strong> :
+</code>`<code>
+total_minutes: 125,430  -- 2,090h 30m
+</code>`<code></p>
+<p>---</p>
+<p>#### Requête 2 : Ratio 3-3-3 (global)
+</code>`<code>sql
+SELECT 
+  COALESCE(t.task_type, 'Production') as type_333,
+  SUM(ws.duration_minutes) as total_minutes
+FROM work_sessions ws
+LEFT JOIN tasks t ON ws.task_id = t.id
+WHERE ws.status = 'Validé'
+  AND strftime('%Y-%m', ws.start_time) = '2026-04'
+GROUP BY COALESCE(t.task_type, 'Production')
+</code>`<code></p>
+<p><strong>Résultat</strong> :
+</code>`<code>javascript
+[
+  { type_333: 'Production', total_minutes: 450000 },           // 7,500h
+  { type_333: 'Administration & Reporting', total_minutes: 90000 },  // 1,500h
+  { type_333: 'Contrôle', total_minutes: 60000 }              // 1,000h
+]
+</code>`<code></p>
+<p>---</p>
+<p>#### Requête 3 : Ratio 3-3-3 par département
+</code>`<code>sql
+SELECT 
+  d.name as dept_name,
+  d.id as dept_id,
+  COUNT(DISTINCT u.id) as agent_count,
+  COALESCE(t.task_type, 'Production') as type_333,
+  SUM(ws.duration_minutes) as total_minutes
+FROM work_sessions ws
+LEFT JOIN tasks t ON ws.task_id = t.id
+LEFT JOIN departments d ON ws.department_id = d.id
+LEFT JOIN users u ON ws.user_id = u.id
+WHERE ws.status = 'Validé'
+  AND strftime('%Y-%m', ws.start_time) = '2026-04'
+GROUP BY d.id, d.name, COALESCE(t.task_type, 'Production')
+ORDER BY d.name
+</code>`<code></p>
+<p><strong>Résultat</strong> :
+</code>`<code>javascript
+[
+  { dept_name: 'Direction Commerciale', agent_count: 3, type_333: 'Production', total_minutes: 5370 },
+  { dept_name: 'Direction Commerciale', agent_count: 3, type_333: 'Administration & Reporting', total_minutes: 1110 },
+  { dept_name: 'Direction Commerciale', agent_count: 3, type_333: 'Contrôle', total_minutes: 630 },
+  ...
+]
+</code>`<code></p>
+<p>---</p>
+<p>#### Requête 4 : Capacité par département
+</code>`<code>sql
+SELECT 
+  d.id as dept_id,
+  d.name as dept_name,
+  COUNT(u.id) as agent_count,
+  SUM(CASE WHEN u.works_saturday = 1 THEN 1 ELSE 0 END) as agents_with_saturday,
+  SUM(CASE WHEN u.works_saturday = 0 THEN 1 ELSE 0 END) as agents_without_saturday
+FROM departments d
+LEFT JOIN users u ON u.department_id = d.id 
+  AND u.status = 'Actif' 
+  AND u.role IN ('Agent', 'Chef de Service')
+WHERE d.status = 'Actif'
+GROUP BY d.id, d.name
+</code>`<code></p>
+<p><strong>Résultat</strong> :
+</code>`<code>javascript
+[
+  { 
+    dept_name: 'Direction Commerciale', 
+    agent_count: 3,
+    agents_with_saturday: 1,
+    agents_without_saturday: 2
+  }
+]
+</code>`<code></p>
+<p><strong>Calcul de la capacité</strong> :
+</code>`<code>javascript
+const jours_std = 22    // Lundi-Vendredi
+const jours_sat = 26    // Lundi-Samedi
+const capacité = (2 <em> jours_std </em> 480) + (1 <em> jours_sat </em> 480)
+// = (2 × 22 × 480) + (1 × 26 × 480)
+// = 21,120 + 12,480
+// = 33,600 minutes = 560h
+</code>`<code></p>
+<p>---</p>
+<h2>12. GLOSSAIRE DES TERMES</h2>
+<h3>📚 Termes techniques</h3>
+<p><strong>Capacité théorique</strong> :  
+Nombre d'heures <strong>théoriquement disponibles</strong> pour travailler (agents × jours ouvrés × 8h).</p>
+<p><strong>Heures productives</strong> :  
+Heures <strong>effectivement travaillées</strong> (validées) = Production + Admin + Contrôle.</p>
+<p><strong>Heures non-productives</strong> :  
+Heures <strong>NON travaillées</strong> = Capacité - Heures productives.</p>
+<p><strong>Taux d'utilisation</strong> :  
+Pourcentage de la capacité utilisée = (Heures productives / Capacité) × 100.</p>
+<p><strong>Taux de validation</strong> :  
+Pourcentage de sessions validées = (Sessions validées / Total sessions) × 100.</p>
+<p><strong>Règle 3-3-3</strong> :  
+Principe de répartition du temps en 3 catégories : Production, Admin & Reporting, Contrôle.</p>
+<p><strong>Session de travail</strong> :  
+Période de temps pointée par un agent sur une tâche (avec début, fin, durée).</p>
+<p><strong>Pointage</strong> :  
+Action d'enregistrer une session de travail (start/stop).</p>
+<p><strong>Validation</strong> :  
+Action du chef de service pour <strong>approuver</strong> une session pointée.</p>
+<p><strong>Week-end</strong> :  
+Samedi et dimanche (certains agents travaillent le samedi dans les banques).</p>
+<p>---</p>
+<h3>📊 Termes métier bancaire</h3>
+<p><strong>Production</strong> :  
+Activités <strong>cœur de métier</strong> de la banque (octroi crédits, gestion comptes, vente produits).</p>
+<p><strong>Administration & Reporting</strong> :  
+Tâches <strong>administratives</strong> (rapports, réunions, saisie, classement).</p>
+<p><strong>Contrôle</strong> :  
+Activités de <strong>vérification et conformité</strong> (audit, contrôle qualité, validation).</p>
+<p><strong>Conformité</strong> :  
+Respect des <strong>règles et régulations</strong> bancaires (lois, procédures internes).</p>
+<p><strong>Objectif stratégique</strong> :  
+Cible fixée par la direction (ex: Production doit être à 60%).</p>
+<p>---</p>
+<h2>📝 NOTES IMPORTANTES</h2>
+<h3>⚠️ Limites et avertissements</h3>
+<p>1. <strong>Données temps réel</strong> : Le dashboard se rafraîchit toutes les 60 secondes, mais il peut y avoir un léger décalage.</p>
+<p>2. <strong>Week-ends</strong> : Les calculs de productivité du jour ne fonctionnent pas les week-ends (capacité théorique différente).</p>
+<p>3. <strong>Jours fériés</strong> : Non pris en compte automatiquement, peuvent fausser les calculs de capacité.</p>
+<p>4. <strong>Agents inactifs</strong> : Exclus des calculs (seuls les agents "Actifs" sont comptés).</p>
+<p>5. <strong>Sessions en attente</strong> : Ne comptent PAS dans les heures validées (seulement dans "En attente").</p>
+<p>---</p>
+<h3>🔧 Maintenance</h3>
+<p><strong>Fréquence de mise à jour</strong> :
+<li>KPI : Temps réel (rafraîchissement auto 60s)</li>
+<li>Graphiques : Temps réel (rafraîchissement auto 60s)</li>
+<li>Tableaux : Temps réel (rafraîchissement auto 60s)</li></p>
+<p><strong>Cache</strong> :
+<li>Navigateur : Vider le cache si problème d'affichage</li>
+<li>Version : Utilise un paramètre </code>?v=timestamp<code> pour forcer le rechargement</li></p>
+<p>---</p>
+<h2>✅ CHECKLIST POUR EXPLIQUER LE DASHBOARD</h2>
+<h3>Présentation générale (5 min)</h3>
+<li>[ ] Expliquer l'objectif : suivre la productivité en temps réel</li>
+<li>[ ] Montrer les 7 rangées principales</li>
+<li>[ ] Expliquer le rafraîchissement automatique</li>
+<h3>Les KPI (3 min)</h3>
+<li>[ ] Sessions du mois : nombre de pointages validés</li>
+<li>[ ] Heures du mois : temps total travaillé</li>
+<li>[ ] Taux de validation : % de sessions validées</li>
+<li>[ ] Agents actifs : nombre d'agents disponibles</li>
+<h3>La règle 3-3-3 (5 min)</h3>
+<li>[ ] Expliquer les 3 catégories (Production, Admin, Contrôle)</li>
+<li>[ ] Montrer le camembert</li>
+<li>[ ] Expliquer l'objectif : maximiser Production, minimiser Admin</li>
+<h3>Les tableaux (10 min)</h3>
+<li>[ ] Tableau Départements : 7 colonnes expliquées</li>
+<li>[ ] Expliquer "% du total" et "% cap."</li>
+<li>[ ] Montrer un bon vs mauvais département</li>
+<h3>Les graphiques (5 min)</h3>
+<li>[ ] Tendance mensuelle : évolution sur 30 jours</li>
+<li>[ ] Barres départements : visualiser productif vs non-productif</li>
+<li>[ ] Barres agents : identifier les agents en difficulté</li>
+<h3>Actions à prendre (5 min)</h3>
+<li>[ ] Comment identifier un problème</li>
+<li>[ ] Que faire si "% cap." > 50%</li>
+<li>[ ] Comment améliorer la productivité</li>
+<p>---</p>
+<p><strong>📄 FIN DU GUIDE - Version 1.0 - Avril 2026</strong></p>
+<p>---</p>
+<p><strong>Contact support</strong> : admin@bgfibank.com  
+<strong>Documentation projet</strong> : </code>/home/user/webapp/README.md`
+</p>
+    
+    <div class="no-print" style="position: fixed; bottom: 20px; right: 20px; background: #3b82f6; color: white; padding: 15px 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); cursor: pointer;" onclick="window.print()">
+        🖨️ Imprimer en PDF
+    </div>
+</body>
+</html>
