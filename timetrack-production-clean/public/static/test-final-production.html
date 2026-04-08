@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Final - Colonne PRODUCTION</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            padding: 20px;
+            background: #f3f4f6;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1e3a5f;
+            margin-bottom: 10px;
+        }
+        .alert {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 16px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .alert-success {
+            background: #d1fae5;
+            border-left-color: #10b981;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin: 20px 0;
+        }
+        thead tr {
+            background: #f9fafb;
+        }
+        th {
+            padding: 8px;
+            text-align: center;
+            font-weight: 600;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        th:first-child {
+            text-align: left;
+        }
+        td {
+            padding: 8px;
+            text-align: center;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        td:first-child {
+            text-align: left;
+            font-weight: 600;
+        }
+        .diagnostic {
+            background: #eff6ff;
+            border: 1px solid #3b82f6;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .diagnostic h3 {
+            margin-top: 0;
+            color: #1e3a5f;
+            font-family: Arial, sans-serif;
+        }
+        .diagnostic pre {
+            background: white;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .highlight {
+            background: #fef3c7;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Test Final - Colonne PRODUCTION</h1>
+        <p style="color: #6b7280; margin-bottom: 30px;">
+            Ce tableau est une copie EXACTE du code dans <code>admin.js</code> (lignes 530-563)
+        </p>
+
+        <div class="alert">
+            <strong>⚠️ Objectif du test :</strong><br>
+            Vérifier si la colonne PRODUCTION (3ème colonne) est visible dans ton navigateur Edge.
+        </div>
+
+        <h2>Tableau "Comparaison par Département"</h2>
+        <div style="overflow-x:auto">
+            <table>
+                <thead><tr style="background:#f9fafb">
+                    <th style="padding:8px;text-align:left">DÉPARTEMENT</th>
+                    <th style="padding:8px;text-align:center">AGENTS</th>
+                    <th style="padding:8px;text-align:center;color:#1e3a5f;min-width:80px;width:80px">PRODUCTION</th>
+                    <th style="padding:8px;text-align:center;color:#f59e0b">ADMIN & REPORTING</th>
+                    <th style="padding:8px;text-align:center;color:#10b981">CONTRÔLE</th>
+                    <th style="padding:8px;text-align:center;color:#ef4444">NON PRODUCTIF</th>
+                    <th style="padding:8px;text-align:center">CAPACITÉ</th>
+                </tr></thead>
+                <tbody id="tableBody">
+                    <!-- Rempli par JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="diagnostic" id="diagnostic">
+            <h3>📊 Diagnostic Automatique</h3>
+            <div id="diagnosticContent">Chargement...</div>
+        </div>
+
+        <div class="alert alert-success" id="result" style="display:none"></div>
+    </div>
+
+    <script>
+        // Données de test (identiques à ce que l'API retourne)
+        const testData = [
+            {
+                dept_name: 'Direction Commerciale',
+                agent_count: 3,
+                Production: 5370,  // 89h 30m
+                'Administration & Reporting': 1110,  // 18h 30m
+                'Contrôle': 630,  // 10h 30m
+                total_minutes: 7110,
+                capacity_minutes: 8640,
+                working_days: 22
+            },
+            {
+                dept_name: 'Direction Conformité',
+                agent_count: 2,
+                Production: 2610,  // 43h 30m
+                'Administration & Reporting': 360,  // 6h 00m
+                'Contrôle': 540,  // 9h 00m
+                total_minutes: 3510,
+                capacity_minutes: 5760,
+                working_days: 22
+            },
+            {
+                dept_name: 'Direction Financière',
+                agent_count: 2,
+                Production: 2640,  // 44h 00m
+                'Administration & Reporting': 330,  // 5h 30m
+                'Contrôle': 270,  // 4h 30m
+                total_minutes: 3240,
+                capacity_minutes: 5760,
+                working_days: 22
+            },
+            {
+                dept_name: 'Direction des Risques',
+                agent_count: 1,
+                Production: 2,  // 0h 02m
+                'Administration & Reporting': 0,
+                'Contrôle': 0,
+                total_minutes: 2,
+                capacity_minutes: 2880,
+                working_days: 22
+            }
+        ];
+
+        // Fonction minutesToHours (copie exacte de admin.js)
+        function minutesToHours(min) {
+            const h = Math.floor(min / 60);
+            const m = min % 60;
+            return `${h}h ${m.toString().padStart(2, '0')}m`;
+        }
+
+        // Générer les lignes (CODE EXACT de admin.js lignes 542-563)
+        const tbody = document.getElementById('tableBody');
+        testData.forEach(d => {
+            const cap = d.capacity_minutes || d.agent_count * (d.working_days||22) * 480;
+            const np  = Math.max(0, cap - d.total_minutes);
+            const npPct = cap > 0 ? Math.round(np/cap*100) : 0;
+            const aMin = d['Administration & Reporting']||0;
+            const cMin = d['Contrôle']||0;
+            const repPct = d.total_minutes > 0 ? Math.round((aMin+cMin)/d.total_minutes*100) : 0;
+            
+            const row = document.createElement('tr');
+            row.style.borderBottom = '1px solid #f3f4f6';
+            row.innerHTML = `
+                <td style="padding:8px;font-weight:600">${d.dept_name}</td>
+                <td style="padding:8px;text-align:center">${d.agent_count}</td>
+                <td style="padding:8px;text-align:center;color:#1e3a5f;font-weight:700;min-width:80px;width:80px">${minutesToHours(d.Production||0)}</td>
+                <td style="padding:8px;text-align:center;color:#f59e0b;font-weight:700">
+                    ${minutesToHours(aMin)}
+                    <div style="font-size:10px;color:#9ca3af">${repPct}% du total</div>
+                </td>
+                <td style="padding:8px;text-align:center;color:#10b981;font-weight:700">${minutesToHours(cMin)}</td>
+                <td style="padding:8px;text-align:center">
+                    <span style="font-weight:700;color:#ef4444">${minutesToHours(np)}</span>
+                    <div style="font-size:10px;color:#9ca3af">${npPct}% cap.</div>
+                </td>
+                <td style="padding:8px;text-align:center;color:#6b7280">${minutesToHours(cap)}</td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        // DIAGNOSTIC AUTOMATIQUE
+        setTimeout(() => {
+            const headers = document.querySelectorAll('table thead th');
+            const firstRow = document.querySelector('table tbody tr');
+            const cells = firstRow ? firstRow.querySelectorAll('td') : [];
+            
+            let diagnosticHTML = '<pre>';
+            diagnosticHTML += '═══════════════════════════════════════════════════\n';
+            diagnosticHTML += '🔍 DIAGNOSTIC AUTOMATIQUE - COLONNE PRODUCTION\n';
+            diagnosticHTML += '═══════════════════════════════════════════════════\n\n';
+            
+            diagnosticHTML += `📊 Nombre de &lt;th&gt; détectés : <span class="highlight">${headers.length}</span>\n\n`;
+            diagnosticHTML += 'Liste des en-têtes :\n';
+            headers.forEach((th, i) => {
+                const text = th.textContent.trim();
+                const computed = window.getComputedStyle(th);
+                const width = computed.width;
+                const display = computed.display;
+                const visibility = computed.visibility;
+                const offsetWidth = th.offsetWidth;
+                
+                diagnosticHTML += `  ${i+1}. "${text}"\n`;
+                diagnosticHTML += `     ├─ Computed width: ${width}\n`;
+                diagnosticHTML += `     ├─ OffsetWidth: ${offsetWidth}px\n`;
+                diagnosticHTML += `     ├─ Display: ${display}\n`;
+                diagnosticHTML += `     └─ Visibility: ${visibility}\n`;
+                
+                if (text === 'PRODUCTION') {
+                    diagnosticHTML += `     <span class="highlight">✅ PRODUCTION TROUVÉ À LA POSITION ${i+1}</span>\n`;
+                }
+            });
+            
+            diagnosticHTML += `\n📊 Nombre de &lt;td&gt; dans la 1ère ligne : <span class="highlight">${cells.length}</span>\n\n`;
+            
+            // Chercher spécifiquement PRODUCTION
+            const productionHeader = Array.from(headers).find(th => th.textContent.includes('PRODUCTION'));
+            
+            if (productionHeader) {
+                const width = productionHeader.offsetWidth;
+                diagnosticHTML += '\n✅ RÉSULTAT : Colonne PRODUCTION détectée\n';
+                diagnosticHTML += `   Position : ${Array.from(headers).indexOf(productionHeader) + 1}/7\n`;
+                diagnosticHTML += `   Largeur visible : ${width}px\n`;
+                
+                if (width === 0) {
+                    diagnosticHTML += '\n❌ PROBLÈME : Largeur = 0px (COLONNE INVISIBLE)\n';
+                    diagnosticHTML += '   Cause : CSS ou JavaScript cache la colonne\n';
+                } else if (width < 40) {
+                    diagnosticHTML += '\n⚠️  ATTENTION : Largeur très petite\n';
+                } else {
+                    diagnosticHTML += '\n✅ Largeur normale (colonne visible)\n';
+                }
+            } else {
+                diagnosticHTML += '\n❌ RÉSULTAT : Colonne PRODUCTION NON détectée\n';
+                diagnosticHTML += '   Problème : JavaScript ou DOM manipulation\n';
+            }
+            
+            diagnosticHTML += '\n═══════════════════════════════════════════════════\n';
+            diagnosticHTML += '</pre>';
+            
+            document.getElementById('diagnosticContent').innerHTML = diagnosticHTML;
+            
+            // Résultat final
+            const resultDiv = document.getElementById('result');
+            if (headers.length === 7 && productionHeader && productionHeader.offsetWidth > 0) {
+                resultDiv.innerHTML = '<strong>✅ TEST RÉUSSI !</strong><br>Les 7 colonnes sont visibles, y compris PRODUCTION. Si tu ne vois QUE 6 colonnes sur le vrai dashboard, alors le problème vient du JavaScript dynamique (données vides ou code qui cache la colonne).';
+                resultDiv.style.display = 'block';
+            } else {
+                resultDiv.className = 'alert';
+                resultDiv.innerHTML = '<strong>❌ PROBLÈME DÉTECTÉ !</strong><br>Envoie-moi une capture d\'écran de cette page avec le diagnostic visible.';
+                resultDiv.style.display = 'block';
+            }
+        }, 500);
+    </script>
+</body>
+</html>

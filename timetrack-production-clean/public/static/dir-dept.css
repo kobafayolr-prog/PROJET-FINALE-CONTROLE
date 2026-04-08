@@ -1,0 +1,87 @@
+/* ============================================
+   TimeTrack BGFIBank - Directeur de Département CSS
+   ============================================ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: #f4f6f9; color: #333; }
+
+.layout { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 220px; min-height: 100vh; background: linear-gradient(180deg,#1e3a5f 0%,#0f2544 100%);
+  position: fixed; left: 0; top: 0; bottom: 0; display: flex; flex-direction: column; z-index: 100;
+}
+.sidebar-logo { padding: 18px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.nav-list { list-style: none; padding: 8px 0; flex: 1; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; color: rgba(255,255,255,0.75); cursor: pointer; transition: all 0.2s; font-size: 13px; }
+.nav-item:hover, .nav-item.active { background: rgba(255,255,255,0.12); color: white; }
+.nav-item.active { border-left: 3px solid #f59e0b; }
+.nav-icon { width: 16px; text-align: center; font-size: 13px; }
+.sidebar-footer { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between; }
+.user-info { display: flex; align-items: center; gap: 8px; }
+.user-avatar { width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 700; }
+.btn-logout { background: none; border: none; color: rgba(255,255,255,0.5); cursor: pointer; font-size: 14px; padding: 4px; }
+.btn-logout:hover { color: white; }
+.main-content { margin-left: 220px; padding: 24px; min-height: 100vh; }
+.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 10px; }
+.page-title { font-size: 20px; font-weight: 700; color: #1e3a5f; display: flex; align-items: center; }
+
+/* READ ONLY BADGE */
+.read-only-badge {
+  background: #fef3c7; color: #b45309; padding: 6px 14px; border-radius: 20px;
+  font-size: 12px; font-weight: 600; display: flex; align-items: center;
+}
+
+/* KPI */
+.kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
+.kpi-card { background: white; border-radius: 10px; padding: 18px; display: flex; align-items: center; gap: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.kpi-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.kpi-value { font-size: 20px; font-weight: 800; color: #1e3a5f; }
+.kpi-label { font-size: 11px; color: #6b7280; margin-top: 2px; }
+
+/* CHARTS */
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.chart-card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.chart-title { font-size: 14px; font-weight: 700; color: #1e3a5f; margin-bottom: 16px; display: flex; align-items: center; }
+
+/* CARD */
+.card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px; }
+
+/* TABLE */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table thead th { background: #1e3a5f; color: white; padding: 10px 14px; text-align: left; font-size: 12px; font-weight: 600; }
+.data-table tbody tr { border-bottom: 1px solid #f0f0f0; }
+.data-table tbody tr:hover { background: #f9fafb; }
+.data-table tbody td { padding: 10px 14px; font-size: 13px; color: #374151; }
+
+/* BADGE */
+.badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.badge-active { background: #dcfce7; color: #16a34a; }
+.badge-pending { background: #fef9c3; color: #a16207; }
+.badge-inprogress { background: #dbeafe; color: #1d4ed8; }
+.badge-rejected { background: #fee2e2; color: #dc2626; }
+.badge-role { background: #e0f2fe; color: #0369a1; }
+
+/* OBJECTIVE CARDS */
+.obj-card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px; }
+.obj-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-left: 12px; border-left: 4px solid; }
+.obj-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.obj-name { font-size: 15px; font-weight: 700; color: #1e3a5f; }
+.obj-body {}
+
+/* LOADING & EMPTY */
+.loading { text-align: center; padding: 60px 20px; color: #64748b; }
+.loading p { margin-top: 12px; }
+.empty-state { text-align: center; padding: 40px; color: #9ca3af; font-size: 14px; }
+
+/* TOAST */
+.toast { position: fixed; bottom: 20px; right: 20px; z-index: 9999; background: #1e3a5f; color: white; padding: 12px 20px; border-radius: 8px; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); animation: slideIn 0.3s ease; }
+.toast.error { background: #ef4444; }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+@media (max-width: 900px) {
+  .sidebar { width: 60px; }
+  .nav-item span, .sidebar-logo div, .user-info div { display: none; }
+  .main-content { margin-left: 60px; padding: 16px; }
+  .kpi-grid { grid-template-columns: 1fr 1fr; }
+  .charts-grid { grid-template-columns: 1fr; }
+}

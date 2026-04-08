@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test En-tête PRODUCTION</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 1200px;
+            margin: 0 auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1e3a5f;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #ddd;
+        }
+        th {
+            background: #f9fafb;
+            font-weight: 600;
+        }
+        .production { color: #1e3a5f; }
+        .admin { color: #f59e0b; }
+        .controle { color: #10b981; }
+        .non-prod { color: #ef4444; }
+        .info {
+            background: #e0f2fe;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .success {
+            background: #dcfce7;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            color: #166534;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test En-tête PRODUCTION</h1>
+        
+        <div class="info">
+            <strong>But de ce test :</strong> Vérifier que l'en-tête "PRODUCTION" s'affiche correctement dans un tableau statique HTML.
+            <br><br>
+            <strong>Version du fichier admin.js :</strong> v1.0.3
+            <br>
+            <strong>Date :</strong> 8 avril 2026
+        </div>
+
+        <h2>Tableau de Test (7 colonnes)</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th style="text-align:left">DÉPARTEMENT</th>
+                    <th>AGENTS</th>
+                    <th class="production">PRODUCTION</th>
+                    <th class="admin">ADMIN & REPORTING</th>
+                    <th class="controle">CONTRÔLE</th>
+                    <th class="non-prod">NON PRODUCTIF</th>
+                    <th>CAPACITÉ</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="text-align:left">Commercial</td>
+                    <td>12</td>
+                    <td class="production">83h 30m</td>
+                    <td class="admin">14h 30m</td>
+                    <td class="controle">10h 30m</td>
+                    <td class="non-prod">27h 30m</td>
+                    <td>144h 00m</td>
+                </tr>
+                <tr>
+                    <td style="text-align:left">Risques</td>
+                    <td>8</td>
+                    <td class="production">43h 30m</td>
+                    <td class="admin">8h 15m</td>
+                    <td class="controle">6h 45m</td>
+                    <td class="non-prod">37h 30m</td>
+                    <td>96h 00m</td>
+                </tr>
+                <tr>
+                    <td style="text-align:left">Opérations</td>
+                    <td>10</td>
+                    <td class="production">44h 00m</td>
+                    <td class="admin">12h 00m</td>
+                    <td class="controle">8h 00m</td>
+                    <td class="non-prod">56h 00m</td>
+                    <td>120h 00m</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="success">
+            ✅ <strong>Si vous voyez ce tableau avec 7 colonnes dont "PRODUCTION"</strong>, cela signifie que :
+            <ul style="margin: 10px 0; padding-left: 20px;">
+                <li>Votre navigateur fonctionne correctement</li>
+                <li>Le serveur sert bien les fichiers statiques</li>
+                <li>Le problème vient du JavaScript dynamique dans admin.js</li>
+            </ul>
+        </div>
+
+        <h2>Informations de Débogage</h2>
+        <pre id="debug"></pre>
+
+        <script>
+            const info = {
+                userAgent: navigator.userAgent,
+                viewport: `${window.innerWidth}x${window.innerHeight}`,
+                url: window.location.href,
+                timestamp: new Date().toISOString(),
+                cookies: document.cookie || 'Aucun cookie',
+                localStorage_token: localStorage.getItem('token') ? 'Présent' : 'Absent',
+                localStorage_user: localStorage.getItem('user') ? 'Présent' : 'Absent'
+            };
+            document.getElementById('debug').textContent = JSON.stringify(info, null, 2);
+        </script>
+    </div>
+</body>
+</html>
