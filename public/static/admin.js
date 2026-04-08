@@ -532,7 +532,7 @@ async function loadDashboardStats() {
           <thead><tr style="background:#f9fafb">
             <th style="padding:8px;text-align:left">DÉPARTEMENT</th>
             <th style="padding:8px;text-align:center">AGENTS</th>
-            <th style="padding:8px;text-align:center;color:#1e3a5f">PRODUCTION</th>
+            <th style="padding:8px;text-align:center;color:#1e3a5f;min-width:80px;width:80px">PRODUCTION</th>
             <th style="padding:8px;text-align:center;color:#f59e0b">ADMIN & REPORTING</th>
             <th style="padding:8px;text-align:center;color:#10b981">CONTRÔLE</th>
             <th style="padding:8px;text-align:center;color:#ef4444">NON PRODUCTIF</th>
@@ -549,7 +549,7 @@ async function loadDashboardStats() {
               return `<tr style="border-bottom:1px solid #f3f4f6">
                 <td style="padding:8px;font-weight:600">${d.dept_name}</td>
                 <td style="padding:8px;text-align:center">${d.agent_count}</td>
-                <td style="padding:8px;text-align:center;color:#1e3a5f;font-weight:700">${minutesToHours(d.Production||0)}</td>
+                <td style="padding:8px;text-align:center;color:#1e3a5f;font-weight:700;min-width:80px;width:80px">${minutesToHours(d.Production||0)}</td>
                 <td style="padding:8px;text-align:center;color:#f59e0b;font-weight:700">
                   ${minutesToHours(aMin)}
                   <div style="font-size:10px;color:#9ca3af">${repPct}% du total</div>

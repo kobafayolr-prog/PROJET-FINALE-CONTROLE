@@ -3193,8 +3193,8 @@ document.getElementById('login-form').addEventListener('submit',async(e)=>{
 </html>`
 }
 
-// Version pour cache-busting - incrémenter après modification des fichiers JS/CSS
-const APP_VERSION = '1.0.2'
+// Version pour cache-busting - timestamp unique à chaque build
+const APP_VERSION = `${Date.now()}-fix-width`
 
 function getAdminHTML(): string {
   return `<!DOCTYPE html>
