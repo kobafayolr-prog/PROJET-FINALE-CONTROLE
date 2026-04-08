@@ -3194,7 +3194,7 @@ document.getElementById('login-form').addEventListener('submit',async(e)=>{
 }
 
 // Version pour cache-busting - timestamp unique à chaque build
-const APP_VERSION = `${Date.now()}-fix-width`
+const APP_VERSION = `${Date.now()}-new-table`
 
 function getAdminHTML(): string {
   return `<!DOCTYPE html>

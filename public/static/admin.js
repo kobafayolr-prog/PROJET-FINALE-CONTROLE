@@ -528,38 +528,41 @@ async function loadDashboardStats() {
       <canvas id="chartDeptBar" height="${stats.month2 ? 260 : 200}"></canvas>
       <!-- Tableau récap heures non-productives par département -->
       <div style="margin-top:16px;overflow-x:auto">
-        <table style="width:100%;font-size:12px">
-          <thead><tr style="background:#f9fafb">
-            <th style="padding:8px;text-align:left">DÉPARTEMENT</th>
-            <th style="padding:8px;text-align:center">AGENTS</th>
-            <th style="padding:8px;text-align:center;color:#1e3a5f;min-width:80px;width:80px">PRODUCTION</th>
-            <th style="padding:8px;text-align:center;color:#f59e0b">ADMIN & REPORTING</th>
-            <th style="padding:8px;text-align:center;color:#10b981">CONTRÔLE</th>
-            <th style="padding:8px;text-align:center;color:#ef4444">NON PRODUCTIF</th>
-            <th style="padding:8px;text-align:center">CAPACITÉ</th>
-          </tr></thead>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e5e7eb">
+          <thead>
+            <tr style="background:#1e3a5f;color:white">
+              <th style="padding:12px 8px;text-align:left;font-weight:600;border-right:1px solid #3b5998">DÉPARTEMENT</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:80px">AGENTS</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:100px;background:#2563eb">PRODUCTION</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:120px">ADMIN & REPORTING</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:100px">CONTRÔLE</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:120px">NON PRODUCTIF</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;width:100px">CAPACITÉ</th>
+            </tr>
+          </thead>
           <tbody>
-            ${(stats.deptComparison||[]).map(d => {
+            ${(stats.deptComparison||[]).map((d, idx) => {
               const cap = d.capacity_minutes || d.agent_count * (stats.working_days||22) * 480;
               const np  = Math.max(0, cap - d.total_minutes);
               const npPct = cap > 0 ? Math.round(np/cap*100) : 0;
               const aMin = d['Administration & Reporting']||0;
               const cMin = d['Contrôle']||0;
               const repPct = d.total_minutes > 0 ? Math.round((aMin+cMin)/d.total_minutes*100) : 0;
-              return `<tr style="border-bottom:1px solid #f3f4f6">
-                <td style="padding:8px;font-weight:600">${d.dept_name}</td>
-                <td style="padding:8px;text-align:center">${d.agent_count}</td>
-                <td style="padding:8px;text-align:center;color:#1e3a5f;font-weight:700;min-width:80px;width:80px">${minutesToHours(d.Production||0)}</td>
-                <td style="padding:8px;text-align:center;color:#f59e0b;font-weight:700">
-                  ${minutesToHours(aMin)}
-                  <div style="font-size:10px;color:#9ca3af">${repPct}% du total</div>
+              const bgColor = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
+              return `<tr style="background:${bgColor};border-bottom:1px solid #e5e7eb">
+                <td style="padding:10px 8px;font-weight:600;color:#1f2937;border-right:1px solid #e5e7eb">${d.dept_name}</td>
+                <td style="padding:10px 8px;text-align:center;font-weight:500;border-right:1px solid #e5e7eb">${d.agent_count}</td>
+                <td style="padding:10px 8px;text-align:center;font-weight:700;color:#2563eb;font-size:14px;border-right:1px solid #e5e7eb;background:#eff6ff">${minutesToHours(d.Production||0)}</td>
+                <td style="padding:10px 8px;text-align:center;border-right:1px solid #e5e7eb">
+                  <div style="font-weight:700;color:#f59e0b;font-size:14px">${minutesToHours(aMin)}</div>
+                  <div style="font-size:10px;color:#9ca3af;margin-top:2px">${repPct}% du total</div>
                 </td>
-                <td style="padding:8px;text-align:center;color:#10b981;font-weight:700">${minutesToHours(cMin)}</td>
-                <td style="padding:8px;text-align:center">
-                  <span style="font-weight:700;color:#ef4444">${minutesToHours(np)}</span>
-                  <div style="font-size:10px;color:#9ca3af">${npPct}% cap.</div>
+                <td style="padding:10px 8px;text-align:center;font-weight:700;color:#10b981;font-size:14px;border-right:1px solid #e5e7eb">${minutesToHours(cMin)}</td>
+                <td style="padding:10px 8px;text-align:center;border-right:1px solid #e5e7eb">
+                  <div style="font-weight:700;color:#ef4444;font-size:14px">${minutesToHours(np)}</div>
+                  <div style="font-size:10px;color:#9ca3af;margin-top:2px">${npPct}% cap.</div>
                 </td>
-                <td style="padding:8px;text-align:center;color:#6b7280">${minutesToHours(cap)}</td>
+                <td style="padding:10px 8px;text-align:center;font-weight:500;color:#6b7280">${minutesToHours(cap)}</td>
               </tr>`;
             }).join('')}
           </tbody>
