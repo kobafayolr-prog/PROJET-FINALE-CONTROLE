@@ -634,22 +634,39 @@ async function loadDashboardStats() {
   <div class="card" style="margin-bottom:20px">
     <div class="card-body">
       <div class="chart-title"><i class="fas fa-bullseye" style="color:#1e3a5f"></i> Objectifs Banque — Méthode 3-3-3 (Cible vs Réalisé)</div>
-      <table style="width:100%">
-        <thead><tr>
-          <th>CATÉGORIE</th><th>HEURES RÉALISÉES</th><th>% RÉALISÉ</th><th>% CIBLE</th><th>ÉCART</th><th>BARRE</th>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#1e3a5f;color:white">
+          <th style="padding:12px;text-align:left;border:1px solid #e5e7eb">ACTIVITÉS</th>
+          <th style="padding:12px;text-align:center;border:1px solid #e5e7eb">HEURES RÉALISÉES</th>
+          <th style="padding:12px;text-align:center;border:1px solid #e5e7eb">% RÉALISÉ</th>
+          <th style="padding:12px;text-align:center;border:1px solid #e5e7eb">% CIBLE</th>
+          <th style="padding:12px;text-align:center;border:1px solid #e5e7eb">ÉCART</th>
+          <th style="padding:12px;text-align:center;border:1px solid #e5e7eb">BARRE</th>
         </tr></thead>
         <tbody>
-          ${(stats.hoursByObjective||[]).map(o => {
-            const ecart = o.percentage - o.target_percentage;
+          ${(stats.ratio333||[]).map((r, idx) => {
+            const targetPct = 33; // Méthode 3-3-3 : chaque activité = 33%
+            const ecart = r.percentage - targetPct;
             const ecartClass = ecart>=0?'pct-ok':(ecart>-10?'pct-warning':'pct-danger');
-            return `<tr>
-              <td><span class="badge badge-obj" style="background:${o.color}">${o.name}</span></td>
-              <td style="font-weight:700">${o.hours_display}</td>
-              <td><span style="font-weight:700;color:${o.color}">${o.percentage}%</span></td>
-              <td style="color:#6b7280">${o.target_percentage}%</td>
-              <td class="${ecartClass}">${ecart>=0?'+':''}${ecart}%</td>
-              <td style="min-width:120px">
-                <div class="progress-bar"><div class="progress-fill" style="width:${o.percentage}%;background:${o.color}"></div></div>
+            const colors = ['#1e3a5f', '#f59e0b', '#10b981']; // Production, Admin, Contrôle
+            const color = colors[idx] || '#1e3a5f';
+            return `<tr style="border-bottom:1px solid #e5e7eb;${idx%2===1?'background:#f9fafb':''}">
+              <td style="padding:10px;font-weight:600;border:1px solid #e5e7eb">
+                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};margin-right:8px"></span>
+                ${r.label}
+              </td>
+              <td style="padding:10px;text-align:center;font-weight:700;border:1px solid #e5e7eb">${r.hours_display}</td>
+              <td style="padding:10px;text-align:center;border:1px solid #e5e7eb">
+                <span style="font-weight:700;color:${color}">${r.percentage}%</span>
+              </td>
+              <td style="padding:10px;text-align:center;color:#6b7280;border:1px solid #e5e7eb">${targetPct}%</td>
+              <td style="padding:10px;text-align:center;font-weight:700;border:1px solid #e5e7eb" class="${ecartClass}">
+                ${ecart>=0?'+':''}${ecart}%
+              </td>
+              <td style="padding:10px;min-width:120px;border:1px solid #e5e7eb">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width:${r.percentage}%;background:${color}"></div>
+                </div>
               </td>
             </tr>`;
           }).join('')}
