@@ -1523,7 +1523,14 @@ let allProcsData = [], allProcsObjs = [];
 
 async function renderProcesses() {
   renderLayout('Gestion des Processus', '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i></div>');
-  [allProcsData, allDepts, allProcsObjs] = await Promise.all([api('/api/admin/processes'), api('/api/admin/departments'), api('/api/admin/objectives')]);
+  [allProcsData, allDepts] = await Promise.all([api('/api/admin/processes'), api('/api/admin/departments')]);
+
+  // Couleurs pour les 3 types d'activités
+  const activityColors = {
+    'Production': '#1e3a5f',
+    'Administration & Reporting': '#f59e0b',
+    'Contrôle': '#10b981'
+  };
 
   document.getElementById('content').innerHTML = `
   <div class="page-header">
@@ -1534,12 +1541,12 @@ async function renderProcesses() {
     <div class="card-body">
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>PROCESSUS</th><th>DÉPARTEMENT</th><th>OBJECTIF</th><th>STATUT</th><th>ACTIONS</th></tr></thead>
+          <thead><tr><th>PROCESSUS</th><th>ACTIVITÉS</th><th>TYPE</th><th>STATUT</th><th>ACTIONS</th></tr></thead>
           <tbody>
             ${allProcsData.map(p => `<tr>
               <td style="font-weight:600;color:#1e3a5f">${p.name}</td>
               <td><a style="color:#1e3a5f">${p.department_name}</a></td>
-              <td><span class="badge badge-obj" style="background:${p.objective_color}">${p.objective_name}</span></td>
+              <td><span class="badge badge-obj" style="background:${activityColors[p.process_type] || '#6b7280'}">${p.process_type || 'Production'}</span></td>
               <td><span class="badge ${p.status==='Actif'?'badge-active':'badge-inactive'}">${p.status}</span></td>
               <td style="white-space:nowrap">
                 <button class="btn btn-sm btn-outline" onclick="showProcModal(${p.id})" title="Modifier"><i class="fas fa-edit"></i></button>
@@ -1575,11 +1582,11 @@ function showProcModal(id = null) {
           ${allDepts.map(d => `<option value="${d.id}" ${p?.department_id===d.id?'selected':''}>${d.name}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label class="form-label">Catégorie 3-3-3</label>
-        <select class="form-control" id="p_obj">
-          <option value="10" ${(!p?.objective_id||p?.objective_id===10)?'selected':''}>🔵 Production</option>
-          <option value="11" ${p?.objective_id===11?'selected':''}>🟡 Administration & Reporting</option>
-          <option value="12" ${p?.objective_id===12?'selected':''}>🟢 Contrôle</option>
+      <div class="form-group"><label class="form-label">Type d'activité</label>
+        <select class="form-control" id="p_type">
+          <option value="Production" ${(!p?.process_type||p?.process_type==='Production')?'selected':''}>🔵 Production</option>
+          <option value="Administration & Reporting" ${p?.process_type==='Administration & Reporting'?'selected':''}>🟡 Administration & Reporting</option>
+          <option value="Contrôle" ${p?.process_type==='Contrôle'?'selected':''}>🟢 Contrôle</option>
         </select>
       </div>
       <div class="form-group"><label class="form-label">Statut</label>
@@ -1597,7 +1604,7 @@ function showProcModal(id = null) {
   document.body.appendChild(modal);
   document.getElementById('proc-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const data = { name: document.getElementById('p_name').value, description: document.getElementById('p_desc').value, department_id: document.getElementById('p_dept').value, objective_id: document.getElementById('p_obj').value, status: document.getElementById('p_status').value };
+    const data = { name: document.getElementById('p_name').value, description: document.getElementById('p_desc').value, department_id: document.getElementById('p_dept').value, process_type: document.getElementById('p_type').value, status: document.getElementById('p_status').value };
     const r = id ? await api('/api/admin/processes/' + id, { method: 'PUT', body: JSON.stringify(data) })
                  : await api('/api/admin/processes', { method: 'POST', body: JSON.stringify(data) });
     if (r.error) { toast(r.error, 'error'); return; }

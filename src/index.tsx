@@ -532,10 +532,9 @@ app.delete('/api/admin/objectives/:id', async (c) => {
 
 app.get('/api/admin/processes', async (c) => {
   const procs = await c.env.DB.prepare(
-    `SELECT p.*, d.name as department_name, o.name as objective_name, o.color as objective_color
+    `SELECT p.*, d.name as department_name
      FROM processes p
      JOIN departments d ON p.department_id = d.id
-     JOIN strategic_objectives o ON p.objective_id = o.id
      WHERE p.status = 'Actif'
      ORDER BY p.name`
   ).all()
@@ -546,10 +545,10 @@ app.post('/api/admin/processes', async (c) => {
   const currentUser = await getUser(c)
   if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
-  const { name, description, department_id, objective_id, status } = await c.req.json()
+  const { name, description, department_id, process_type, status } = await c.req.json()
   const result = await c.env.DB.prepare(
-    'INSERT INTO processes (name, description, department_id, objective_id, status) VALUES (?, ?, ?, ?, ?)'
-  ).bind(name, description || '', department_id, objective_id, status || 'Actif').run()
+    'INSERT INTO processes (name, description, department_id, process_type, status) VALUES (?, ?, ?, ?, ?)'
+  ).bind(name, description || '', department_id, process_type || 'Production', status || 'Actif').run()
 
   return c.json({ id: result.meta.last_row_id, message: 'Processus créé' })
 })
@@ -559,10 +558,10 @@ app.put('/api/admin/processes/:id', async (c) => {
   if (!currentUser || currentUser.role !== 'Administrateur') return c.json({ error: 'Non autorisé' }, 401)
 
   const id = c.req.param('id')
-  const { name, description, department_id, objective_id, status } = await c.req.json()
+  const { name, description, department_id, process_type, status } = await c.req.json()
   await c.env.DB.prepare(
-    'UPDATE processes SET name=?, description=?, department_id=?, objective_id=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
-  ).bind(name, description || '', department_id, objective_id, status, id).run()
+    'UPDATE processes SET name=?, description=?, department_id=?, process_type=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+  ).bind(name, description || '', department_id, process_type || 'Production', status, id).run()
 
   return c.json({ message: 'Processus mis à jour' })
 })
