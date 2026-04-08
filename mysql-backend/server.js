@@ -70,6 +70,21 @@ app.use((req, res, next) => {
   res.setHeader('X-XSS-Protection', '1; mode=block')
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+  
+  // ✅ NOUVEAU: Content-Security-Policy (CSP) — Protection XSS bancaire stricte
+  const cspDirectives = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+    "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com",
+    "img-src 'self' data: https:",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "upgrade-insecure-requests"
+  ].join('; ')
+  res.setHeader('Content-Security-Policy', cspDirectives)
   if (req.method === 'OPTIONS') return res.status(204).end()
   next()
 })
@@ -236,6 +251,33 @@ function getRawToken (req) {
 }
 
 // ============================================
+// MIDDLEWARE UNIFIÉ : AUTORISATION PAR RÔLE
+// ============================================
+
+/**
+ * Middleware Express pour vérifier l'authentification et les rôles autorisés
+ * @param {...string} allowedRoles - Rôles autorisés (ex: 'Agent', 'Administrateur')
+ * @returns {Function} Middleware Express
+ * 
+ * Usage:
+ *   app.get('/api/admin/users', requireRole('Administrateur'), async (req, res) => { ... })
+ *   app.get('/api/chef/sessions', requireRole('Chef de Département', 'Administrateur'), async (req, res) => { ... })
+ */
+function requireRole (...allowedRoles) {
+  return async (req, res, next) => {
+    const user = await getUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Non autorisé' })
+    }
+    if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+      return res.status(403).json({ error: 'Accès interdit - rôle insuffisant' })
+    }
+    req.user = user // Injecter user dans req pour éviter getUser() dans la route
+    next()
+  }
+}
+
+// ============================================
 // RATE LIMITING (tentatives de connexion)
 // ============================================
 
@@ -319,6 +361,41 @@ async function query (sql, params = []) {
 async function run (sql, params = []) {
   const [result] = await db.execute(sql, params)
   return result
+}
+
+/**
+ * ✅ NOUVEAU: Wrapper de transaction SQL atomique
+ * Garantit que toutes les opérations réussissent ou échouent ensemble (ACID)
+ * @param {Function} callback - Fonction async qui reçoit un objet { query, run }
+ * @returns {Promise<any>} Résultat de la transaction
+ * 
+ * Usage:
+ *   await transaction(async ({ query, run }) => {
+ *     await run('INSERT INTO users ...')
+ *     await run('UPDATE departments ...')
+ *   })
+ */
+async function transaction (callback) {
+  const connection = await db.getConnection()
+  await connection.beginTransaction()
+  try {
+    const txQuery = async (sql, params = []) => {
+      const [rows] = await connection.execute(sql, params)
+      return rows
+    }
+    const txRun = async (sql, params = []) => {
+      const [result] = await connection.execute(sql, params)
+      return result
+    }
+    const result = await callback({ query: txQuery, run: txRun })
+    await connection.commit()
+    connection.release()
+    return result
+  } catch (error) {
+    await connection.rollback()
+    connection.release()
+    throw error
+  }
 }
 
 // Helper : calcule les jours ouvrés d'un mois (lun-ven ou lun-sam)
@@ -736,16 +813,14 @@ app.get('/api/notifications', async (req, res) => {
 // ADMIN - USERS
 // ============================================
 
-app.get('/api/admin/users', async (req, res) => {
-  const user = getUser(req)
-  if (!user || user.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
+// ✅ REFACTORÉ: Utilisation du middleware requireRole
+app.get('/api/admin/users', requireRole('Administrateur'), async (req, res) => {
   const rows = await query('SELECT u.*, d.name as department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id ORDER BY u.created_at DESC')
   res.json(rows.map(r => ({ ...r, password_hash: undefined })))
 })
 
-app.post('/api/admin/users', async (req, res) => {
-  const currentUser = getUser(req)
-  if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
+// ✅ REFACTORÉ: Utilisation du middleware requireRole + req.user
+app.post('/api/admin/users', requireRole('Administrateur'), async (req, res) => {
   try {
     const { first_name: fn, last_name: ln, email: em, password, role, department_id, status, works_saturday } = req.body
     const first_name = sanitizeString(fn || '')
@@ -760,7 +835,7 @@ app.post('/api/admin/users', async (req, res) => {
       [first_name, last_name, email, passwordHash, passwordEnc, role, department_id || null, status || 'Actif', works_saturday ? 1 : 0]
     )
     await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
-      [currentUser.id, 'CREATE_USER', `Création de l'utilisateur ${first_name} ${last_name}`])
+      [req.user.id, 'CREATE_USER', `Création de l'utilisateur ${first_name} ${last_name}`])
     res.json({ id: result.insertId, message: 'Utilisateur créé avec succès' })
   } catch (e) { 
     console.error('[ERROR]', e.message)
