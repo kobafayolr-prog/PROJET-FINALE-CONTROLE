@@ -2621,6 +2621,9 @@ document.getElementById('login-form').addEventListener('submit',async(e)=>{
 </body></html>`
 }
 
+// Version pour cache-busting (à incrémenter à chaque modification des fichiers JS/CSS)
+const APP_VERSION = '1.0.1'
+
 const spa = (jsFile, title) => `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>${title} - BGFIBank</title>
@@ -2628,8 +2631,8 @@ const spa = (jsFile, title) => `<!DOCTYPE html>
 <script src="/static/libs/tailwind.min.js"></script>
 <link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
 <script src="/static/libs/chart.min.js"></script>
-<link rel="stylesheet" href="/static/${jsFile.replace('.js', '.css')}">
-</head><body><div id="app"></div><script src="/static/${jsFile}"></script></body></html>`
+<link rel="stylesheet" href="/static/${jsFile.replace('.js', '.css')}?v=${APP_VERSION}">
+</head><body><div id="app"></div><script src="/static/${jsFile}?v=${APP_VERSION}"></script></body></html>`
 
 app.get('/login',              (req, res) => res.send(getLoginHTML()))
 app.get('/admin*',             (req, res) => res.send(spa('admin.js',       'TimeTrack Admin')))

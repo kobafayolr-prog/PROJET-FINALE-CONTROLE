@@ -3193,6 +3193,9 @@ document.getElementById('login-form').addEventListener('submit',async(e)=>{
 </html>`
 }
 
+// Version pour cache-busting - incrémenter après modification des fichiers JS/CSS
+const APP_VERSION = '1.0.2'
+
 function getAdminHTML(): string {
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -3205,11 +3208,11 @@ function getAdminHTML(): string {
 <script src="/static/libs/tailwind.min.js"></script>
 <link href="/static/libs/fontawesome/css/all.min.css" rel="stylesheet">
 <script src="/static/libs/chart.min.js"></script>
-<link rel="stylesheet" href="/static/admin.css">
+<link rel="stylesheet" href="/static/admin.css?v=${APP_VERSION}">
 </head>
 <body>
 <div id="app"></div>
-<script src="/static/admin.js"></script>
+<script src="/static/admin.js?v=${APP_VERSION}"></script>
 </body>
 </html>`
 }
