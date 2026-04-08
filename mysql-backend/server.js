@@ -80,7 +80,8 @@ function sanitizeString (str) {
 }
 
 function validateEmail (email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  // Regex renforcée : alphanumérique + . _ % + - uniquement
+  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)
 }
 
 function minutesToHours (minutes) {
@@ -369,7 +370,10 @@ app.post('/api/auth/login', async (req, res) => {
         works_saturday: user.works_saturday || 0
       }
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 app.get('/api/auth/me', (req, res) => {
@@ -399,7 +403,10 @@ app.post('/api/auth/reset-request', async (req, res) => {
     await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
       [currentUser.id, 'RESET_PASSWORD_REQUEST', `Code de réinitialisation généré pour ${target.first_name} ${target.last_name} (ID ${target.id})`])
     res.json({ message: 'Code généré', code, user_name: `${target.first_name} ${target.last_name}`, email: target.email, expires_in_minutes: 30 })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 app.post('/api/auth/reset-confirm', async (req, res) => {
@@ -418,7 +425,10 @@ app.post('/api/auth/reset-confirm', async (req, res) => {
     await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
       [entry.userId, 'RESET_PASSWORD_DONE', 'Mot de passe réinitialisé via code temporaire'])
     res.json({ message: 'Mot de passe réinitialisé avec succès' })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 // ============================================
@@ -458,7 +468,10 @@ app.get('/api/notifications', async (req, res) => {
       )
     }
     res.json(rows)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 // ============================================
@@ -491,7 +504,10 @@ app.post('/api/admin/users', async (req, res) => {
     await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
       [currentUser.id, 'CREATE_USER', `Création de l'utilisateur ${first_name} ${last_name}`])
     res.json({ id: result.insertId, message: 'Utilisateur créé avec succès' })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 app.put('/api/admin/users/:id', async (req, res) => {
@@ -500,6 +516,11 @@ app.put('/api/admin/users/:id', async (req, res) => {
   try {
     const id = req.params.id
     const { first_name, last_name, email, password, role, department_id, status, works_saturday } = req.body
+    
+    // Empêcher admin de modifier son propre rôle
+    if (parseInt(id) === currentUser.id && role !== 'Administrateur') {
+      return res.status(400).json({ error: 'Vous ne pouvez pas modifier votre propre rôle' })
+    }
     if (password) {
       const newHash = hashPassword(password)
       const newEnc  = encryptPassword(password)
@@ -516,7 +537,10 @@ app.put('/api/admin/users/:id', async (req, res) => {
     await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
       [currentUser.id, 'UPDATE_USER', `Modification de l'utilisateur ID ${id}`])
     res.json({ message: 'Utilisateur mis à jour' })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 app.get('/api/admin/users/:id/password', async (req, res) => {
@@ -533,7 +557,21 @@ app.get('/api/admin/users/:id/password', async (req, res) => {
 app.delete('/api/admin/users/:id', async (req, res) => {
   const currentUser = getUser(req)
   if (!currentUser || currentUser.role !== 'Administrateur') return res.status(401).json({ error: 'Non autorisé' })
+  
+  // Vérifier si c'est un admin et qu'il ne reste qu'un seul admin
+  const targetUser = await query('SELECT role FROM users WHERE id = ?', [req.params.id])
+  if (!targetUser[0]) return res.status(404).json({ error: 'Utilisateur non trouvé' })
+  
+  if (targetUser[0].role === 'Administrateur') {
+    const adminCount = await query('SELECT COUNT(*) as c FROM users WHERE role = "Administrateur"')
+    if (adminCount[0].c <= 1) {
+      return res.status(400).json({ error: 'Impossible de supprimer le dernier administrateur' })
+    }
+  }
+  
   await run('DELETE FROM users WHERE id = ?', [req.params.id])
+  await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+    [currentUser.id, 'DELETE_USER', `Suppression de l'utilisateur ID ${req.params.id}`])
   res.json({ message: 'Utilisateur supprimé' })
 })
 
@@ -553,7 +591,10 @@ app.post('/api/admin/departments', async (req, res) => {
     const result = await run('INSERT INTO departments (name, code, description, status) VALUES (?, ?, ?, ?)',
       [name, code, description || '', status || 'Actif'])
     res.json({ id: result.insertId, message: 'Département créé' })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 app.put('/api/admin/departments/:id', async (req, res) => {
@@ -942,7 +983,10 @@ app.get('/api/admin/stats', async (req, res) => {
         agents_detail: agentsTodayMapped
       }
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 // ============================================
@@ -1145,7 +1189,10 @@ app.post('/api/agent/sessions/start', async (req, res) => {
       [user.id, task_id, task[0].objective_id, user.department_id]
     )
     res.json({ id: result.insertId, message: 'Session démarrée' })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 app.post('/api/agent/sessions/stop', async (req, res) => {
@@ -1159,7 +1206,10 @@ app.post('/api/agent/sessions/stop', async (req, res) => {
     await run('UPDATE work_sessions SET end_time=NOW(), duration_minutes=?, status="Terminé", comment=?, updated_at=NOW() WHERE id=?',
       [durationMinutes, comment || null, active[0].id])
     res.json({ message: 'Session arrêtée', duration_minutes: durationMinutes })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 app.post('/api/agent/sessions/manual', async (req, res) => {
@@ -1177,7 +1227,10 @@ app.post('/api/agent/sessions/manual', async (req, res) => {
       [user.id, task_id, task[0].objective_id, user.department_id, start_time, end_time, durationMinutes, comment || '']
     )
     res.json({ id: result.insertId, message: 'Session enregistrée' })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 // ============================================
@@ -1506,6 +1559,14 @@ app.post('/api/chef/validate/:id', async (req, res) => {
   if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
     return res.status(401).json({ error: 'Non autorisé' })
   }
+  // Vérifier que la session appartient au département du chef (sauf admin)
+  if (user.role === 'Chef de Département') {
+    const session = await query('SELECT department_id FROM work_sessions WHERE id=?', [req.params.id])
+    if (!session[0]) return res.status(404).json({ error: 'Session non trouvée' })
+    if (session[0].department_id !== user.department_id) {
+      return res.status(403).json({ error: 'Cette session n\'appartient pas à votre département' })
+    }
+  }
   await run('UPDATE work_sessions SET status="Validé", validated_by=?, validated_at=NOW(), updated_at=NOW() WHERE id=?', [user.id, req.params.id])
   await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?,?,?)', [user.id, 'VALIDATION', `Session #${req.params.id} validée`])
   res.json({ message: 'Session validée' })
@@ -1515,6 +1576,14 @@ app.post('/api/chef/reject/:id', async (req, res) => {
   const user = getUser(req)
   if (!user || (user.role !== 'Chef de Département' && user.role !== 'Administrateur')) {
     return res.status(401).json({ error: 'Non autorisé' })
+  }
+  // Vérifier que la session appartient au département du chef (sauf admin)
+  if (user.role === 'Chef de Département') {
+    const session = await query('SELECT department_id FROM work_sessions WHERE id=?', [req.params.id])
+    if (!session[0]) return res.status(404).json({ error: 'Session non trouvée' })
+    if (session[0].department_id !== user.department_id) {
+      return res.status(403).json({ error: 'Cette session n\'appartient pas à votre département' })
+    }
   }
   const reason = req.body?.reason || ''
   if (!reason || reason.trim().length < 3) return res.status(400).json({ error: 'Un motif de rejet est obligatoire (min 3 caractères)' })
@@ -1658,7 +1727,10 @@ app.get('/api/chef-service/dashboard', async (req, res) => {
       rejected_sessions: Number(sessionStats[0]?.rejected || 0),
       team, byObjective
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 app.get('/api/chef-service/tasks', async (req, res) => {
@@ -1710,7 +1782,10 @@ app.post('/api/chef-service/sessions/start', async (req, res) => {
       [user.id, task_id, task[0].objective_id, user.department_id]
     )
     res.json({ id: result.insertId, message: 'Session démarrée' })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 app.post('/api/chef-service/sessions/stop', async (req, res) => {
@@ -1724,7 +1799,10 @@ app.post('/api/chef-service/sessions/stop', async (req, res) => {
     await run(`UPDATE work_sessions SET end_time=NOW(), duration_minutes=?, status='Terminé', comment=?, updated_at=NOW() WHERE id=?`,
       [durationMinutes, comment || null, session[0].id])
     res.json({ message: 'Session terminée', duration_minutes: durationMinutes })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 // ============================================
@@ -1781,7 +1859,10 @@ app.get('/api/dir-dept/dashboard', async (req, res) => {
       })),
       agentPerf, recentSessions
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 // ============================================
@@ -2008,7 +2089,10 @@ app.get('/api/dg/dashboard', async (req, res) => {
       byDept333: dgM1.deptComparison, byAgent333: dgM1.agentComparison,
       cumulMonths, cumulDeptComparison, cumulAgentComparison
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { 
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' }) 
+  }
 })
 
 // ============================================
