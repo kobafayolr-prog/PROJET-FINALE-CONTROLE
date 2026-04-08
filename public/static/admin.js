@@ -533,7 +533,7 @@ async function loadDashboardStats() {
             <tr style="background:#1e3a5f;color:white">
               <th style="padding:12px 8px;text-align:left;font-weight:600;border-right:1px solid #3b5998">DÉPARTEMENT</th>
               <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:80px">AGENTS</th>
-              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:100px;background:#2563eb">PRODUCTION</th>
+              <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:100px">PRODUCTION</th>
               <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:120px">ADMIN & REPORTING</th>
               <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:100px">CONTRÔLE</th>
               <th style="padding:12px 8px;text-align:center;font-weight:600;border-right:1px solid #3b5998;width:120px">NON PRODUCTIF</th>
@@ -552,7 +552,7 @@ async function loadDashboardStats() {
               return `<tr style="background:${bgColor};border-bottom:1px solid #e5e7eb">
                 <td style="padding:10px 8px;font-weight:600;color:#1f2937;border-right:1px solid #e5e7eb">${d.dept_name}</td>
                 <td style="padding:10px 8px;text-align:center;font-weight:500;border-right:1px solid #e5e7eb">${d.agent_count}</td>
-                <td style="padding:10px 8px;text-align:center;font-weight:700;color:#2563eb;font-size:14px;border-right:1px solid #e5e7eb;background:#eff6ff">${minutesToHours(d.Production||0)}</td>
+                <td style="padding:10px 8px;text-align:center;font-weight:700;color:#1e3a5f;font-size:14px;border-right:1px solid #e5e7eb">${minutesToHours(d.Production||0)}</td>
                 <td style="padding:10px 8px;text-align:center;border-right:1px solid #e5e7eb">
                   <div style="font-weight:700;color:#f59e0b;font-size:14px">${minutesToHours(aMin)}</div>
                   <div style="font-size:10px;color:#9ca3af;margin-top:2px">${repPct}% du total</div>
