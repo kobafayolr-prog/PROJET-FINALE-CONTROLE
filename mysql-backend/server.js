@@ -11,6 +11,8 @@ const express = require('express')
 const mysql   = require('mysql2/promise')
 const path    = require('path')
 const crypto  = require('crypto')
+const QRCode  = require('qrcode')
+const twofa   = require('./src/utils/twofa')
 
 const app = express()
 app.use(express.json())
@@ -404,6 +406,17 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     resetAttempts(ip)
+
+    // ✅ NOUVEAU: Vérifier si 2FA activé
+    if (user.twofa_enabled) {
+      // Si 2FA activé, on retourne requires_2fa au lieu du token
+      return res.json({
+        requires_2fa: true,
+        temp_token: signJWT({ id: user.id, email: user.email, temp_2fa: true }, 300), // Token temporaire 5 min
+        message: 'Code 2FA requis'
+      })
+    }
+
     await run('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id])
     await run('INSERT INTO audit_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
       [user.id, 'LOGIN', `Connexion réussie de ${user.first_name} ${user.last_name}`, ip])
@@ -440,6 +453,164 @@ app.post('/api/auth/logout', async (req, res) => {
   const token = getRawToken(req)
   if (token) await blacklistToken(token)
   res.json({ message: 'Déconnecté avec succès' })
+})
+
+// ============================================
+// AUTHENTIFICATION À DEUX FACTEURS (2FA TOTP)
+// ============================================
+
+// Générer QR code pour configurer 2FA (utilisateur authentifié)
+app.post('/api/2fa/setup', async (req, res) => {
+  const user = getUser(req)
+  if (!user) return res.status(401).json({ error: 'Non autorisé' })
+  try {
+    const secret = twofa.generateSecret()
+    const otpauthUrl = twofa.generateOtpauthUrl(secret, user.email, 'TimeTrack BGFIBank')
+    const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl)
+    const backupCodes = twofa.generateBackupCodes()
+
+    // Stocker secret temporairement (non activé tant que non vérifié)
+    await run('UPDATE users SET twofa_secret = ?, twofa_backup_codes = ? WHERE id = ?',
+      [secret, JSON.stringify(backupCodes), user.id])
+
+    res.json({
+      secret,
+      qrCode: qrCodeDataUrl,
+      backupCodes,
+      message: 'Scannez le QR code avec votre application d\'authentification (Google Authenticator, Microsoft Authenticator, Authy)'
+    })
+  } catch (e) {
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' })
+  }
+})
+
+// Activer 2FA après vérification du code (utilisateur authentifié)
+app.post('/api/2fa/enable', async (req, res) => {
+  const user = getUser(req)
+  if (!user) return res.status(401).json({ error: 'Non autorisé' })
+  try {
+    const { token } = req.body
+    if (!token) return res.status(400).json({ error: 'Code TOTP requis' })
+
+    const rows = await query('SELECT twofa_secret FROM users WHERE id = ?', [user.id])
+    const secret = rows[0]?.twofa_secret
+
+    if (!secret) return res.status(400).json({ error: 'Aucun secret 2FA configuré. Appelez /api/2fa/setup d\'abord.' })
+
+    const valid = twofa.verifyTOTP(token, secret)
+    if (!valid) return res.status(400).json({ error: 'Code TOTP invalide' })
+
+    await run('UPDATE users SET twofa_enabled = 1 WHERE id = ?', [user.id])
+    await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+      [user.id, '2FA_ENABLED', `2FA activé pour ${user.first_name} ${user.last_name}`])
+
+    res.json({ message: '2FA activé avec succès. Conservez vos codes de secours en lieu sûr.' })
+  } catch (e) {
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' })
+  }
+})
+
+// Vérifier code 2FA au login (avec temp_token)
+app.post('/api/2fa/verify', async (req, res) => {
+  try {
+    const { temp_token, code } = req.body
+    if (!temp_token || !code) return res.status(400).json({ error: 'temp_token et code requis' })
+
+    const payload = verifyJWT(temp_token)
+    if (!payload || !payload.temp_2fa) return res.status(401).json({ error: 'Token temporaire invalide' })
+
+    const rows = await query(
+      'SELECT u.*, d.name as department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE u.id = ? AND u.status = "Actif"',
+      [payload.id]
+    )
+    const user = rows[0]
+    if (!user) return res.status(401).json({ error: 'Utilisateur non trouvé' })
+    if (!user.twofa_enabled) return res.status(400).json({ error: '2FA non activé' })
+
+    // Vérifier code TOTP
+    let validCode = false
+    if (twofa.verifyTOTP(code, user.twofa_secret)) {
+      validCode = true
+    } else {
+      // Vérifier codes de secours
+      const backupCodes = user.twofa_backup_codes ? JSON.parse(user.twofa_backup_codes) : []
+      if (backupCodes.includes(code.toUpperCase())) {
+        validCode = true
+        // Supprimer le code de secours utilisé
+        const newBackupCodes = backupCodes.filter(c => c !== code.toUpperCase())
+        await run('UPDATE users SET twofa_backup_codes = ? WHERE id = ?', [JSON.stringify(newBackupCodes), user.id])
+      }
+    }
+
+    if (!validCode) return res.status(401).json({ error: 'Code 2FA invalide' })
+
+    await run('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id])
+    await run('INSERT INTO audit_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
+      [user.id, 'LOGIN_2FA', `Connexion réussie avec 2FA de ${user.first_name} ${user.last_name}`, req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress])
+
+    const token = signJWT({
+      id: user.id, email: user.email, role: user.role,
+      department_id: user.department_id, first_name: user.first_name,
+      last_name: user.last_name, department_name: user.department_name,
+      works_saturday: user.works_saturday || 0
+    })
+
+    res.json({
+      token,
+      user: {
+        id: user.id, first_name: user.first_name, last_name: user.last_name,
+        email: user.email, role: user.role,
+        department_id: user.department_id, department_name: user.department_name,
+        works_saturday: user.works_saturday || 0
+      }
+    })
+  } catch (e) {
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' })
+  }
+})
+
+// Désactiver 2FA (utilisateur authentifié + mot de passe)
+app.post('/api/2fa/disable', async (req, res) => {
+  const user = getUser(req)
+  if (!user) return res.status(401).json({ error: 'Non autorisé' })
+  try {
+    const { password } = req.body
+    if (!password) return res.status(400).json({ error: 'Mot de passe requis pour désactiver 2FA' })
+
+    const rows = await query('SELECT password_hash FROM users WHERE id = ?', [user.id])
+    const valid = verifyPassword(password, rows[0]?.password_hash)
+    if (!valid) return res.status(401).json({ error: 'Mot de passe incorrect' })
+
+    await run('UPDATE users SET twofa_enabled = 0, twofa_secret = NULL, twofa_backup_codes = NULL WHERE id = ?', [user.id])
+    await run('INSERT INTO audit_logs (user_id, action, details) VALUES (?, ?, ?)',
+      [user.id, '2FA_DISABLED', `2FA désactivé pour ${user.first_name} ${user.last_name}`])
+
+    res.json({ message: '2FA désactivé avec succès' })
+  } catch (e) {
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' })
+  }
+})
+
+// Obtenir statut 2FA (utilisateur authentifié)
+app.get('/api/2fa/status', async (req, res) => {
+  const user = getUser(req)
+  if (!user) return res.status(401).json({ error: 'Non autorisé' })
+  try {
+    const rows = await query('SELECT twofa_enabled, twofa_backup_codes FROM users WHERE id = ?', [user.id])
+    const data = rows[0]
+    const backupCodes = data.twofa_backup_codes ? JSON.parse(data.twofa_backup_codes) : []
+    res.json({
+      enabled: Boolean(data.twofa_enabled),
+      backup_codes_remaining: backupCodes.length
+    })
+  } catch (e) {
+    console.error('[ERROR]', e.message)
+    res.status(500).json({ error: 'Erreur interne du serveur' })
+  }
 })
 
 app.post('/api/auth/reset-request', async (req, res) => {
